@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="accessibility_desc">Guardian uses the Accessibility Service to monitor your screen and block explicit content or restricted apps, helping you maintain your digital wellness shield.</string>
+    <string name="app_name">Guardian</string>
+</resources>
