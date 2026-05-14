@@ -82,7 +82,8 @@ class GuardianAccessibilityService : AccessibilityService() {
             }
             if (isFacebook && currentState.facebookMode == "reels") {
                 if (className.contains("Reel", ignoreCase = true) ||
-                    className.contains("Clips", ignoreCase = true)) {
+                    className.contains("Clips", ignoreCase = true) ||
+                    event.text?.any { it.contains("ريلز") } == true) {
                     navigateFacebookHome()
                     return
                 }
@@ -245,6 +246,25 @@ class GuardianAccessibilityService : AccessibilityService() {
                 val isVideoTab = (contentDesc == "video" || nodeText == "video")
                     && (node.isSelected || node.isChecked || node.isActivated || node.isFocused)
                 if (isVideoTab) score += 40
+
+                // SIGNAL 6: Arabic "ريلز" — النص العربي للريلز (الأهم على الهواتف العربية)
+                if (contentDesc.contains("ريلز") || nodeText.contains("ريلز")) score += 40
+                if (contentDesc == "ريلز" || nodeText == "ريلز") score += 40  // exact match = double confirm
+
+                // SIGNAL 7: Arabic video tab selected
+                val isArabicVideoTab = (contentDesc.contains("فيديو") || nodeText.contains("فيديو"))
+                    && (node.isSelected || node.isChecked || node.isActivated || node.isFocused)
+                if (isArabicVideoTab) score += 40
+
+                // SIGNAL 8: Reels full-screen layout — الأزرار الجانبية اليسرى (خاصية Reels الوحيدة)
+                // في وضع ملء الشاشة، الأزرار (like/comment/share/save) تكون على اليسار عمودياً
+                // هذا يختلف عن الفيد العادي الذي يضع الأزرار أسفل الفيديو
+                val isVerticalReelsButton = node.boundsInScreen?.let { bounds ->
+                    bounds.left < 200 && bounds.top > 800  // زر على اليسار في النصف السفلي
+                } ?: false
+                if (isVerticalReelsButton && (node.isClickable) &&
+                    (contentDesc.contains("like") || contentDesc.contains("comment") ||
+                     contentDesc.contains("إعجاب") || contentDesc.contains("تعليق"))) score += 25
             }
 
             if (score >= 40) return score
