@@ -219,25 +219,32 @@ class GuardianAccessibilityService : AccessibilityService() {
                 if (contentDesc.contains("shorts") && node.isClickable) score += 15
 
             } else if (pkg.contains("facebook")) {
-                // === SIGNAL 1: Reels tab is selected in bottom navigation (most reliable) ===
-                // The tab bar item with contentDescription "Reels" being selected/checked
-                val isReelsTab = (contentDesc == "reels" || contentDesc.contains("reels"))
-                    && (node.isSelected || node.isChecked || node.isFocused)
+
+                // SIGNAL 1: Tab "Reels" selected (any state indicator)
+                val isReelsTab = (contentDesc == "reels" || contentDesc.contains("reels") || contentDesc.contains("video"))
+                    && (node.isSelected || node.isChecked || node.isFocused || node.isActivated)
                 if (isReelsTab) score += 40
 
-                // === SIGNAL 2: Text "Reels" on a selected navigation element ===
-                val isReelsText = (nodeText == "reels")
-                    && (node.isSelected || node.isChecked)
+                // SIGNAL 2: Text "Reels" on any selected/checked navigation element
+                val isReelsText = (nodeText == "reels" || nodeText.contains("reels"))
+                    && (node.isSelected || node.isChecked || node.isActivated)
                 if (isReelsText) score += 40
 
-                // === SIGNAL 3: Internal view IDs (may vary by FB version) ===
+                // SIGNAL 3: Internal view IDs
                 if (viewId.contains("reels_viewer_root") || viewId.contains("reels_swipe_refresh")) score += 40
                 if (viewId.contains("reels_tab") || viewId.contains("video_channel")) score += 40
                 if (viewId.contains("video_timeline_fragment") || viewId.contains("clips_viewer")) score += 20
 
-                // === SIGNAL 4: Reels content description anywhere (lower weight) ===
-                if (contentDesc.contains("reels") && node.isClickable) score += 15
-                if (nodeText.contains("reels") && node.isClickable) score += 15
+                // SIGNAL 4: "Reels" anywhere clickable — رُفع الوزن من 15 إلى 40
+                // زائد check لأن زر Reels دائماً موجود في الـ bottom nav ومرئي حتى على الـ feed العادي
+                // لذا نضيف شرط إضافي: حجم العقدة يجب أن يكون صغيراً (tab icon) أو نحسب عدد المرات
+                if (contentDesc == "reels" && node.isClickable) score += 40  // exact match = tab icon
+                if (nodeText == "reels" && node.isClickable) score += 40      // exact match
+
+                // SIGNAL 5: Facebook Video tab (فيسبوك أعاد تسمية Reels أحياناً لـ "Video")
+                val isVideoTab = (contentDesc == "video" || nodeText == "video")
+                    && (node.isSelected || node.isChecked || node.isActivated || node.isFocused)
+                if (isVideoTab) score += 40
             }
 
             if (score >= 40) return score
