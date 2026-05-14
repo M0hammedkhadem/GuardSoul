@@ -25,6 +25,8 @@ class BlockActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val appName = intent.getStringExtra("APP_NAME") ?: "This App"
+        val blockReason = intent.getStringExtra("BLOCK_REASON") ?: ""
+        val isAiBan = blockReason == "ai_scan"
         
         setContent {
             AgonAppTheme {
@@ -67,12 +69,24 @@ class BlockActivity : ComponentActivity() {
                         Spacer(modifier = Modifier.height(16.dp))
                         
                         Text(
-                            text = "$appName is currently blocked by Guardian.",
+                            text = if (isAiBan) "$appName was blocked by AI Explorer (inappropriate content detected)."
+                                   else "$appName is currently blocked by Guardian.",
                             color = textSecondary,
                             fontSize = 16.sp,
                             textAlign = TextAlign.Center,
                             modifier = Modifier.padding(horizontal = 32.dp)
                         )
+
+                        if (isAiBan) {
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(
+                                text = "3+ detections in 2 minutes triggers a 15-minute automatic ban.",
+                                color = warning,
+                                fontSize = 12.sp,
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier.padding(horizontal = 32.dp)
+                            )
+                        }
                         
                         Spacer(modifier = Modifier.height(48.dp))
                         

@@ -65,8 +65,18 @@ class GuardianRepository(private val context: Context) {
             aiExplorerActive = prefs[AI_EXPLORER_ACTIVE] ?: false,
             uninstallProtectionActive = prefs[UNINSTALL_PROTECTION] ?: false,
 
-            blacklistKeywords = prefs[BLACKLIST_KEYWORDS]?.split(",")?.filter { it.isNotEmpty() } ?: listOf("porn", "xxx", "adult", "sex", "nude", "nsfw", "hentai", "erotic"),
-            blacklistWebsites = prefs[BLACKLIST_WEBSITES]?.split(",")?.filter { it.isNotEmpty() } ?: listOf("pornhub.com", "xvideos.com", "xnxx.com", "redtube.com", "youporn.com", "onlyfans.com"),
+            blacklistKeywords = prefs[BLACKLIST_KEYWORDS]?.split(",")?.filter { it.isNotEmpty() }
+                ?: listOf("porn","xxx","sex","nude","naked","hentai","adult","onlyfans",
+                    "escort","cam","masturbat","erotic","lewd","nsfw","rule34",
+                    "milf","anal","blowjob","hardcore","softcore",
+                    "اباحية","جنس","عري","سكس","افلام ساخنة","اثارة جنسية"),
+            blacklistWebsites = prefs[BLACKLIST_WEBSITES]?.split(",")?.filter { it.isNotEmpty() }
+                ?: listOf("pornhub.com","xvideos.com","xnxx.com","redtube.com","youporn.com",
+                    "xhamster.com","tube8.com","spankbang.com","eporner.com","tnaflix.com",
+                    "drtuber.com","slutload.com","beeg.com","hclips.com",
+                    "nhentai.net","hanime.tv","hentaihaven.xxx","gelbooru.com","rule34.xxx",
+                    "onlyfans.com","chaturbate.com","livejasmin.com","cam4.com",
+                    "myfreecams.com","bongacams.com"),
             blacklistApps = prefs[BLACKLIST_APPS]?.split(",")?.filter { it.isNotEmpty() } ?: emptyList(),
             
             whitelistKeywords = prefs[WHITELIST_KEYWORDS]?.split(",")?.filter { it.isNotEmpty() } ?: emptyList(),

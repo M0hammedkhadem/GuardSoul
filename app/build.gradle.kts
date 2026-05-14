@@ -10,6 +10,10 @@ android {
     compileSdk = 36
     buildToolsVersion = "36.0.0"
 
+    aaptOptions {
+        noCompress += "tflite"
+    }
+
     defaultConfig {
         applicationId = "com.agon.app"
         minSdk = 26
@@ -72,6 +76,10 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.9.0")
 
     implementation("androidx.datastore:datastore-preferences:1.2.0")
+
+    implementation("org.tensorflow:tensorflow-lite:2.16.1")
+    implementation("org.tensorflow:tensorflow-lite-support:0.4.4")
+    implementation("org.tensorflow:tensorflow-lite-metadata:0.4.4")
 
     debugImplementation("androidx.compose.ui:ui-tooling")
 }

@@ -117,8 +117,20 @@ class GuardianViewModel(application: Application) : AndroidViewModel(application
             repository.updateAiExplorer(false)
             repository.updateUninstallProtection(false)
 
-            repository.updateList("blacklist", "keywords", listOf("porn", "xxx", "adult", "sex", "nude", "nsfw", "hentai", "erotic"))
-            repository.updateList("blacklist", "websites", listOf("pornhub.com", "xvideos.com", "xnxx.com", "redtube.com", "youporn.com", "onlyfans.com"))
+            repository.updateList("blacklist", "keywords", listOf(
+                "porn", "xxx", "sex", "nude", "naked", "hentai", "adult", "onlyfans",
+                "escort", "cam", "masturbat", "erotic", "lewd", "nsfw", "rule34",
+                "milf", "anal", "blowjob", "hardcore", "softcore",
+                "اباحية", "جنس", "عري", "سكس", "افلام ساخنة", "اثارة جنسية"
+            ))
+            repository.updateList("blacklist", "websites", listOf(
+                "pornhub.com", "xvideos.com", "xnxx.com", "redtube.com", "youporn.com",
+                "xhamster.com", "tube8.com", "spankbang.com", "eporner.com", "tnaflix.com",
+                "drtuber.com", "slutload.com", "beeg.com", "hclips.com",
+                "nhentai.net", "hanime.tv", "hentaihaven.xxx", "gelbooru.com", "rule34.xxx",
+                "onlyfans.com", "chaturbate.com", "livejasmin.com", "cam4.com",
+                "myfreecams.com", "bongacams.com"
+            ))
             repository.updateList("blacklist", "apps", emptyList())
             
             repository.updateList("whitelist", "keywords", emptyList())

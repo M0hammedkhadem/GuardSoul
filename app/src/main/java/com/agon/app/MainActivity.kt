@@ -1,9 +1,16 @@
 package com.agon.app
 
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
+import android.media.projection.MediaProjectionManager
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -26,10 +33,36 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import com.agon.app.services.AIExplorerService
 import com.agon.app.ui.screens.*
 import com.agon.app.ui.theme.*
 
 class MainActivity : ComponentActivity() {
+    private val mediaProjectionLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == RESULT_OK && result.data != null) {
+            val intent = Intent(this, AIExplorerService::class.java).apply {
+                putExtra("resultCode", result.resultCode)
+                putExtra("data", result.data)
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                startForegroundService(intent)
+            } else {
+                startService(intent)
+            }
+        }
+    }
+
+    private val mediaProjectionReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            if (intent.action == "com.agon.app.REQUEST_MEDIA_PROJECTION") {
+                val mpm = getSystemService(MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
+                mediaProjectionLauncher.launch(mpm.createScreenCaptureIntent())
+            }
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
@@ -38,6 +71,16 @@ class MainActivity : ComponentActivity() {
                 MainApp()
             }
         }
+        registerReceiver(
+            mediaProjectionReceiver,
+            IntentFilter("com.agon.app.REQUEST_MEDIA_PROJECTION"),
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) Context.RECEIVER_EXPORTED else 0
+        )
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        try { unregisterReceiver(mediaProjectionReceiver) } catch (_: Exception) {}
     }
 }
 

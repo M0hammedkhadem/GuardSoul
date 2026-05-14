@@ -20,18 +20,17 @@ class GuardianVpnService : VpnService() {
 
     private fun startVpn() {
         if (vpnInterface != null) return
-
         try {
             val builder = Builder()
                 .addAddress("10.0.0.2", 32)
-                .addRoute("0.0.0.0", 0)
-                .addDnsServer("1.1.1.3") // Cloudflare for Families (blocks adult content)
-                .addDnsServer("8.8.8.8") // Fallback
-                .setSession("GuardianVPN")
-                .setBlocking(true)
+                .addDnsServer("1.1.1.3")   // Cloudflare for Families — primary
+                .addDnsServer("1.0.0.3")   // Cloudflare for Families — secondary
+                .addRoute("192.0.2.0", 24) // Dummy RFC-5737 range — routes nothing real
+                .setSession("GuardSoul DNS Filter")
+                .setBlocking(false)
 
             vpnInterface = builder.establish()
-            Log.d("GuardianVpnService", "VPN Started")
+            Log.d("GuardianVpnService", "VPN DNS Filter Started")
         } catch (e: Exception) {
             Log.e("GuardianVpnService", "Failed to start VPN", e)
         }
