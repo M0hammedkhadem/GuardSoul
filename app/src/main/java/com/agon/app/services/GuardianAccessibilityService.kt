@@ -223,12 +223,12 @@ class GuardianAccessibilityService : AccessibilityService() {
 
                 // SIGNAL 1: Tab "Reels" selected (any state indicator)
                 val isReelsTab = (contentDesc == "reels" || contentDesc.contains("reels") || contentDesc.contains("video"))
-                    && (node.isSelected || node.isChecked || node.isFocused || node.isActivated)
+                    && (node.isSelected || node.isChecked || node.isFocused)
                 if (isReelsTab) score += 40
 
                 // SIGNAL 2: Text "Reels" on any selected/checked navigation element
                 val isReelsText = (nodeText == "reels" || nodeText.contains("reels"))
-                    && (node.isSelected || node.isChecked || node.isActivated)
+                    && (node.isSelected || node.isChecked)
                 if (isReelsText) score += 40
 
                 // SIGNAL 3: Internal view IDs
@@ -244,7 +244,7 @@ class GuardianAccessibilityService : AccessibilityService() {
 
                 // SIGNAL 5: Facebook Video tab (فيسبوك أعاد تسمية Reels أحياناً لـ "Video")
                 val isVideoTab = (contentDesc == "video" || nodeText == "video")
-                    && (node.isSelected || node.isChecked || node.isActivated || node.isFocused)
+                    && (node.isSelected || node.isChecked || node.isFocused)
                 if (isVideoTab) score += 40
 
                 // SIGNAL 6: Arabic "ريلز" — النص العربي للريلز (الأهم على الهواتف العربية)
@@ -253,16 +253,16 @@ class GuardianAccessibilityService : AccessibilityService() {
 
                 // SIGNAL 7: Arabic video tab selected
                 val isArabicVideoTab = (contentDesc.contains("فيديو") || nodeText.contains("فيديو"))
-                    && (node.isSelected || node.isChecked || node.isActivated || node.isFocused)
+                    && (node.isSelected || node.isChecked || node.isFocused)
                 if (isArabicVideoTab) score += 40
 
                 // SIGNAL 8: Reels full-screen layout — الأزرار الجانبية اليسرى (خاصية Reels الوحيدة)
                 // في وضع ملء الشاشة، الأزرار (like/comment/share/save) تكون على اليسار عمودياً
                 // هذا يختلف عن الفيد العادي الذي يضع الأزرار أسفل الفيديو
-                val isVerticalReelsButton = node.boundsInScreen?.let { bounds ->
-                    bounds.left < 200 && bounds.top > 800  // زر على اليسار في النصف السفلي
-                } ?: false
-                if (isVerticalReelsButton && (node.isClickable) &&
+                val bounds = android.graphics.Rect()
+                node.getBoundsInScreen(bounds)
+                val isVerticalReelsButton = bounds.left < 200 && bounds.top > 800
+                if (isVerticalReelsButton && node.isClickable &&
                     (contentDesc.contains("like") || contentDesc.contains("comment") ||
                      contentDesc.contains("إعجاب") || contentDesc.contains("تعليق"))) score += 25
             }
