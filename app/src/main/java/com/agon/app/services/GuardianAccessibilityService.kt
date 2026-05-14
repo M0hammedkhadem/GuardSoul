@@ -27,7 +27,6 @@ class GuardianAccessibilityService : AccessibilityService() {
     private val lastActionTimes = java.util.concurrent.ConcurrentHashMap<String, Long>()
     private val mainHandler = Handler(Looper.getMainLooper())
     private var lastBlockTime = 0L
-    private var lastFacebookBlockTime = 0L
     private val BLOCK_INTERVAL_MS = 2000L
 
     override fun onServiceConnected() {
@@ -71,16 +70,39 @@ class GuardianAccessibilityService : AccessibilityService() {
 
         if (now - lastBlockTime < BLOCK_INTERVAL_MS) return
 
-        if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
-            val className = event.className?.toString() ?: ""
-            if (isYouTube && currentState.youtubeMode == "shorts") {
+        // ===== YOUTUBE SHORTS BLOCKER =====
+        if (isYouTube && currentState.youtubeMode == "shorts") {
+
+            if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
+                val className = event.className?.toString() ?: ""
                 if (className.contains("Shorts", ignoreCase = true) ||
                     className.contains("ReelPlayerFragment", ignoreCase = true)) {
                     navigateYoutubeHome()
                     return
                 }
             }
-            if (isFacebook && currentState.facebookMode == "reels") {
+
+            if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED ||
+                event.eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED) {
+                debounceJob?.cancel()
+                debounceJob = scope.launch {
+                    delay(200)
+                    val root = rootInActiveWindow ?: return@launch
+                    val isShorts = detectYoutubeShorts(root)
+                    root.recycle()
+                    if (isShorts) {
+                        withContext(Dispatchers.Main) { navigateYoutubeHome() }
+                    }
+                }
+            }
+            return
+        }
+
+        // ===== FACEBOOK REELS BLOCKER =====
+        if (isFacebook && currentState.facebookMode == "reels") {
+
+            if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
+                val className = event.className?.toString() ?: ""
                 if (className.contains("Reel", ignoreCase = true) ||
                     className.contains("Clips", ignoreCase = true) ||
                     event.text?.any { it.contains("ريلز") } == true) {
@@ -88,37 +110,19 @@ class GuardianAccessibilityService : AccessibilityService() {
                     return
                 }
             }
-        }
 
-        if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED ||
-            event.eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED) {
-
-            debounceJob?.cancel()
-            debounceJob = scope.launch {
-                delay(200)
-                val root = rootInActiveWindow ?: return@launch
-                try {
-                    if (isYouTube && currentState.youtubeMode == "shorts") {
-                        if (detectYoutubeShorts(root)) {
-                            Log.d(TAG, "YouTube Shorts detected")
-                            withContext(Dispatchers.Main) { navigateYoutubeHome() }
-                            return@launch
-                        }
-                    }
-                    if (isFacebook && currentState.facebookMode == "reels") {
-                        val score = calculateShortsScore(root, packageName)
-                        if (score >= 40) {
-                            val now = System.currentTimeMillis()
-                            if (now - lastFacebookBlockTime > 2500) {
-                                lastFacebookBlockTime = now
-                                Log.d(TAG, "Facebook Reels Detected (Score: $score) - Going Home")
-                                performGlobalAction(GLOBAL_ACTION_HOME)
-                            }
-                            return@launch
-                        }
-                    }
-                } finally {
+            if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED ||
+                event.eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED) {
+                debounceJob?.cancel()
+                debounceJob = scope.launch {
+                    delay(200)
+                    val root = rootInActiveWindow ?: return@launch
+                    val detected = detectFacebookReels(root)
                     root.recycle()
+                    if (detected) {
+                        Log.d(TAG, "Facebook Reels detected")
+                        withContext(Dispatchers.Main) { navigateFacebookHome() }
+                    }
                 }
             }
         }
@@ -200,8 +204,7 @@ class GuardianAccessibilityService : AccessibilityService() {
         scope.launch { repository.updateBlocksCount(currentState.blocksCount + 1) }
     }
 
-    private fun calculateShortsScore(root: AccessibilityNodeInfo, pkg: String): Int {
-        var score = 0
+    private fun detectFacebookReels(root: AccessibilityNodeInfo): Boolean {
         val stack = java.util.Stack<AccessibilityNodeInfo>()
         stack.push(root)
 
@@ -211,69 +214,49 @@ class GuardianAccessibilityService : AccessibilityService() {
             val contentDesc = node.contentDescription?.toString()?.lowercase() ?: ""
             val nodeText = node.text?.toString()?.lowercase() ?: ""
 
-            if (pkg.contains("youtube")) {
-                // YouTube Shorts signals
-                if (viewId.contains("reel_watch_fragment_root") || viewId.contains("reel_recycler")) score += 40
-                if (viewId.contains("reel_player_view") || viewId.contains("shorts_inner_container")) score += 20
-                if (viewId.contains("shorts_header_container") || viewId.contains("shorts_shelf_item_container")) score += 40
-                if (contentDesc == "shorts" && (node.isSelected || node.isFocused || node.isChecked)) score += 40
-                if (contentDesc.contains("shorts") && node.isClickable) score += 15
+            // SIGNAL 1: Reels tab selected
+            val isReelsTab = (contentDesc == "reels" || contentDesc.contains("reels") || contentDesc.contains("video"))
+                && (node.isSelected || node.isChecked || node.isFocused)
+            if (isReelsTab) return true
 
-            } else if (pkg.contains("facebook")) {
+            // SIGNAL 2: "Reels" text on selected element
+            val isReelsText = (nodeText == "reels" || nodeText.contains("reels"))
+                && (node.isSelected || node.isChecked)
+            if (isReelsText) return true
 
-                // SIGNAL 1: Tab "Reels" selected (any state indicator)
-                val isReelsTab = (contentDesc == "reels" || contentDesc.contains("reels") || contentDesc.contains("video"))
-                    && (node.isSelected || node.isChecked || node.isFocused)
-                if (isReelsTab) score += 40
+            // SIGNAL 3: Internal view IDs
+            if (viewId.contains("reels_viewer_root") || viewId.contains("reels_swipe_refresh")) return true
+            if (viewId.contains("reels_tab") || viewId.contains("video_channel")) return true
+            if (viewId.contains("video_timeline_fragment") || viewId.contains("clips_viewer")) return true
 
-                // SIGNAL 2: Text "Reels" on any selected/checked navigation element
-                val isReelsText = (nodeText == "reels" || nodeText.contains("reels"))
-                    && (node.isSelected || node.isChecked)
-                if (isReelsText) score += 40
+            // SIGNAL 5: Video tab selected
+            val isVideoTab = (contentDesc == "video" || nodeText == "video")
+                && (node.isSelected || node.isChecked || node.isFocused)
+            if (isVideoTab) return true
 
-                // SIGNAL 3: Internal view IDs
-                if (viewId.contains("reels_viewer_root") || viewId.contains("reels_swipe_refresh")) score += 40
-                if (viewId.contains("reels_tab") || viewId.contains("video_channel")) score += 40
-                if (viewId.contains("video_timeline_fragment") || viewId.contains("clips_viewer")) score += 20
+            // SIGNAL 6: Arabic "ريلز" with state
+            val isArabicReels = (contentDesc.contains("ريلز") || nodeText.contains("ريلز"))
+                && (node.isSelected || node.isChecked || node.isFocused)
+            if (isArabicReels) return true
 
-                // SIGNAL 4: "Reels" anywhere clickable — رُفع الوزن من 15 إلى 40
-                // زائد check لأن زر Reels دائماً موجود في الـ bottom nav ومرئي حتى على الـ feed العادي
-                // لذا نضيف شرط إضافي: حجم العقدة يجب أن يكون صغيراً (tab icon) أو نحسب عدد المرات
-                if (contentDesc == "reels" && node.isClickable) score += 40  // exact match = tab icon
-                if (nodeText == "reels" && node.isClickable) score += 40      // exact match
+            // SIGNAL 7: Arabic "فيديو" with state
+            val isArabicVideoTab = (contentDesc.contains("فيديو") || nodeText.contains("فيديو"))
+                && (node.isSelected || node.isChecked || node.isFocused)
+            if (isArabicVideoTab) return true
 
-                // SIGNAL 5: Facebook Video tab (فيسبوك أعاد تسمية Reels أحياناً لـ "Video")
-                val isVideoTab = (contentDesc == "video" || nodeText == "video")
-                    && (node.isSelected || node.isChecked || node.isFocused)
-                if (isVideoTab) score += 40
-
-                // SIGNAL 6: Arabic "ريلز" — النص العربي للريلز (الأهم على الهواتف العربية)
-                if (contentDesc.contains("ريلز") || nodeText.contains("ريلز")) score += 40
-                if (contentDesc == "ريلز" || nodeText == "ريلز") score += 40  // exact match = double confirm
-
-                // SIGNAL 7: Arabic video tab selected
-                val isArabicVideoTab = (contentDesc.contains("فيديو") || nodeText.contains("فيديو"))
-                    && (node.isSelected || node.isChecked || node.isFocused)
-                if (isArabicVideoTab) score += 40
-
-                // SIGNAL 8: Reels full-screen layout — الأزرار الجانبية اليسرى (خاصية Reels الوحيدة)
-                // في وضع ملء الشاشة، الأزرار (like/comment/share/save) تكون على اليسار عمودياً
-                // هذا يختلف عن الفيد العادي الذي يضع الأزرار أسفل الفيديو
-                val bounds = android.graphics.Rect()
-                node.getBoundsInScreen(bounds)
-                val isVerticalReelsButton = bounds.left < 200 && bounds.top > 800
-                if (isVerticalReelsButton && node.isClickable &&
-                    (contentDesc.contains("like") || contentDesc.contains("comment") ||
-                     contentDesc.contains("إعجاب") || contentDesc.contains("تعليق"))) score += 25
-            }
-
-            if (score >= 40) return score
+            // SIGNAL 8: Full-screen layout (left vertical buttons)
+            val bounds = android.graphics.Rect()
+            node.getBoundsInScreen(bounds)
+            val isVerticalReelsButton = bounds.left < 200 && bounds.top > 800
+            if (isVerticalReelsButton && node.isClickable &&
+                (contentDesc.contains("like") || contentDesc.contains("comment") ||
+                 contentDesc.contains("إعجاب") || contentDesc.contains("تعليق"))) return true
 
             for (i in 0 until node.childCount) {
                 node.getChild(i)?.let { stack.push(it) }
             }
         }
-        return score
+        return false
     }
 
     private fun navigateFacebookHome() {
