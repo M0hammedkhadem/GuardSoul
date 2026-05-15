@@ -23,8 +23,10 @@ class GuardianAccessibilityService : AccessibilityService() {
 
     private var debounceJob: Job? = null
     private val BLOCK_COOLDOWN = 1500L
+    private val FULL_BLOCK_COOLDOWN = 300L
     private val TAG = "GuardianService"
     private val lastActionTimes = java.util.concurrent.ConcurrentHashMap<String, Long>()
+    private val fullBlockLastTimes = java.util.concurrent.ConcurrentHashMap<String, Long>()
     private val mainHandler = Handler(Looper.getMainLooper())
     private var lastBlockTime = 0L
     private val BLOCK_INTERVAL_MS = 2000L
@@ -115,7 +117,7 @@ class GuardianAccessibilityService : AccessibilityService() {
                 event.eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED) {
                 debounceJob?.cancel()
                 debounceJob = scope.launch {
-                    delay(200)
+                    delay(500)
                     val root = rootInActiveWindow ?: return@launch
                     val detected = detectFacebookReels(root)
                     root.recycle()
@@ -186,7 +188,6 @@ class GuardianAccessibilityService : AccessibilityService() {
 
         val root = rootInActiveWindow ?: run {
             performGlobalAction(GLOBAL_ACTION_BACK)
-            mainHandler.postDelayed({ performGlobalAction(GLOBAL_ACTION_BACK) }, 300)
             return
         }
 
@@ -194,7 +195,6 @@ class GuardianAccessibilityService : AccessibilityService() {
             val found = findAndClickNode(root, setOf("Home"), setOf("home_tab", "pivot_bar_item"))
             if (!found) {
                 performGlobalAction(GLOBAL_ACTION_BACK)
-                mainHandler.postDelayed({ performGlobalAction(GLOBAL_ACTION_BACK) }, 300)
             }
         } finally {
             root.recycle()
@@ -207,6 +207,7 @@ class GuardianAccessibilityService : AccessibilityService() {
     private fun detectFacebookReels(root: AccessibilityNodeInfo): Boolean {
         val stack = java.util.Stack<AccessibilityNodeInfo>()
         stack.push(root)
+        var leftLikeButtonCount = 0
 
         while (stack.isNotEmpty()) {
             val node = stack.pop()
@@ -224,10 +225,13 @@ class GuardianAccessibilityService : AccessibilityService() {
                 && (node.isSelected || node.isChecked)
             if (isReelsText) return true
 
-            // SIGNAL 3: Internal view IDs
+            // SIGNAL 3: Internal view IDs (Reels player/viewer)
             if (viewId.contains("reels_viewer_root") || viewId.contains("reels_swipe_refresh")) return true
             if (viewId.contains("reels_tab") || viewId.contains("video_channel")) return true
             if (viewId.contains("video_timeline_fragment") || viewId.contains("clips_viewer")) return true
+            if (viewId.contains("reel_viewer") || viewId.contains("reel_player")) return true
+            if (viewId.contains("reel_container") || viewId.contains("clips_container")) return true
+            if (viewId.contains("reels_feed") || viewId.contains("video_home")) return true
 
             // SIGNAL 5: Video tab selected
             val isVideoTab = (contentDesc == "video" || nodeText == "video")
@@ -244,13 +248,22 @@ class GuardianAccessibilityService : AccessibilityService() {
                 && (node.isSelected || node.isChecked || node.isFocused)
             if (isArabicVideoTab) return true
 
-            // SIGNAL 8: Full-screen layout (left vertical buttons)
+            // SIGNAL 8: Reels player left-edge action buttons (like)
             val bounds = android.graphics.Rect()
             node.getBoundsInScreen(bounds)
-            val isVerticalReelsButton = bounds.left < 200 && bounds.top > 800
-            if (isVerticalReelsButton && node.isClickable &&
-                (contentDesc.contains("like") || contentDesc.contains("comment") ||
-                 contentDesc.contains("إعجاب") || contentDesc.contains("تعليق"))) return true
+            val isSmallLeftButton = bounds.left < 100 && (bounds.right - bounds.left) < 120 && node.isClickable
+            if (isSmallLeftButton &&
+                (contentDesc.contains("like") || contentDesc.contains("إعجاب"))) {
+                leftLikeButtonCount++
+                if (leftLikeButtonCount >= 2) return true
+            }
+            // Also count comment/share buttons on the left edge
+            if (isSmallLeftButton &&
+                (contentDesc.contains("comment") || contentDesc.contains("share") ||
+                 contentDesc.contains("تعليق") || contentDesc.contains("مشاركة"))) {
+                leftLikeButtonCount++
+                if (leftLikeButtonCount >= 2) return true
+            }
 
             for (i in 0 until node.childCount) {
                 node.getChild(i)?.let { stack.push(it) }
@@ -264,7 +277,6 @@ class GuardianAccessibilityService : AccessibilityService() {
 
         val root = rootInActiveWindow ?: run {
             performGlobalAction(GLOBAL_ACTION_BACK)
-            mainHandler.postDelayed({ performGlobalAction(GLOBAL_ACTION_BACK) }, 300)
             return
         }
 
@@ -272,7 +284,6 @@ class GuardianAccessibilityService : AccessibilityService() {
             val found = findAndClickNode(root, setOf("Home", "News Feed"), setOf("tab"))
             if (!found) {
                 performGlobalAction(GLOBAL_ACTION_BACK)
-                mainHandler.postDelayed({ performGlobalAction(GLOBAL_ACTION_BACK) }, 300)
             }
         } finally {
             root.recycle()
@@ -351,11 +362,9 @@ class GuardianAccessibilityService : AccessibilityService() {
 
     private fun executeFullBlock(packageName: String) {
         val now = System.currentTimeMillis()
-        val last = lastActionTimes[packageName] ?: 0L
-        if (now - last < BLOCK_COOLDOWN) return
-        lastActionTimes[packageName] = now
-
-        performGlobalAction(GLOBAL_ACTION_HOME)
+        val last = fullBlockLastTimes[packageName] ?: 0L
+        if (now - last < FULL_BLOCK_COOLDOWN) return
+        fullBlockLastTimes[packageName] = now
 
         val intent = Intent(this, BlockActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
@@ -375,7 +384,14 @@ class GuardianAccessibilityService : AccessibilityService() {
         return when (packageName) {
             "com.google.android.youtube" -> "YouTube"
             "com.facebook.katana" -> "Facebook"
-            else -> "App"
+            "com.instagram.android" -> "Instagram"
+            "com.snapchat.android" -> "Snapchat"
+            "com.twitter.android" -> "X (Twitter)"
+            "com.zhiliaoapp.musically" -> "TikTok"
+            "com.ss.android.ugc.trill" -> "TikTok"
+            else -> packageName.substringAfterLast('.')
+                .replaceFirstChar { it.uppercase() }
+                .ifEmpty { "App" }
         }
     }
 
