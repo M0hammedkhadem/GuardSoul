@@ -64,15 +64,6 @@ class GuardianAccessibilityService : AccessibilityService() {
             "com.facebook.katana:id/news_feed_tab",
             "com.facebook.katana:id/feed_tab"
         )
-
-        // Story viewIds — full-screen but NOT Reels, however we block them anyway
-        // since they're similar distracting content. Remove from this list if Stories should be allowed.
-        private val STORY_VIEW_IDS = listOf(
-            "com.facebook.katana:id/story_viewer_root",
-            "com.facebook.katana:id/story_container",
-            "com.facebook.katana:id/stories_root",
-            "com.facebook.katana:id/story_viewer"
-        )
     }
 
     override fun onServiceConnected() {
@@ -199,13 +190,13 @@ class GuardianAccessibilityService : AccessibilityService() {
                 // thread (Android 12+ restriction)
                 val detected = withContext(Dispatchers.Main) {
                     val root = rootInActiveWindow ?: return@withContext false
-                    val result = detectFacebookReels(root, useFullDetection)
+                    val result = detectFacebookReels(root, useFullDetection, facebookPackage = packageName)
                     root.recycle()
                     result
                 }
                 if (detected) {
                     Log.d(TAG, "Facebook Reels detected (event=${event.eventType})")
-                    navigateFacebookHome()
+                    navigateFacebookHome(packageName)
                 }
             }
         }
@@ -244,10 +235,6 @@ class GuardianAccessibilityService : AccessibilityService() {
             if (text.lowercase().contains("shorts")) {
                 val cn = current.className?.toString() ?: ""
                 if (cn.contains("Tab", ignoreCase = true) || cn.contains("Button", ignoreCase = true) || current.isSelected) {
-                    queue.forEach { it.recycle() }
-                    return true
-                }
-                if (current.isSelected) {
                     queue.forEach { it.recycle() }
                     return true
                 }
@@ -297,12 +284,16 @@ class GuardianAccessibilityService : AccessibilityService() {
         scope.launch { repository.updateBlocksCount(currentState.blocksCount + 1) }
     }
 
-    private fun detectFacebookReels(root: AccessibilityNodeInfo, useFullDetection: Boolean = true): Boolean {
+    private fun detectFacebookReels(
+        root: AccessibilityNodeInfo,
+        useFullDetection: Boolean = true,
+        facebookPackage: String = "com.facebook.katana"
+    ): Boolean {
         val screenHeight = applicationContext.resources.displayMetrics.heightPixels
         val screenWidth = applicationContext.resources.displayMetrics.widthPixels
 
         // ---- FAST CHECK 1: Is the Reels tab selected? (most reliable) ----
-        val allNodes = root.findAccessibilityNodeInfosByViewId("com.facebook.katana:id/pivot_bar")
+        val allNodes = root.findAccessibilityNodeInfosByViewId("$facebookPackage:id/pivot_bar")
         if (allNodes.isNotEmpty()) {
             for (pivotBar in allNodes) {
                 for (i in 0 until pivotBar.childCount) {
@@ -333,7 +324,8 @@ class GuardianAccessibilityService : AccessibilityService() {
         }
 
         // ---- FAST CHECK 3: In-feed Reels guard (skip if embedded in feed) ----
-        for (feedViewId in FEED_REELS_VIEW_IDS) {
+        val dynamicFeedReelsIds = FEED_REELS_VIEW_IDS.map { it.replace("com.facebook.katana", facebookPackage) }
+        for (feedViewId in dynamicFeedReelsIds) {
             val matches = try { root.findAccessibilityNodeInfosByViewId(feedViewId) }
                           catch (_: Exception) { emptyList() }
             if (matches.isNotEmpty()) {
@@ -344,7 +336,8 @@ class GuardianAccessibilityService : AccessibilityService() {
         }
 
         // ---- FAST CHECK 4: Reels view IDs covering >50% screen ----
-        for (viewId in REELS_VIEW_IDS) {
+        val dynamicReelsIds = REELS_VIEW_IDS.map { it.replace("com.facebook.katana", facebookPackage) }
+        for (viewId in dynamicReelsIds) {
             val matches = try { root.findAccessibilityNodeInfosByViewId(viewId) } catch (_: Exception) { emptyList() }
             if (matches.isNotEmpty()) {
                 for (node in matches) {
@@ -444,7 +437,7 @@ class GuardianAccessibilityService : AccessibilityService() {
         return result
     }
 
-    private fun navigateFacebookHome() {
+    private fun navigateFacebookHome(packageName: String = "com.facebook.katana") {
         if (!canActFacebookTimed()) {
             Log.d(TAG, "navigateFacebookHome: rate limited")
             return
@@ -461,7 +454,7 @@ class GuardianAccessibilityService : AccessibilityService() {
                     val hits = root.findAccessibilityNodeInfosByViewId(viewId)
                     if (hits.isNotEmpty()) {
                         val target = hits.first()
-                        if (target.isClickable && !target.isSelected) {
+                        if (target.isClickable) {
                             target.performAction(AccessibilityNodeInfo.ACTION_CLICK)
                             hits.forEach { it.recycle() }
                             scope.launch { repository.updateBlocksCount(currentState.blocksCount + 1) }
@@ -486,9 +479,16 @@ class GuardianAccessibilityService : AccessibilityService() {
             root?.recycle()
         }
 
-        // 3) Last resort: go back (dismisses full-screen player) then home
+        // 3) Last resort: أعد تشغيل Facebook على صفحته الرئيسية
         performGlobalAction(GLOBAL_ACTION_BACK)
-        performGlobalAction(GLOBAL_ACTION_HOME)
+        try {
+            val fbIntent = packageManager.getLaunchIntentForPackage(packageName)
+                ?: return
+            fbIntent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            startActivity(fbIntent)
+        } catch (_: Exception) {
+            performGlobalAction(GLOBAL_ACTION_HOME)
+        }
         scope.launch { repository.updateBlocksCount(currentState.blocksCount + 1) }
     }
 
