@@ -32,6 +32,7 @@ class GuardianAccessibilityService : AccessibilityService() {
     private val FACEBOOK_BLOCK_INTERVAL_MS = 1500L
     private val FACEBOOK_BOOT_GRACE_MS = 3000L
     private val facebookBootTimes = java.util.concurrent.ConcurrentHashMap<String, Long>()
+    private val mainHandler = android.os.Handler(android.os.Looper.getMainLooper())
 
     companion object {
         val FacebookPackages = setOf(
@@ -280,8 +281,19 @@ class GuardianAccessibilityService : AccessibilityService() {
             root?.recycle()
         }
 
-        performGlobalAction(GLOBAL_ACTION_BACK)
-        performGlobalAction(GLOBAL_ACTION_HOME)
+        // Fallback: deep link يُبقي المستخدم داخل يوتيوب
+        try {
+            val intent = Intent(Intent.ACTION_VIEW,
+                android.net.Uri.parse("https://www.youtube.com/")).apply {
+                setPackage("com.google.android.youtube")
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            }
+            startActivity(intent)
+        } catch (_: Exception) {
+            performGlobalAction(GLOBAL_ACTION_BACK)
+            mainHandler.postDelayed({ performGlobalAction(GLOBAL_ACTION_BACK) }, 400)
+        }
+
         scope.launch { repository.updateBlocksCount(currentState.blocksCount + 1) }
     }
 
@@ -313,27 +325,25 @@ class GuardianAccessibilityService : AccessibilityService() {
         }
 
         // ---- FAST CHECK 2: "التالي" → hallmark of Reels mini-player ----
-        // Only present in full-screen Reels player, never in feed or Stories
         val nextNodes = root.findAccessibilityNodeInfosByText("التالي")
         if (nextNodes.isNotEmpty()) {
             nextNodes.forEach { it.recycle() }
             Log.d(TAG, "FAST2: Found 'التالي' → BLOCK")
             return true
         }
-        // Also check without exact match (different Facebook versions may render differently)
-        val nextNodes2 = root.findAccessibilityNodeInfosByText("next")
-        if (nextNodes2.isNotEmpty()) {
-            nextNodes2.forEach { it.recycle() }
-            // Only block if combined with absence of the pivot_bar (indicating full-screen mode)
-            val pivotCheck = root.findAccessibilityNodeInfosByViewId("com.facebook.katana:id/pivot_bar")
-            if (pivotCheck.isEmpty()) {
-                Log.d(TAG, "FAST2: Found 'next' + no pivot_bar → BLOCK")
-                return true
+
+        // ---- FAST CHECK 3: In-feed Reels guard (skip if embedded in feed) ----
+        for (feedViewId in FEED_REELS_VIEW_IDS) {
+            val matches = try { root.findAccessibilityNodeInfosByViewId(feedViewId) }
+                          catch (_: Exception) { emptyList() }
+            if (matches.isNotEmpty()) {
+                matches.forEach { it.recycle() }
+                Log.d(TAG, "In-feed Reels detected → SKIP (not full-screen)")
+                return false
             }
-            pivotCheck.forEach { it.recycle() }
         }
 
-        // ---- FAST CHECK 3: Reels view IDs covering >50% screen ----
+        // ---- FAST CHECK 4: Reels view IDs covering >50% screen ----
         for (viewId in REELS_VIEW_IDS) {
             val matches = try { root.findAccessibilityNodeInfosByViewId(viewId) } catch (_: Exception) { emptyList() }
             if (matches.isNotEmpty()) {
@@ -388,12 +398,6 @@ class GuardianAccessibilityService : AccessibilityService() {
             // Live video indicators → treat as feed (NOT Reels)
             if (nodeText.containsAny("مباشر", "live now", "بث مباشر")) feedScore += 4
 
-            // Stories also use full-screen — treat same as Reels
-            if (viewId.containsAny("story_viewer_root", "stories_root", "story_container")) {
-                Log.d(TAG, "TREE: Story viewer detected → BLOCK")
-                return true
-            }
-
             // ── REELS INDICATORS ───────────────────────────────────────────────
 
             // BUG 1 FIX: Full-screen video = Reels. Feed inline videos are < 50% height.
@@ -401,6 +405,7 @@ class GuardianAccessibilityService : AccessibilityService() {
                 && h > screenHeight * 0.82
                 && w > screenWidth * 0.5) {
                 Log.d(TAG, "TREE: Full-screen video found h=$h (${(h * 100 / screenHeight)}% of screen) → BLOCK")
+                drainAndRecycle(stack)
                 return true
             }
 
@@ -485,6 +490,12 @@ class GuardianAccessibilityService : AccessibilityService() {
         performGlobalAction(GLOBAL_ACTION_BACK)
         performGlobalAction(GLOBAL_ACTION_HOME)
         scope.launch { repository.updateBlocksCount(currentState.blocksCount + 1) }
+    }
+
+    private fun drainAndRecycle(stack: java.util.Stack<AccessibilityNodeInfo>) {
+        while (stack.isNotEmpty()) {
+            try { stack.pop().recycle() } catch (_: Exception) {}
+        }
     }
 
     private fun findAndClickNode(root: AccessibilityNodeInfo, targetContentDesc: Set<String>, targetViewIdSubstrings: Set<String>): Boolean {
