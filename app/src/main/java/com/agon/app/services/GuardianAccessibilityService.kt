@@ -3,8 +3,6 @@ package com.agon.app.services
 import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.AccessibilityServiceInfo
 import android.content.Intent
-import android.os.Handler
-import android.os.Looper
 import android.util.Log
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
@@ -25,16 +23,47 @@ class GuardianAccessibilityService : AccessibilityService() {
     private var currentState: GuardianState = GuardianState()
 
     private var debounceJob: Job? = null
-    private val BLOCK_COOLDOWN = 1500L
     private val FULL_BLOCK_COOLDOWN = 300L
     private val TAG = "GuardianService"
-    private val lastActionTimes = java.util.concurrent.ConcurrentHashMap<String, Long>()
     private val fullBlockLastTimes = java.util.concurrent.ConcurrentHashMap<String, Long>()
-    private val mainHandler = Handler(Looper.getMainLooper())
     private var lastYoutubeBlockTime = 0L
     private var lastFacebookBlockTime = 0L
     private val YOUTUBE_BLOCK_INTERVAL_MS = 2000L
     private val FACEBOOK_BLOCK_INTERVAL_MS = 1500L
+    private val FACEBOOK_BOOT_GRACE_MS = 3000L
+    private val facebookBootTimes = java.util.concurrent.ConcurrentHashMap<String, Long>()
+
+    companion object {
+        val FacebookPackages = setOf(
+            "com.facebook.katana",
+            "com.facebook.orca",
+            "com.facebook.lite",
+            "com.facebook.mlite"
+        )
+
+        // View IDs for the full-screen Reels player (NOT feed-embedded reels)
+        private val REELS_VIEW_IDS = listOf(
+            "com.facebook.katana:id/reel_viewer",
+            "com.facebook.katana:id/reel_player",
+            "com.facebook.katana:id/clips_viewer",
+            "com.facebook.katana:id/reel_container",
+            "com.facebook.katana:id/clips_container",
+            "com.facebook.katana:id/reels_feed"
+        )
+
+        // View IDs for the in-feed Reels (should NOT trigger block)
+        private val FEED_REELS_VIEW_IDS = listOf(
+            "com.facebook.katana:id/reels_in_feed",
+            "com.facebook.katana:id/clips_in_feed"
+        )
+
+        private val HOME_VIEW_IDS = listOf(
+            "com.facebook.katana:id/home_tab",
+            "com.facebook.katana:id/tab_home",
+            "com.facebook.katana:id/news_feed_tab",
+            "com.facebook.katana:id/feed_tab"
+        )
+    }
 
     override fun onServiceConnected() {
         super.onServiceConnected()
@@ -63,7 +92,6 @@ class GuardianAccessibilityService : AccessibilityService() {
         if (event == null || !currentState.isShieldActive) return
         val packageName = event.packageName?.toString() ?: return
         if (currentState.whitelistApps.contains(packageName)) return
-        val now = System.currentTimeMillis()
 
         if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
             if (isFullBlocked(packageName)) {
@@ -72,8 +100,10 @@ class GuardianAccessibilityService : AccessibilityService() {
             }
         }
 
+        Log.d(TAG, "Event: type=${event.eventType} pkg=$packageName")
+
         val isYouTube = packageName == "com.google.android.youtube"
-        val isFacebook = packageName == "com.facebook.katana"
+        val isFacebook = packageName in FacebookPackages
         if (!isYouTube && !isFacebook) return
 
         // ===== YOUTUBE SHORTS BLOCKER =====
@@ -93,11 +123,14 @@ class GuardianAccessibilityService : AccessibilityService() {
                 debounceJob?.cancel()
                 debounceJob = scope.launch {
                     delay(120)
-                    val root = rootInActiveWindow ?: return@launch
-                    val isShorts = detectYoutubeShorts(root)
-                    root.recycle()
-                    if (isShorts) {
-                        withContext(Dispatchers.Main) { navigateYoutubeHome() }
+                    val detected = withContext(Dispatchers.Main) {
+                        val root = rootInActiveWindow ?: return@withContext false
+                        val result = detectYoutubeShorts(root)
+                        root.recycle()
+                        result
+                    }
+                    if (detected) {
+                        navigateYoutubeHome()
                     }
                 }
             }
@@ -107,49 +140,55 @@ class GuardianAccessibilityService : AccessibilityService() {
         // ===== FACEBOOK REELS BLOCKER =====
         if (isFacebook && currentState.facebookMode == "reels") {
 
-            // PATH A: Direct Reels/Video tab navigation (fast path, no debounce)
+            // Track boot time: record the first event when Facebook opens
+            if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
+                facebookBootTimes.putIfAbsent(packageName, System.currentTimeMillis())
+            }
+
+            // Fast path: check className directly on TYPE_WINDOW_STATE_CHANGED
+            // (like YouTube does) — catches Reels activity/fragment changes
+            // NOTE: only match specific patterns, NOT "reel"/"clip" substrings
+            // to avoid false positives on the main feed activity
             if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
                 val className = event.className?.toString() ?: ""
-                if (className.containsAny("Reel", "Clips", "Video", "Player") ||
-                    event.text?.any { it.containsAny("ريلز", "reels") } == true) {
+                val isReelsScreen = className.containsAny(
+                    "ReelsFragment", "ReelsTab", "ReelsActivity",
+                    "ClipsActivity", "ClipsFragment", "ReelsFeedFragment"
+                )
+                if (isReelsScreen) {
+                    Log.d(TAG, "Facebook Reels detected via className: $className")
                     navigateFacebookHome()
                     return
                 }
             }
 
-            // PATH B: User tapped something → check if it leads to Reels/Fullscreen video
-            if (event.eventType == AccessibilityEvent.TYPE_VIEW_CLICKED) {
-                val sourceNode = event.source ?: return
-                val clickedViewId = sourceNode.viewIdResourceName?.lowercase() ?: ""
-                val clickedDesc = sourceNode.contentDescription?.toString()?.lowercase() ?: ""
-                val clickedText = sourceNode.text?.toString()?.lowercase() ?: ""
-                sourceNode.recycle()
+            // Only act on user-initiated events: opening a new screen or tapping
+            // EXCLUDE TYPE_WINDOW_CONTENT_CHANGED — it fires constantly during
+            // feed scrolling and is the #1 cause of false positives
+            if (event.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED &&
+                event.eventType != AccessibilityEvent.TYPE_VIEW_CLICKED) return
 
-                val isReelsTap = clickedViewId.containsAny(
-                    "reel", "reels_tab", "video_tab", "clips", "video_home", "reels_viewer",
-                    "video_container", "video_thumbnail", "video_player", "full_screen",
-                    "inline_video"
-                ) || clickedDesc.containsAny("reels", "ريلز", "فيديو", "video")
-                  || clickedText.containsAny("reels", "ريلز")
+            debounceJob?.cancel()
+            debounceJob = scope.launch {
+                val delayMs = if (event.eventType == AccessibilityEvent.TYPE_VIEW_CLICKED) 500L else 150L
+                delay(delayMs)
 
-                if (isReelsTap) {
-                    navigateFacebookHome()
-                    return
-                }
-            }
+                // Grace period: first 3 seconds after Facebook opens → feed still loading,
+                // skip unreliable tree traversal (but keep fast checks like tab/text/viewId)
+                val bootTime = facebookBootTimes[packageName] ?: 0L
+                val useFullDetection = System.currentTimeMillis() - bootTime >= FACEBOOK_BOOT_GRACE_MS
 
-            // PATH C: Content changed → debounced scan, only structural Reels signals
-            if (event.eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED) {
-                debounceJob?.cancel()
-                debounceJob = scope.launch {
-                    delay(200)
-                    val root = rootInActiveWindow ?: return@launch
-                    val detected = detectFacebookReelsSection(root)
+                // IMPORTANT: All AccessibilityNodeInfo operations MUST be on Main
+                // thread (Android 12+ restriction)
+                val detected = withContext(Dispatchers.Main) {
+                    val root = rootInActiveWindow ?: return@withContext false
+                    val result = detectFacebookReels(root, useFullDetection)
                     root.recycle()
-                    if (detected) {
-                        Log.d(TAG, "Facebook Reels section detected")
-                        withContext(Dispatchers.Main) { navigateFacebookHome() }
-                    }
+                    result
+                }
+                if (detected) {
+                    Log.d(TAG, "Facebook Reels detected (event: ${event.eventType})")
+                    navigateFacebookHome()
                 }
             }
         }
@@ -211,81 +250,186 @@ class GuardianAccessibilityService : AccessibilityService() {
     private fun navigateYoutubeHome() {
         if (!canActYoutubeTimed()) return
 
-        val root = rootInActiveWindow ?: run {
-            performGlobalAction(GLOBAL_ACTION_BACK)
-            return
-        }
+        val root = rootInActiveWindow
 
         try {
-            val found = findAndClickNode(root, setOf("Home"), setOf("home_tab", "pivot_bar_item"))
-            if (!found) {
-                performGlobalAction(GLOBAL_ACTION_BACK)
+            if (root != null) {
+                val found = findAndClickNode(root, setOf("Home"), setOf("home_tab", "pivot_bar_item"))
+                if (found) {
+                    scope.launch { repository.updateBlocksCount(currentState.blocksCount + 1) }
+                    return
+                }
             }
         } finally {
-            root.recycle()
+            root?.recycle()
         }
 
-        lastYoutubeBlockTime = System.currentTimeMillis()
+        performGlobalAction(GLOBAL_ACTION_BACK)
+        performGlobalAction(GLOBAL_ACTION_HOME)
         scope.launch { repository.updateBlocksCount(currentState.blocksCount + 1) }
     }
 
-    private fun detectFacebookReelsSection(root: AccessibilityNodeInfo): Boolean {
+    private fun detectFacebookReels(root: AccessibilityNodeInfo, useFullDetection: Boolean = true): Boolean {
+        val screenHeight = applicationContext.resources.displayMetrics.heightPixels
+        val screenWidth = applicationContext.resources.displayMetrics.widthPixels
+
+        // ---- FAST CHECK 1: Is the Reels tab selected? (most reliable) ----
+        val allNodes = root.findAccessibilityNodeInfosByViewId("com.facebook.katana:id/pivot_bar")
+        if (allNodes.isNotEmpty()) {
+            for (pivotBar in allNodes) {
+                for (i in 0 until pivotBar.childCount) {
+                    val child = pivotBar.getChild(i) ?: continue
+                    if (child.isSelected) {
+                        val text = child.text?.toString()?.lowercase() ?: ""
+                        val desc = child.contentDescription?.toString()?.lowercase() ?: ""
+                        if ("reels" in text || "clips" in text || "ريلز" in text ||
+                            "reels" in desc || "clips" in desc) {
+                            allNodes.forEach { it.recycle() }
+                            child.recycle()
+                            Log.d(TAG, "Reels tab is selected → blocking")
+                            return true
+                        }
+                    }
+                    child.recycle()
+                }
+            }
+            allNodes.forEach { it.recycle() }
+        }
+
+        // ---- FAST CHECK 2: "التالي" text → hallmark of Reels player ----
+        val nextText = root.findAccessibilityNodeInfosByText("التالي")
+        if (nextText.isNotEmpty()) {
+            nextText.forEach { it.recycle() }
+            Log.d(TAG, "Found 'التالي' text → blocking")
+            return true
+        }
+
+        // ---- FAST CHECK 3: Reels view IDs covering >50% screen ----
+        for (viewId in REELS_VIEW_IDS) {
+            val matches = try { root.findAccessibilityNodeInfosByViewId(viewId) } catch (_: Exception) { emptyList() }
+            if (matches.isNotEmpty()) {
+                for (node in matches) {
+                    if (node.isVisibleToUser) {
+                        val bounds = android.graphics.Rect()
+                        node.getBoundsInScreen(bounds)
+                        if (bounds.height() > screenHeight * 0.5) {
+                            matches.forEach { it.recycle() }
+                            Log.d(TAG, "Reels viewId=$viewId covers ${bounds.height()}px → blocking")
+                            return true
+                        }
+                    }
+                }
+                matches.forEach { it.recycle() }
+            }
+        }
+
+        // ---- TREE TRAVERSAL (last resort, ONLY if boot grace expired) ----
+        if (!useFullDetection) {
+            Log.d(TAG, "Skipping tree traversal — boot grace period active")
+            return false
+        }
+
+        var feedScore = 0
+        var reelsScore = 0
+        var count = 0
+        val maxNodes = 500
         val stack = java.util.Stack<AccessibilityNodeInfo>()
         stack.push(root)
-        var count = 0
-        val maxNodes = 100
 
         while (stack.isNotEmpty() && count < maxNodes) {
             val node = stack.pop()
             count++
+
             val viewId = node.viewIdResourceName?.lowercase() ?: ""
             val contentDesc = node.contentDescription?.toString()?.lowercase() ?: ""
+            val className = node.className?.toString()?.lowercase() ?: ""
             val nodeText = node.text?.toString()?.lowercase() ?: ""
 
-            // SIGNAL 1: Reels/Video tab is SELECTED (user navigated there)
-            val isSelectedTab = (node.isSelected || node.isChecked) &&
-                (contentDesc.containsAny("reels", "ريلز", "video", "فيديو") ||
-                 nodeText.containsAny("reels", "ريلز"))
-            if (isSelectedTab) return true
+            val bounds = android.graphics.Rect()
+            node.getBoundsInScreen(bounds)
+            val h = bounds.height()
+            val w = bounds.width()
 
-            // SIGNAL 2: Full-screen Reels/Video player view IDs
-            if (viewId.containsAny(
-                "reels_viewer_root", "reels_swipe_refresh", "reel_viewer",
-                "reel_player", "reels_tab", "video_channel", "clips_viewer",
-                "video_timeline_fragment", "reel_container", "clips_container",
-                "video_player", "full_screen", "fullscreen"
-            )) return true
+            // Feed indicators → strongly suggests normal browsing
+            if (viewId.containsAny("tab_bar", "bottom_tab", "pivot_bar")) feedScore += 5
+            if (viewId.containsAny("feed_story", "newsfeed", "feed_content")) feedScore += 3
+            if (viewId.containsAny("post_container", "story_container")) feedScore += 2
+            if (className.contains("recyclerview") && h > screenHeight * 0.25) feedScore += 2
+
+            // Reels: large SurfaceView reaching screen bottom → full-screen player
+            if (className.containsAny("surfaceview", "textureview") && h > screenHeight * 0.75 && w > screenWidth * 0.5) {
+                if (screenHeight - bounds.bottom < 50) return true
+                reelsScore += 3
+            }
+
+            // Side action bar (like/comment/share stacked on right side)
+            if (h < screenHeight * 0.07 && bounds.left > screenWidth * 0.65 && node.isClickable) reelsScore += 2
+
+            // Early exit: strong feed dominates reels
+            if (feedScore >= 6 && reelsScore < 3) {
+                for (i in 0 until node.childCount) {
+                    if (count >= maxNodes) break
+                    node.getChild(i)?.let { stack.push(it) }
+                }
+                continue
+            }
 
             for (i in 0 until node.childCount) {
                 if (count >= maxNodes) break
                 node.getChild(i)?.let { stack.push(it) }
             }
         }
-        return false
+
+        val result = reelsScore >= 8 && reelsScore > feedScore
+        Log.d(TAG, if (result) "BLOCK: reels=$reelsScore feed=$feedScore" else "SKIP: reels=$reelsScore feed=$feedScore")
+        return result
     }
 
     private fun navigateFacebookHome() {
-        if (!canActFacebookTimed()) return
-
-        val root = rootInActiveWindow ?: run {
-            performGlobalAction(GLOBAL_ACTION_BACK)
+        if (!canActFacebookTimed()) {
+            Log.d(TAG, "navigateFacebookHome: rate limited")
             return
         }
 
+        Log.d(TAG, "navigateFacebookHome: executing")
+
+        val root = rootInActiveWindow
+
         try {
-            val found = findAndClickNode(
-                root,
-                targetContentDesc = setOf("Home", "News Feed", "الرئيسية", "الصفحة الرئيسية"),
-                targetViewIdSubstrings = setOf("home_tab", "tab_home", "tab")
-            )
-            if (!found) {
-                performGlobalAction(GLOBAL_ACTION_BACK)
+            if (root != null) {
+                // 1) Try known Home tab view IDs
+                for (viewId in HOME_VIEW_IDS) {
+                    val hits = root.findAccessibilityNodeInfosByViewId(viewId)
+                    if (hits.isNotEmpty()) {
+                        val target = hits.first()
+                        if (target.isClickable && !target.isSelected) {
+                            target.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+                            hits.forEach { it.recycle() }
+                            scope.launch { repository.updateBlocksCount(currentState.blocksCount + 1) }
+                            return
+                        }
+                        hits.forEach { it.recycle() }
+                    }
+                }
+
+                // 2) Fallback: find Home tab by content description
+                val found = findAndClickNode(
+                    root,
+                    targetContentDesc = setOf("Home", "News Feed", "الرئيسية", "الصفحة الرئيسية", "Feed"),
+                    targetViewIdSubstrings = setOf("home_tab", "tab_home", "tab", "pivot_bar")
+                )
+                if (found) {
+                    scope.launch { repository.updateBlocksCount(currentState.blocksCount + 1) }
+                    return
+                }
             }
         } finally {
-            root.recycle()
+            root?.recycle()
         }
 
-        lastFacebookBlockTime = System.currentTimeMillis()
+        // 3) Last resort: go back (dismisses full-screen player) then home
+        performGlobalAction(GLOBAL_ACTION_BACK)
+        performGlobalAction(GLOBAL_ACTION_HOME)
         scope.launch { repository.updateBlocksCount(currentState.blocksCount + 1) }
     }
 
@@ -358,7 +502,7 @@ class GuardianAccessibilityService : AccessibilityService() {
                (packageName == "com.twitter.android" && currentState.twitterBlocked) ||
                ((packageName == "com.zhiliaoapp.musically" || packageName == "com.ss.android.ugc.trill") && currentState.tiktokBlocked) ||
                (packageName == "com.google.android.youtube" && currentState.youtubeMode == "full") ||
-               (packageName == "com.facebook.katana" && currentState.facebookMode == "full") ||
+               (packageName in FacebookPackages && currentState.facebookMode == "full") ||
                currentState.blacklistApps.contains(packageName) ||
                AIExplorerService.isAppBanned(packageName)
     }
@@ -386,7 +530,8 @@ class GuardianAccessibilityService : AccessibilityService() {
     private fun getAppNameFromPackage(packageName: String): String {
         return when (packageName) {
             "com.google.android.youtube" -> "YouTube"
-            "com.facebook.katana" -> "Facebook"
+            "com.facebook.katana", "com.facebook.orca",
+            "com.facebook.lite", "com.facebook.mlite" -> "Facebook"
             "com.instagram.android" -> "Instagram"
             "com.snapchat.android" -> "Snapchat"
             "com.twitter.android" -> "X (Twitter)"

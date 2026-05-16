@@ -116,7 +116,7 @@ fun SocialScreen(viewModel: GuardianViewModel = viewModel()) {
             )
             if (state.facebookMode == "reels") {
                 Spacer(modifier = Modifier.height(8.dp))
-                InfoBox("When a user opens a Reel, they will be silently redirected to the Facebook home page without notification.")
+                InfoBox("Reels in the main feed are allowed. Blocking triggers only when entering the full-screen Reels section or tapping a Reel to open it.")
             }
 
             Spacer(modifier = Modifier.height(32.dp))
