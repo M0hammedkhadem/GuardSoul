@@ -63,6 +63,15 @@ class GuardianAccessibilityService : AccessibilityService() {
             "com.facebook.katana:id/news_feed_tab",
             "com.facebook.katana:id/feed_tab"
         )
+
+        // Story viewIds — full-screen but NOT Reels, however we block them anyway
+        // since they're similar distracting content. Remove from this list if Stories should be allowed.
+        private val STORY_VIEW_IDS = listOf(
+            "com.facebook.katana:id/story_viewer_root",
+            "com.facebook.katana:id/story_container",
+            "com.facebook.katana:id/stories_root",
+            "com.facebook.katana:id/story_viewer"
+        )
     }
 
     override fun onServiceConnected() {
@@ -162,15 +171,22 @@ class GuardianAccessibilityService : AccessibilityService() {
                 }
             }
 
-            // Only act on user-initiated events: opening a new screen or tapping
-            // EXCLUDE TYPE_WINDOW_CONTENT_CHANGED — it fires constantly during
-            // feed scrolling and is the #1 cause of false positives
-            if (event.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED &&
-                event.eventType != AccessibilityEvent.TYPE_VIEW_CLICKED) return
+            // Handle relevant events only
+            val isStateChange = event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED
+            val isClick = event.eventType == AccessibilityEvent.TYPE_VIEW_CLICKED
+            val isContentChange = event.eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED
+
+            // CONTENT_CHANGED fires constantly during feed scroll — only act if scroll has stopped
+            // (i.e., debounce will prevent rapid fire; the 400ms delay is our throttle)
+            if (!isStateChange && !isClick && !isContentChange) return
 
             debounceJob?.cancel()
             debounceJob = scope.launch {
-                val delayMs = if (event.eventType == AccessibilityEvent.TYPE_VIEW_CLICKED) 500L else 150L
+                val delayMs = when {
+                    isClick -> 500L           // Wait for Reels animation to complete after tap
+                    isContentChange -> 400L   // Longer debounce to avoid scroll false positives
+                    else -> 150L              // STATE_CHANGED: fast response
+                }
                 delay(delayMs)
 
                 // Grace period: first 3 seconds after Facebook opens → feed still loading,
@@ -187,7 +203,7 @@ class GuardianAccessibilityService : AccessibilityService() {
                     result
                 }
                 if (detected) {
-                    Log.d(TAG, "Facebook Reels detected (event: ${event.eventType})")
+                    Log.d(TAG, "Facebook Reels detected (event=${event.eventType})")
                     navigateFacebookHome()
                 }
             }
@@ -296,12 +312,25 @@ class GuardianAccessibilityService : AccessibilityService() {
             allNodes.forEach { it.recycle() }
         }
 
-        // ---- FAST CHECK 2: "التالي" text → hallmark of Reels player ----
-        val nextText = root.findAccessibilityNodeInfosByText("التالي")
-        if (nextText.isNotEmpty()) {
-            nextText.forEach { it.recycle() }
-            Log.d(TAG, "Found 'التالي' text → blocking")
+        // ---- FAST CHECK 2: "التالي" → hallmark of Reels mini-player ----
+        // Only present in full-screen Reels player, never in feed or Stories
+        val nextNodes = root.findAccessibilityNodeInfosByText("التالي")
+        if (nextNodes.isNotEmpty()) {
+            nextNodes.forEach { it.recycle() }
+            Log.d(TAG, "FAST2: Found 'التالي' → BLOCK")
             return true
+        }
+        // Also check without exact match (different Facebook versions may render differently)
+        val nextNodes2 = root.findAccessibilityNodeInfosByText("next")
+        if (nextNodes2.isNotEmpty()) {
+            nextNodes2.forEach { it.recycle() }
+            // Only block if combined with absence of the pivot_bar (indicating full-screen mode)
+            val pivotCheck = root.findAccessibilityNodeInfosByViewId("com.facebook.katana:id/pivot_bar")
+            if (pivotCheck.isEmpty()) {
+                Log.d(TAG, "FAST2: Found 'next' + no pivot_bar → BLOCK")
+                return true
+            }
+            pivotCheck.forEach { it.recycle() }
         }
 
         // ---- FAST CHECK 3: Reels view IDs covering >50% screen ----
@@ -332,7 +361,7 @@ class GuardianAccessibilityService : AccessibilityService() {
         var feedScore = 0
         var reelsScore = 0
         var count = 0
-        val maxNodes = 500
+        val maxNodes = 400
         val stack = java.util.Stack<AccessibilityNodeInfo>()
         stack.push(root)
 
@@ -350,28 +379,51 @@ class GuardianAccessibilityService : AccessibilityService() {
             val h = bounds.height()
             val w = bounds.width()
 
-            // Feed indicators → strongly suggests normal browsing
-            if (viewId.containsAny("tab_bar", "bottom_tab", "pivot_bar")) feedScore += 5
-            if (viewId.containsAny("feed_story", "newsfeed", "feed_content")) feedScore += 3
-            if (viewId.containsAny("post_container", "story_container")) feedScore += 2
+            // ── FEED INDICATORS (normal browsing) ──────────────────────────────
+            if (viewId.containsAny("tab_bar", "bottom_tab", "pivot_bar", "navigation_bar")) feedScore += 5
+            if (viewId.containsAny("feed_story", "newsfeed", "feed_content", "timeline")) feedScore += 3
+            if (viewId.containsAny("post_container", "story_container", "stories_root",
+                                    "story_viewer", "story_tray")) feedScore += 3
             if (className.contains("recyclerview") && h > screenHeight * 0.25) feedScore += 2
+            // Live video indicators → treat as feed (NOT Reels)
+            if (nodeText.containsAny("مباشر", "live now", "بث مباشر")) feedScore += 4
 
-            // Reels: large SurfaceView reaching screen bottom → full-screen player
-            if (className.containsAny("surfaceview", "textureview") && h > screenHeight * 0.75 && w > screenWidth * 0.5) {
-                if (screenHeight - bounds.bottom < 50) return true
+            // Stories also use full-screen — treat same as Reels
+            if (viewId.containsAny("story_viewer_root", "stories_root", "story_container")) {
+                Log.d(TAG, "TREE: Story viewer detected → BLOCK")
+                return true
+            }
+
+            // ── REELS INDICATORS ───────────────────────────────────────────────
+
+            // BUG 1 FIX: Full-screen video = Reels. Feed inline videos are < 50% height.
+            if (className.containsAny("surfaceview", "textureview")
+                && h > screenHeight * 0.82
+                && w > screenWidth * 0.5) {
+                Log.d(TAG, "TREE: Full-screen video found h=$h (${(h * 100 / screenHeight)}% of screen) → BLOCK")
+                return true
+            }
+
+            // BUG 2 FIX: Action buttons on LEFT side (not right).
+            // In Reels, like/comment/share buttons form a vertical stack on the left edge.
+            if (h in (40..screenHeight / 14)
+                && bounds.left < screenWidth * 0.15
+                && bounds.top > screenHeight * 0.40
+                && node.isClickable) {
+                reelsScore += 2
+            }
+
+            // Vertical swipe container (Reels uses a vertically-paged RecyclerView)
+            if (className.contains("recyclerview")
+                && h > screenHeight * 0.70
+                && !viewId.containsAny("newsfeed", "timeline", "feed")) {
                 reelsScore += 3
             }
 
-            // Side action bar (like/comment/share stacked on right side)
-            if (h < screenHeight * 0.07 && bounds.left > screenWidth * 0.65 && node.isClickable) reelsScore += 2
-
-            // Early exit: strong feed dominates reels
-            if (feedScore >= 6 && reelsScore < 3) {
-                for (i in 0 until node.childCount) {
-                    if (count >= maxNodes) break
-                    node.getChild(i)?.let { stack.push(it) }
-                }
-                continue
+            // BUG 3 FIX: Lower threshold from 8 to 5 (reachable after fixing bugs 1 and 2)
+            // Early exit if evidence is clear
+            if (feedScore >= 8 && reelsScore < 3) {
+                break
             }
 
             for (i in 0 until node.childCount) {
@@ -380,8 +432,10 @@ class GuardianAccessibilityService : AccessibilityService() {
             }
         }
 
-        val result = reelsScore >= 8 && reelsScore > feedScore
-        Log.d(TAG, if (result) "BLOCK: reels=$reelsScore feed=$feedScore" else "SKIP: reels=$reelsScore feed=$feedScore")
+        // BUG 3 FIX: threshold was 8 (unreachable), now 5 (achievable after bug fixes)
+        val result = reelsScore >= 5 && reelsScore > feedScore
+        Log.d(TAG, if (result) "TREE BLOCK: reels=$reelsScore feed=$feedScore"
+                   else "TREE SKIP: reels=$reelsScore feed=$feedScore")
         return result
     }
 
