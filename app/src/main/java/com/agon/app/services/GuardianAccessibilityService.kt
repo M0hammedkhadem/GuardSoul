@@ -64,6 +64,23 @@ class GuardianAccessibilityService : AccessibilityService() {
             "com.facebook.katana:id/news_feed_tab",
             "com.facebook.katana:id/feed_tab"
         )
+
+        // Confidence Score constants
+        // Threshold = 70 ensures at least 2 different Reels indicators must fire,
+        // while feed indicators (anti-scores) keep a normal feed well below 70.
+        private const val CONFIDENCE_THRESHOLD = 70
+        private const val CONF_FULLSCREEN_VIDEO = 35
+        private const val CONF_NEXT_TEXT = 30
+        private const val CONF_EDGE_BUTTON = 8
+        private const val CONF_VERTICAL_PAGER = 15
+        // Anti-scores (subtract from confidence)
+        private const val ANTIF_TAB_BAR = 15
+        private const val ANTIF_FEED_CONTENT = 10
+        private const val ANTIF_POST_CONTAINER = 10
+        private const val ANTIF_LIVE = 60
+        private const val ANTIF_STORIES = 20
+        private const val ANTIF_SPONSORED = 30
+        private const val ANTIF_RECYCLERVIEW = 5
     }
 
     override fun onServiceConnected() {
@@ -140,6 +157,9 @@ class GuardianAccessibilityService : AccessibilityService() {
 
         // ===== FACEBOOK REELS BLOCKER =====
         if (isFacebook && currentState.facebookMode == "reels") {
+
+            // Only the main Facebook app has Reels; skip Messenger/Lite
+            if (packageName != "com.facebook.katana") return
 
             // Track boot time: record the first event when Facebook opens
             if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
@@ -291,8 +311,9 @@ class GuardianAccessibilityService : AccessibilityService() {
     ): Boolean {
         val screenHeight = applicationContext.resources.displayMetrics.heightPixels
         val screenWidth = applicationContext.resources.displayMetrics.widthPixels
+        var absBypassLive = false  // absolute immunity: if true, NEVER block
 
-        // ---- FAST CHECK 1: Is the Reels tab selected? (most reliable) ----
+        // ---- FAST CHECK 1: Reels tab selected in pivot bar (highest confidence) ----
         val allNodes = root.findAccessibilityNodeInfosByViewId("$facebookPackage:id/pivot_bar")
         if (allNodes.isNotEmpty()) {
             for (pivotBar in allNodes) {
@@ -315,15 +336,7 @@ class GuardianAccessibilityService : AccessibilityService() {
             allNodes.forEach { it.recycle() }
         }
 
-        // ---- FAST CHECK 2: "التالي" → hallmark of Reels mini-player ----
-        val nextNodes = root.findAccessibilityNodeInfosByText("التالي")
-        if (nextNodes.isNotEmpty()) {
-            nextNodes.forEach { it.recycle() }
-            Log.d(TAG, "FAST2: Found 'التالي' → BLOCK")
-            return true
-        }
-
-        // ---- FAST CHECK 3: In-feed Reels guard (skip if embedded in feed) ----
+        // ---- FAST CHECK 2: In-feed Reels guard (skip if embedded in feed) ----
         val dynamicFeedReelsIds = FEED_REELS_VIEW_IDS.map { it.replace("com.facebook.katana", facebookPackage) }
         for (feedViewId in dynamicFeedReelsIds) {
             val matches = try { root.findAccessibilityNodeInfosByViewId(feedViewId) }
@@ -335,7 +348,7 @@ class GuardianAccessibilityService : AccessibilityService() {
             }
         }
 
-        // ---- FAST CHECK 4: Reels view IDs covering >50% screen ----
+        // ---- FAST CHECK 3: Reels view IDs covering >50% screen ----
         val dynamicReelsIds = REELS_VIEW_IDS.map { it.replace("com.facebook.katana", facebookPackage) }
         for (viewId in dynamicReelsIds) {
             val matches = try { root.findAccessibilityNodeInfosByViewId(viewId) } catch (_: Exception) { emptyList() }
@@ -355,14 +368,13 @@ class GuardianAccessibilityService : AccessibilityService() {
             }
         }
 
-        // ---- TREE TRAVERSAL (last resort, ONLY if boot grace expired) ----
+        // ---- TREE TRAVERSAL with Confidence Score ----
         if (!useFullDetection) {
             Log.d(TAG, "Skipping tree traversal — boot grace period active")
             return false
         }
 
-        var feedScore = 0
-        var reelsScore = 0
+        var confidence = 0
         var count = 0
         val maxNodes = 400
         val stack = java.util.Stack<AccessibilityNodeInfo>()
@@ -382,45 +394,71 @@ class GuardianAccessibilityService : AccessibilityService() {
             val h = bounds.height()
             val w = bounds.width()
 
-            // ── FEED INDICATORS (normal browsing) ──────────────────────────────
-            if (viewId.containsAny("tab_bar", "bottom_tab", "pivot_bar", "navigation_bar")) feedScore += 5
-            if (viewId.containsAny("feed_story", "newsfeed", "feed_content", "timeline")) feedScore += 3
-            if (viewId.containsAny("post_container", "story_container", "stories_root",
-                                    "story_viewer", "story_tray")) feedScore += 3
-            if (className.contains("recyclerview") && h > screenHeight * 0.25) feedScore += 2
-            // Live video indicators → treat as feed (NOT Reels)
-            if (nodeText.containsAny("مباشر", "live now", "بث مباشر")) feedScore += 4
+            // ── ABSOLUTE IMMUNITY: Live, Stories, Sponsored ─────────────────
+            if (nodeText.containsAny("مباشر", "live now", "بث مباشر") || contentDesc.contains("live")) {
+                absBypassLive = true
+                confidence -= ANTIF_LIVE
+                continue
+            }
+            if (contentDesc.contains("sponsored") || nodeText.containsAny("sponsored", "إعلان", "مُموَّل")) {
+                confidence -= ANTIF_SPONSORED
+                continue
+            }
+            if (viewId.containsAny("story_viewer", "story_tray")) {
+                absBypassLive = true
+                confidence -= ANTIF_STORIES
+                continue
+            }
 
-            // ── REELS INDICATORS ───────────────────────────────────────────────
+            // ── ANTI-SCORE: feed indicators subtract confidence ──────────────
+            if (viewId.containsAny("tab_bar", "bottom_tab", "pivot_bar", "navigation_bar")) confidence -= ANTIF_TAB_BAR
+            if (viewId.containsAny("feed_story", "newsfeed", "feed_content", "timeline")) confidence -= ANTIF_FEED_CONTENT
+            if (viewId.containsAny("post_container", "story_container", "stories_root")) confidence -= ANTIF_POST_CONTAINER
+            if (className.contains("recyclerview") && h > screenHeight * 0.25) confidence -= ANTIF_RECYCLERVIEW
 
-            // BUG 1 FIX: Full-screen video = Reels. Feed inline videos are < 50% height.
+            // ── REELS SIGNALS: each adds to confidence ───────────────────────
+
+            // Full-screen video in non-Live context → strong signal
             if (className.containsAny("surfaceview", "textureview")
                 && h > screenHeight * 0.82
                 && w > screenWidth * 0.5) {
-                Log.d(TAG, "TREE: Full-screen video found h=$h (${(h * 100 / screenHeight)}% of screen) → BLOCK")
-                drainAndRecycle(stack)
-                return true
+                Log.d(TAG, "TREE: Full-screen video h=$h (${(h * 100 / screenHeight)}%) → +$CONF_FULLSCREEN_VIDEO")
+                confidence += CONF_FULLSCREEN_VIDEO
             }
 
-            // BUG 2 FIX: Action buttons on LEFT side (not right).
-            // In Reels, like/comment/share buttons form a vertical stack on the left edge.
+            // Edge action buttons (LTR or RTL) → moderate signal
             if (h in (40..screenHeight / 14)
-                && bounds.left < screenWidth * 0.15
                 && bounds.top > screenHeight * 0.40
-                && node.isClickable) {
-                reelsScore += 2
+                && node.isClickable
+                && (bounds.left < screenWidth * 0.15 || bounds.right > screenWidth * 0.85)) {
+                confidence += CONF_EDGE_BUTTON
             }
 
-            // Vertical swipe container (Reels uses a vertically-paged RecyclerView)
-            if (className.contains("recyclerview")
-                && h > screenHeight * 0.70
-                && !viewId.containsAny("newsfeed", "timeline", "feed")) {
-                reelsScore += 3
+            // "التالي" text in Reels mini-player → strong signal
+            if (nodeText.contains("التالي")) {
+                Log.d(TAG, "TREE: Found 'التالي' → +$CONF_NEXT_TEXT")
+                confidence += CONF_NEXT_TEXT
             }
 
-            // BUG 3 FIX: Lower threshold from 8 to 5 (reachable after fixing bugs 1 and 2)
-            // Early exit if evidence is clear
-            if (feedScore >= 8 && reelsScore < 3) {
+            // Share/comment text in edge position → Reels action bar
+            if (nodeText.containsAny("share", "comment", "تعليق", "مشاركة")
+                && (bounds.left < screenWidth * 0.15 || bounds.right > screenWidth * 0.85)) {
+                confidence += CONF_EDGE_BUTTON / 2
+            }
+
+            // Vertical pager (Reels swipe container)
+            if (viewId.contains("recyclerview") || className.contains("recyclerview")) {
+                if (h > screenHeight * 0.70 && !viewId.containsAny("newsfeed", "feed")) {
+                    confidence += CONF_VERTICAL_PAGER
+                }
+            }
+
+            // Early exit: strongly confident
+            if (confidence >= CONFIDENCE_THRESHOLD + 30) {
+                break
+            }
+            // Early exit: clearly not Reels (anti-score domination)
+            if (confidence <= -CONFIDENCE_THRESHOLD) {
                 break
             }
 
@@ -430,10 +468,17 @@ class GuardianAccessibilityService : AccessibilityService() {
             }
         }
 
-        // BUG 3 FIX: threshold was 8 (unreachable), now 5 (achievable after bug fixes)
-        val result = reelsScore >= 5 && reelsScore > feedScore
-        Log.d(TAG, if (result) "TREE BLOCK: reels=$reelsScore feed=$feedScore"
-                   else "TREE SKIP: reels=$reelsScore feed=$feedScore")
+        drainAndRecycle(stack)
+
+        // Absolute immunity: NEVER block Live, Stories, or Sponsored content
+        if (absBypassLive) {
+            Log.d(TAG, "TREE SKIP: Live/Story/Sponsored immunity (confidence=$confidence)")
+            return false
+        }
+
+        val result = confidence >= CONFIDENCE_THRESHOLD
+        Log.d(TAG, if (result) "TREE BLOCK: confidence=$confidence ≥ $CONFIDENCE_THRESHOLD"
+                   else "TREE SKIP: confidence=$confidence < $CONFIDENCE_THRESHOLD")
         return result
     }
 
@@ -454,6 +499,11 @@ class GuardianAccessibilityService : AccessibilityService() {
                     val hits = root.findAccessibilityNodeInfosByViewId(viewId)
                     if (hits.isNotEmpty()) {
                         val target = hits.first()
+                        if (target.isSelected) {
+                            hits.forEach { it.recycle() }
+                            scope.launch { repository.updateBlocksCount(currentState.blocksCount + 1) }
+                            return
+                        }
                         if (target.isClickable) {
                             target.performAction(AccessibilityNodeInfo.ACTION_CLICK)
                             hits.forEach { it.recycle() }
@@ -522,6 +572,9 @@ class GuardianAccessibilityService : AccessibilityService() {
                     queue.forEach { it.recycle() }
                     return true
                 }
+                // Already selected (already on home) → success
+                queue.forEach { it.recycle() }
+                return true
             }
 
             if (matchesContent && !current.isSelected && !matchesClass && !matchesViewId) {

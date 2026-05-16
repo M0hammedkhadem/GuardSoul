@@ -33,6 +33,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import com.agon.app.facebook.FacebookWebViewScreen
 import com.agon.app.services.AIExplorerService
 import com.agon.app.ui.screens.*
 import com.agon.app.ui.theme.*
@@ -112,7 +113,10 @@ fun MainApp() {
                     onNavigateToSettings = { navController.navigate("settings") }
                 ) 
             }
-            composable("social") { SocialScreen() }
+            composable("social") { SocialScreen(onLaunchFacebookWrapper = { navController.navigate("facebook_webview") }) }
+            composable("facebook_webview") {
+                FacebookWebViewScreen(onBack = { navController.popBackStack() })
+            }
             composable("content") { ContentScreen() }
             composable("lists") { ListsScreen() }
             composable("permissions") { 

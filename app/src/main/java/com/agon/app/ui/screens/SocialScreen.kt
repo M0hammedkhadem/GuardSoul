@@ -24,10 +24,15 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.agon.app.data.GuardianState
 import com.agon.app.ui.theme.*
 import com.agon.app.viewmodel.GuardianViewModel
+import androidx.compose.ui.platform.LocalContext
+import android.content.Intent
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SocialScreen(viewModel: GuardianViewModel = viewModel()) {
+fun SocialScreen(
+    viewModel: GuardianViewModel = viewModel(),
+    onLaunchFacebookWrapper: () -> Unit = {}
+) {
     val state by viewModel.state.collectAsState()
     var showYoutubeSheet by remember { mutableStateOf(false) }
     var showFacebookSheet by remember { mutableStateOf(false) }
@@ -117,6 +122,20 @@ fun SocialScreen(viewModel: GuardianViewModel = viewModel()) {
             if (state.facebookMode == "reels") {
                 Spacer(modifier = Modifier.height(8.dp))
                 InfoBox("Reels in the main feed are allowed. Blocking triggers only when entering the full-screen Reels section or tapping a Reel to open it.")
+                Spacer(modifier = Modifier.height(8.dp))
+                Button(
+                    onClick = onLaunchFacebookWrapper,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color(0xFF1877F2),
+                        contentColor = Color.White
+                    ),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.fillMaxWidth().height(48.dp)
+                ) {
+                    Icon(Icons.Default.OpenInNew, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Launch Facebook Wrapper", fontWeight = FontWeight.SemiBold)
+                }
             }
 
             Spacer(modifier = Modifier.height(32.dp))
