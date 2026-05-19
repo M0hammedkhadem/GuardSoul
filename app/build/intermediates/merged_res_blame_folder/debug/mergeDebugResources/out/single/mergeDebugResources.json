@@ -1,30 +1,30 @@
 [
     {
-        "merged": "com.agon.app-debug-46:/mipmap-mdpi_ic_launcher.png.flat",
-        "source": "com.agon.app-main-48:/mipmap-mdpi/ic_launcher.png"
+        "merged": "com.agon.app-debug-47:/mipmap-xhdpi_ic_launcher.png.flat",
+        "source": "com.agon.app-main-49:/mipmap-xhdpi/ic_launcher.png"
     },
     {
-        "merged": "com.agon.app-debug-46:/mipmap-xxhdpi_ic_launcher.png.flat",
-        "source": "com.agon.app-main-48:/mipmap-xxhdpi/ic_launcher.png"
+        "merged": "com.agon.app-debug-47:/mipmap-mdpi_ic_launcher.png.flat",
+        "source": "com.agon.app-main-49:/mipmap-mdpi/ic_launcher.png"
     },
     {
-        "merged": "com.agon.app-debug-46:/xml_device_admin_receiver.xml.flat",
-        "source": "com.agon.app-main-48:/xml/device_admin_receiver.xml"
+        "merged": "com.agon.app-debug-47:/xml_device_admin_receiver.xml.flat",
+        "source": "com.agon.app-main-49:/xml/device_admin_receiver.xml"
     },
     {
-        "merged": "com.agon.app-debug-46:/mipmap-xhdpi_ic_launcher.png.flat",
-        "source": "com.agon.app-main-48:/mipmap-xhdpi/ic_launcher.png"
+        "merged": "com.agon.app-debug-47:/xml_accessibility_service_config.xml.flat",
+        "source": "com.agon.app-main-49:/xml/accessibility_service_config.xml"
     },
     {
-        "merged": "com.agon.app-debug-46:/xml_accessibility_service_config.xml.flat",
-        "source": "com.agon.app-main-48:/xml/accessibility_service_config.xml"
+        "merged": "com.agon.app-debug-47:/mipmap-xxhdpi_ic_launcher.png.flat",
+        "source": "com.agon.app-main-49:/mipmap-xxhdpi/ic_launcher.png"
     },
     {
-        "merged": "com.agon.app-debug-46:/mipmap-xxxhdpi_ic_launcher.png.flat",
-        "source": "com.agon.app-main-48:/mipmap-xxxhdpi/ic_launcher.png"
+        "merged": "com.agon.app-debug-47:/mipmap-xxxhdpi_ic_launcher.png.flat",
+        "source": "com.agon.app-main-49:/mipmap-xxxhdpi/ic_launcher.png"
     },
     {
-        "merged": "com.agon.app-debug-46:/mipmap-hdpi_ic_launcher.png.flat",
-        "source": "com.agon.app-main-48:/mipmap-hdpi/ic_launcher.png"
+        "merged": "com.agon.app-debug-47:/mipmap-hdpi_ic_launcher.png.flat",
+        "source": "com.agon.app-main-49:/mipmap-hdpi/ic_launcher.png"
     }
 ]

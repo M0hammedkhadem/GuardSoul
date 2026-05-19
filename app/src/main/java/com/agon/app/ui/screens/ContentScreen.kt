@@ -17,14 +17,17 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.agon.app.R
 import com.agon.app.ui.theme.*
 import com.agon.app.viewmodel.GuardianViewModel
 
@@ -33,12 +36,14 @@ import com.agon.app.viewmodel.GuardianViewModel
 fun ContentScreen(viewModel: GuardianViewModel = viewModel()) {
     val state by viewModel.state.collectAsState()
     val scrollState = rememberScrollState()
+    val context = LocalContext.current
+    LaunchedEffect(Unit) { viewModel.syncDeviceAdminStatus() }
 
     Scaffold(
         containerColor = background,
         topBar = {
             TopAppBar(
-                title = { Text("Content Filter", fontWeight = FontWeight.Bold) },
+                title = { Text(stringResource(R.string.screen_content_title), fontWeight = FontWeight.Bold) },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = background,
                     titleContentColor = text
@@ -67,7 +72,7 @@ fun ContentScreen(viewModel: GuardianViewModel = viewModel()) {
                     Icon(Icons.Default.VisibilityOff, contentDescription = null, tint = danger)
                     Spacer(modifier = Modifier.width(12.dp))
                     Text(
-                        text = "Filters block explicit content, adult websites, and unsafe search results across all browsers and apps.",
+                        text = stringResource(R.string.warning_content_filter),
                         color = danger,
                         fontSize = 13.sp
                     )
@@ -80,9 +85,9 @@ fun ContentScreen(viewModel: GuardianViewModel = viewModel()) {
             FeatureToggleCard(
                 icon = Icons.Default.Shield,
                 iconColor = success,
-                title = "Porn Blocker",
-                subtitle = "Activates VPN-based safe search filtering on Google, YouTube, and all browsers. Blocks explicit search results.",
-                badgeText = "VPN ACTIVE",
+                title = stringResource(R.string.card_porn_blocker_title),
+                subtitle = stringResource(R.string.card_porn_blocker_subtitle),
+                badgeText = stringResource(R.string.badge_vpn_active),
                 badgeColor = success,
                 isActive = state.pornBlockerActive,
                 onToggle = { viewModel.togglePornBlocker() }
@@ -91,16 +96,16 @@ fun ContentScreen(viewModel: GuardianViewModel = viewModel()) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Box(modifier = Modifier.size(8.dp).clip(CircleShape).background(success))
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text("VPN Safe Filter Active", color = success, fontWeight = FontWeight.Bold)
+                        Text(stringResource(R.string.feature_safe_search_active), color = success, fontWeight = FontWeight.Bold)
                     }
                     Spacer(modifier = Modifier.height(8.dp))
-                    Text("The following protections are currently enforced:", color = textSecondary, fontSize = 13.sp)
+                    Text(stringResource(R.string.feature_list_header), color = textSecondary, fontSize = 13.sp)
                     Spacer(modifier = Modifier.height(8.dp))
-                    ChecklistItem("Google Safe Search")
-                    ChecklistItem("YouTube Restricted Mode")
-                    ChecklistItem("Bing Safe Search")
-                    ChecklistItem("Browser Content Filter")
-                    ChecklistItem("DNS-level Blocking")
+                    ChecklistItem(stringResource(R.string.feature_google_safe_search))
+                    ChecklistItem(stringResource(R.string.feature_youtube_restricted))
+                    ChecklistItem(stringResource(R.string.feature_bing_safe_search))
+                    ChecklistItem(stringResource(R.string.feature_browser_filter))
+                    ChecklistItem(stringResource(R.string.feature_dns_blocking))
                 }
             }
 
@@ -110,9 +115,9 @@ fun ContentScreen(viewModel: GuardianViewModel = viewModel()) {
             FeatureToggleCard(
                 icon = Icons.Default.CenterFocusStrong,
                 iconColor = accent,
-                title = "AI Explorer",
-                subtitle = "Uses AI to scan your screen every 3 seconds. Explicit content detected → app closed & notified. 3 detections in 4 min → 15 min app ban.",
-                badgeText = "SCANNING",
+                title = stringResource(R.string.card_ai_explorer_title),
+                subtitle = stringResource(R.string.card_ai_explorer_subtitle),
+                badgeText = stringResource(R.string.badge_scanning),
                 badgeColor = accent,
                 isActive = state.aiExplorerActive,
                 onToggle = { viewModel.toggleAiExplorer() }
@@ -121,10 +126,10 @@ fun ContentScreen(viewModel: GuardianViewModel = viewModel()) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Box(modifier = Modifier.size(8.dp).clip(CircleShape).background(accent))
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text("AI Scanner Active", color = accent, fontWeight = FontWeight.Bold)
+                        Text(stringResource(R.string.feature_ai_active), color = accent, fontWeight = FontWeight.Bold)
                     }
                     Spacer(modifier = Modifier.height(8.dp))
-                    Text("Privacy Note: All AI processing happens on-device. No screen data ever leaves your phone.", color = textSecondary, fontSize = 12.sp)
+                    Text(stringResource(R.string.privacy_ai_note), color = textSecondary, fontSize = 12.sp)
                     Spacer(modifier = Modifier.height(12.dp))
                     Surface(
                         color = warning.copy(alpha = 0.1f),
@@ -133,7 +138,7 @@ fun ContentScreen(viewModel: GuardianViewModel = viewModel()) {
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Text(
-                            text = "Auto-Ban Rule: 3 detections in 4 minutes → App banned for 15 minutes",
+                            text = stringResource(R.string.warning_auto_ban),
                             color = warning,
                             fontSize = 12.sp,
                             fontWeight = FontWeight.Medium,
@@ -149,19 +154,39 @@ fun ContentScreen(viewModel: GuardianViewModel = viewModel()) {
             FeatureToggleCard(
                 icon = Icons.Default.Lock,
                 iconColor = danger,
-                title = "Uninstall Protection",
-                subtitle = "Prevents deletion of Guardian. Blocks access to app settings, Device Admin removal, DNS changes, safe mode bypass.",
-                badgeText = "PROTECTED",
-                badgeColor = danger,
+                title = stringResource(R.string.card_uninstall_title),
+                subtitle = stringResource(R.string.card_uninstall_subtitle),
+                badgeText = if (state.deviceAdminGranted) stringResource(R.string.badge_protected) else stringResource(R.string.badge_not_protected),
+                badgeColor = if (state.deviceAdminGranted) danger else warning,
                 isActive = state.uninstallProtectionActive,
-                onToggle = { viewModel.toggleUninstallProtection() }
+                onToggle = {
+                    viewModel.syncDeviceAdminStatus()
+                    viewModel.toggleUninstallProtection()
+                }
             ) {
                 Column(modifier = Modifier.padding(top = 16.dp)) {
-                    ChecklistItem("App Settings Access Blocked")
-                    ChecklistItem("Device Admin Removal Blocked")
-                    ChecklistItem("DNS Change Detection Active")
-                    ChecklistItem("Safe Mode Boot Warning Active")
-                    ChecklistItem("Permission Removal Blocked")
+                    if (state.deviceAdminGranted) {
+                        ChecklistItem(stringResource(R.string.feature_app_settings_blocked))
+                        ChecklistItem(stringResource(R.string.feature_device_admin_blocked))
+                        ChecklistItem(stringResource(R.string.feature_dns_change_detected))
+                        ChecklistItem(stringResource(R.string.feature_safe_mode_warning))
+                        ChecklistItem(stringResource(R.string.feature_permission_removal_blocked))
+                    } else {
+                        Surface(
+                            color = warning.copy(alpha = 0.1f),
+                            shape = RoundedCornerShape(8.dp),
+                            border = BorderStroke(1.dp, warning.copy(alpha = 0.3f)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(
+                                text = stringResource(R.string.warning_admin_not_granted),
+                                color = warning,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Medium,
+                                modifier = Modifier.padding(12.dp)
+                            )
+                        }
+                    }
                 }
             }
 
@@ -175,13 +200,13 @@ fun ContentScreen(viewModel: GuardianViewModel = viewModel()) {
                 border = BorderStroke(1.dp, cardBorder)
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
-                    Text("How AI Scanning Works", fontWeight = FontWeight.Bold, color = text, fontSize = 16.sp)
+                    Text(stringResource(R.string.card_how_ai_title), fontWeight = FontWeight.Bold, color = text, fontSize = 16.sp)
                     Spacer(modifier = Modifier.height(16.dp))
-                    StepRow(1, primary, "Screen captured every 3 seconds")
-                    StepRow(2, accent, "On-device AI analyzes the content")
-                    StepRow(3, danger, "Explicit content detected → App force-closed")
-                    StepRow(4, warning, "Notification sent explaining the block")
-                    StepRow(5, danger, "3 detections in 4 min → 15 min ban")
+                    StepRow(1, primary, stringResource(R.string.step_ai_capture))
+                    StepRow(2, accent, stringResource(R.string.step_ai_analyze))
+                    StepRow(3, danger, stringResource(R.string.step_ai_detect))
+                    StepRow(4, warning, stringResource(R.string.step_ai_notify))
+                    StepRow(5, danger, stringResource(R.string.step_ai_ban))
                 }
             }
 

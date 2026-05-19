@@ -3,6 +3,7 @@ package com.agon.app.facebook
 import android.annotation.SuppressLint
 import android.graphics.Bitmap
 import android.view.ViewGroup
+import android.webkit.DownloadListener
 import android.webkit.WebChromeClient
 import android.webkit.WebView
 import android.webkit.WebViewClient
@@ -25,6 +26,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
@@ -34,7 +36,9 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.agon.app.R
 import com.agon.app.ui.theme.*
+import com.agon.app.utils.AssetLoader
 import kotlin.math.roundToInt
 
 @SuppressLint("SetJavaScriptEnabled")
@@ -99,7 +103,7 @@ fun FacebookWebViewScreen(
                     )
                     addJavascriptInterface(bridge, "Android")
 
-                    val script = BlockerWebViewClient.loadScriptFromAsset(this)
+                    val script = AssetLoader.loadScript(ctx)
 
                     webViewClient = object : WebViewClient() {
                         override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
@@ -119,11 +123,35 @@ fun FacebookWebViewScreen(
                             view: WebView?,
                             request: android.webkit.WebResourceRequest?
                         ): Boolean {
+                            val url = request?.url?.toString() ?: return false
                             val host = request?.url?.host ?: return false
-                            if (host.contains("facebook.com") || host.contains("fb.com") || host.contains("messenger.com")) {
-                                return false
+
+                            val forbiddenPatterns = listOf(
+                                "play.google.com",
+                                "apps.facebook.com",
+                                "l.facebook.com",
+                                "market://",
+                                "www.facebook.com/help",
+                                "www.facebook.com/settings"
+                            )
+
+                            for (pattern in forbiddenPatterns) {
+                                if (host.contains(pattern, ignoreCase = true) || url.contains(pattern, ignoreCase = true)) {
+                                    return true
+                                }
                             }
                             return false
+                        }
+                    }
+
+                    setDownloadListener { url, _, _, _, _ ->
+                        if (url.contains("play.google.com", ignoreCase = true)) {
+                            android.widget.Toast.makeText(
+                                context,
+                                context.getString(R.string.toast_link_blocked),
+                                android.widget.Toast.LENGTH_SHORT
+                            ).show()
+                            return@setDownloadListener
                         }
                     }
 
@@ -156,7 +184,7 @@ fun FacebookWebViewScreen(
             Box(contentAlignment = Alignment.Center) {
                 Icon(
                     Icons.Default.ArrowBack,
-                    contentDescription = "Back",
+                    contentDescription = stringResource(R.string.contentdesc_back),
                     tint = text,
                     modifier = Modifier.size(24.dp)
                 )
@@ -177,7 +205,7 @@ fun FacebookWebViewScreen(
             Box(contentAlignment = Alignment.Center) {
                 Icon(
                     Icons.Default.Refresh,
-                    contentDescription = "Refresh",
+                    contentDescription = stringResource(R.string.contentdesc_refresh),
                     tint = text,
                     modifier = Modifier.size(24.dp)
                 )
@@ -209,7 +237,7 @@ fun FacebookWebViewScreen(
             ) {
                 Icon(
                     imageVector = Icons.Default.Block,
-                    contentDescription = "Blocker",
+                    contentDescription = stringResource(R.string.contentdesc_blocker),
                     tint = Color.White,
                     modifier = Modifier.size(20.dp)
                 )
@@ -223,7 +251,7 @@ fun FacebookWebViewScreen(
                 }
                 Icon(
                     imageVector = Icons.Default.Settings,
-                    contentDescription = "Settings",
+                    contentDescription = stringResource(R.string.contentdesc_settings_webview),
                     tint = Color.White.copy(alpha = 0.7f),
                     modifier = Modifier.size(16.dp)
                 )

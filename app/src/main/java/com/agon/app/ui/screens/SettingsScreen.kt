@@ -9,6 +9,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -16,10 +17,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.agon.app.R
 import com.agon.app.ui.theme.*
 import com.agon.app.viewmodel.GuardianViewModel
 
@@ -30,19 +34,38 @@ fun SettingsScreen(
     onNavigateToContent: () -> Unit,
     onNavigateToLists: () -> Unit,
     onNavigateToPermissions: () -> Unit,
+    onNavigateToProfile: () -> Unit = {},
+    onNavigateToPinSetup: () -> Unit = {},
+    onNavigateToSchedule: () -> Unit = {},
+    onNavigateToTimeLimits: () -> Unit = {},
+    onNavigateToStatistics: () -> Unit = {},
+    onNavigateToExportImport: () -> Unit = {},
     onBack: () -> Unit,
     viewModel: GuardianViewModel = viewModel()
 ) {
     val state by viewModel.state.collectAsState()
+    val needsPinUnlock = state.pinCode != null && !state.appUnlocked
+    val context = LocalContext.current
+    LaunchedEffect(Unit) { viewModel.syncDeviceAdminStatus() }
+
+    if (needsPinUnlock) {
+        PinGateScreen(
+            onUnlock = { viewModel.unlockApp() },
+            onLock = onBack,
+            storedPinHash = state.pinCode
+        )
+        return
+    }
+
     val scrollState = rememberScrollState()
 
     Scaffold(
         containerColor = background,
         topBar = {
             TopAppBar(
-                title = { Text("Settings", fontWeight = FontWeight.Bold) },
+                title = { Text(stringResource(R.string.screen_settings_title), fontWeight = FontWeight.Bold) },
                 navigationIcon = {
-                    IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, contentDescription = "Back") }
+                    IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.contentdesc_back)) }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = background,
@@ -59,7 +82,7 @@ fun SettingsScreen(
                 .padding(horizontal = 16.dp)
                 .verticalScroll(scrollState)
         ) {
-            Text("Quick Access", fontWeight = FontWeight.Bold, color = textSecondary, modifier = Modifier.padding(bottom = 12.dp, start = 4.dp))
+            Text(stringResource(R.string.section_quick_access), fontWeight = FontWeight.Bold, color = textSecondary, modifier = Modifier.padding(bottom = 12.dp, start = 4.dp))
             
             Card(
                 modifier = Modifier.fillMaxWidth(),
@@ -67,32 +90,44 @@ fun SettingsScreen(
                 border = BorderStroke(1.dp, cardBorder)
             ) {
                 Column {
-                    SettingsRow(icon = Icons.Default.People, title = "Social Media Settings", onClick = onNavigateToSocial)
+                    SettingsRow(icon = Icons.Default.People, title = stringResource(R.string.row_social_media), onClick = onNavigateToSocial)
                     HorizontalDivider(color = cardBorder)
-                    SettingsRow(icon = Icons.Default.Security, title = "Content Blocker Settings", onClick = onNavigateToContent)
+                    SettingsRow(icon = Icons.Default.Security, title = stringResource(R.string.row_content_blocker), onClick = onNavigateToContent)
                     HorizontalDivider(color = cardBorder)
-                    SettingsRow(icon = Icons.Default.List, title = "Blacklist & Whitelist", onClick = onNavigateToLists)
+                    SettingsRow(icon = Icons.Default.List, title = stringResource(R.string.row_blacklist), onClick = onNavigateToLists)
                     HorizontalDivider(color = cardBorder)
-                    SettingsRow(icon = Icons.Default.VpnKey, title = "Permissions", onClick = onNavigateToPermissions)
+                    SettingsRow(icon = Icons.Default.VpnKey, title = stringResource(R.string.row_permissions_settings), onClick = onNavigateToPermissions)
+                    HorizontalDivider(color = cardBorder)
+                    SettingsRow(icon = Icons.Default.Person, title = "Profile", onClick = onNavigateToProfile)
+                    HorizontalDivider(color = cardBorder)
+                    SettingsRow(icon = Icons.Default.Lock, title = "PIN Protection", onClick = onNavigateToPinSetup)
+                    HorizontalDivider(color = cardBorder)
+                    SettingsRow(icon = Icons.Default.Schedule, title = "Schedule Blocking", onClick = onNavigateToSchedule)
+                    HorizontalDivider(color = cardBorder)
+                    SettingsRow(icon = Icons.Default.Timer, title = "Daily Time Limits", onClick = onNavigateToTimeLimits)
+                    HorizontalDivider(color = cardBorder)
+                    SettingsRow(icon = Icons.Default.BarChart, title = "Usage Statistics", onClick = onNavigateToStatistics)
+                    HorizontalDivider(color = cardBorder)
+                    SettingsRow(icon = Icons.Default.FileUpload, title = "Export / Import", onClick = onNavigateToExportImport)
                 }
             }
 
             Spacer(modifier = Modifier.height(32.dp))
 
-            Text("Status Overview", fontWeight = FontWeight.Bold, color = textSecondary, modifier = Modifier.padding(bottom = 12.dp, start = 4.dp))
+            Text(stringResource(R.string.section_status_overview), fontWeight = FontWeight.Bold, color = textSecondary, modifier = Modifier.padding(bottom = 12.dp, start = 4.dp))
 
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 StatusMiniCard(
                     modifier = Modifier.weight(1f),
                     icon = Icons.Default.Shield,
-                    title = "Shield",
+                    title = stringResource(R.string.mini_shield),
                     isActive = state.isShieldActive,
                     activeColor = success
                 )
                 StatusMiniCard(
                     modifier = Modifier.weight(1f),
                     icon = Icons.Default.VpnLock,
-                    title = "VPN Filter",
+                    title = stringResource(R.string.mini_vpn_filter),
                     isActive = state.pornBlockerActive,
                     activeColor = success
                 )
@@ -102,14 +137,14 @@ fun SettingsScreen(
                 StatusMiniCard(
                     modifier = Modifier.weight(1f),
                     icon = Icons.Default.CenterFocusStrong,
-                    title = "AI Scan",
+                    title = stringResource(R.string.mini_ai_scan),
                     isActive = state.aiExplorerActive,
                     activeColor = accent
                 )
                 StatusMiniCard(
                     modifier = Modifier.weight(1f),
                     icon = Icons.Default.Lock,
-                    title = "Uninstall Prot.",
+                    title = stringResource(R.string.mini_uninstall),
                     isActive = state.uninstallProtectionActive,
                     activeColor = danger
                 )
@@ -117,7 +152,7 @@ fun SettingsScreen(
 
             Spacer(modifier = Modifier.height(32.dp))
 
-            Text("Blocked Apps Summary", fontWeight = FontWeight.Bold, color = textSecondary, modifier = Modifier.padding(bottom = 12.dp, start = 4.dp))
+            Text(stringResource(R.string.section_blocked_apps), fontWeight = FontWeight.Bold, color = textSecondary, modifier = Modifier.padding(bottom = 12.dp, start = 4.dp))
             
             Card(
                 modifier = Modifier.fillMaxWidth(),
@@ -125,23 +160,23 @@ fun SettingsScreen(
                 border = BorderStroke(1.dp, cardBorder)
             ) {
                 Column {
-                    BlockedAppRow("Instagram", state.instagramBlocked, "full")
+                    BlockedAppRow(stringResource(R.string.app_instagram), state.instagramBlocked, "full")
                     HorizontalDivider(color = cardBorder)
-                    BlockedAppRow("Snapchat", state.snapchatBlocked, "full")
+                    BlockedAppRow(stringResource(R.string.app_snapchat), state.snapchatBlocked, "full")
                     HorizontalDivider(color = cardBorder)
-                    BlockedAppRow("X (Twitter)", state.twitterBlocked, "full")
+                    BlockedAppRow(stringResource(R.string.app_twitter), state.twitterBlocked, "full")
                     HorizontalDivider(color = cardBorder)
-                    BlockedAppRow("TikTok", state.tiktokBlocked, "full")
+                    BlockedAppRow(stringResource(R.string.app_tiktok), state.tiktokBlocked, "full")
                     HorizontalDivider(color = cardBorder)
-                    BlockedAppRow("YouTube", state.youtubeMode != "off", state.youtubeMode)
+                    BlockedAppRow(stringResource(R.string.app_youtube), state.youtubeMode != "off", state.youtubeMode)
                     HorizontalDivider(color = cardBorder)
-                    BlockedAppRow("Facebook", state.facebookMode != "off", state.facebookMode)
+                    BlockedAppRow(stringResource(R.string.app_facebook), state.facebookMode != "off", state.facebookMode)
                 }
             }
 
             Spacer(modifier = Modifier.height(32.dp))
 
-            Text("Data Management", fontWeight = FontWeight.Bold, color = textSecondary, modifier = Modifier.padding(bottom = 12.dp, start = 4.dp))
+            Text(stringResource(R.string.section_data_management), fontWeight = FontWeight.Bold, color = textSecondary, modifier = Modifier.padding(bottom = 12.dp, start = 4.dp))
 
             var showResetStats by remember { mutableStateOf(false) }
             var showResetSettings by remember { mutableStateOf(false) }
@@ -152,9 +187,9 @@ fun SettingsScreen(
                 border = BorderStroke(1.dp, cardBorder)
             ) {
                 Column {
-                    SettingsRow(icon = Icons.Default.DeleteOutline, title = "Reset Statistics") { showResetStats = true }
+                    SettingsRow(icon = Icons.Default.DeleteOutline, title = stringResource(R.string.btn_reset_statistics)) { showResetStats = true }
                     HorizontalDivider(color = cardBorder)
-                    SettingsRow(icon = Icons.Default.Restore, title = "Reset All Settings") { showResetSettings = true }
+                    SettingsRow(icon = Icons.Default.Restore, title = stringResource(R.string.btn_reset_all_settings)) { showResetSettings = true }
                 }
             }
 
@@ -162,15 +197,15 @@ fun SettingsScreen(
                 AlertDialog(
                     onDismissRequest = { showResetStats = false },
                     containerColor = surface,
-                    title = { Text("Reset Statistics", color = text) },
-                    text = { Text("This will reset your blocks count and streak to zero. This cannot be undone.", color = textSecondary) },
+                    title = { Text(stringResource(R.string.dialog_reset_stats_title), color = text) },
+                    text = { Text(stringResource(R.string.dialog_reset_stats_message), color = textSecondary) },
                     confirmButton = {
                         Button(onClick = { viewModel.resetStatistics(); showResetStats = false }, colors = ButtonDefaults.buttonColors(containerColor = danger)) {
-                            Text("Reset", color = surface)
+                            Text(stringResource(R.string.dialog_reset_stats_confirm), color = surface)
                         }
                     },
                     dismissButton = {
-                        TextButton(onClick = { showResetStats = false }) { Text("Cancel", color = textSecondary) }
+                        TextButton(onClick = { showResetStats = false }) { Text(stringResource(R.string.btn_cancel), color = textSecondary) }
                     }
                 )
             }
@@ -179,15 +214,15 @@ fun SettingsScreen(
                 AlertDialog(
                     onDismissRequest = { showResetSettings = false },
                     containerColor = surface,
-                    title = { Text("Reset All Settings", color = text) },
-                    text = { Text("This will disable the shield, clear all custom lists, and revert all settings to default. This cannot be undone.", color = textSecondary) },
+                    title = { Text(stringResource(R.string.dialog_reset_all_title), color = text) },
+                    text = { Text(stringResource(R.string.dialog_reset_all_message), color = textSecondary) },
                     confirmButton = {
                         Button(onClick = { viewModel.resetAllSettings(); showResetSettings = false }, colors = ButtonDefaults.buttonColors(containerColor = danger)) {
-                            Text("Reset All", color = surface)
+                            Text(stringResource(R.string.dialog_reset_all_confirm), color = surface)
                         }
                     },
                     dismissButton = {
-                        TextButton(onClick = { showResetSettings = false }) { Text("Cancel", color = textSecondary) }
+                        TextButton(onClick = { showResetSettings = false }) { Text(stringResource(R.string.btn_cancel), color = textSecondary) }
                     }
                 )
             }
@@ -214,11 +249,11 @@ fun SettingsScreen(
                         Icon(Icons.Default.Shield, contentDescription = null, tint = primary, modifier = Modifier.size(32.dp))
                     }
                     Spacer(modifier = Modifier.height(16.dp))
-                    Text("Guardian", color = text, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-                    Text("Version 1.0.0", color = textMuted, fontSize = 14.sp)
+                    Text(stringResource(R.string.about_title), color = text, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                    Text(stringResource(R.string.about_version), color = textMuted, fontSize = 14.sp)
                     Spacer(modifier = Modifier.height(16.dp))
                     Text(
-                        text = "Guardian is a powerful digital wellness shield designed to help you regain focus and break free from addictive digital habits through robust content blocking and intelligent AI scanning.",
+                        text = stringResource(R.string.about_description),
                         color = textSecondary,
                         fontSize = 13.sp,
                         textAlign = androidx.compose.ui.text.style.TextAlign.Center,
@@ -246,7 +281,7 @@ fun BlockedAppRow(name: String, isBlocked: Boolean, mode: String) {
         }
         
         val badgeColor = if (!isBlocked) success else if (mode == "full") danger else warning
-        val badgeText = if (!isBlocked) "OPEN" else if (mode == "full") "BLOCKED" else mode.uppercase()
+        val badgeText = if (!isBlocked) stringResource(R.string.badge_open_upper) else if (mode == "full") stringResource(R.string.badge_blocked) else mode.uppercase()
 
         Surface(
             color = badgeColor.copy(alpha = 0.1f),
@@ -303,7 +338,7 @@ fun StatusMiniCard(modifier: Modifier, icon: androidx.compose.ui.graphics.vector
             Spacer(modifier = Modifier.height(12.dp))
             Text(text = title, color = text, fontWeight = FontWeight.Bold, fontSize = 14.sp)
             Spacer(modifier = Modifier.height(4.dp))
-            Text(text = if (isActive) "Active" else "Inactive", color = if (isActive) activeColor else textMuted, fontSize = 12.sp)
+            Text(text = if (isActive) stringResource(R.string.status_active) else stringResource(R.string.status_inactive), color = if (isActive) activeColor else textMuted, fontSize = 12.sp)
         }
     }
 }

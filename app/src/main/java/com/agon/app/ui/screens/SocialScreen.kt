@@ -20,6 +20,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.res.stringResource
+import com.agon.app.R
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.agon.app.data.GuardianState
 import com.agon.app.ui.theme.*
@@ -42,7 +44,7 @@ fun SocialScreen(
         containerColor = background,
         topBar = {
             TopAppBar(
-                title = { Text("Social Media", fontWeight = FontWeight.Bold) },
+                title = { Text(stringResource(R.string.screen_social_title), fontWeight = FontWeight.Bold) },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = background,
                     titleContentColor = text
@@ -58,7 +60,7 @@ fun SocialScreen(
                 .verticalScroll(scrollState)
         ) {
             // Direct Block Section
-            SectionHeader(icon = Icons.Default.Block, title = "Direct Block", color = danger)
+            SectionHeader(icon = Icons.Default.Block, title = stringResource(R.string.section_direct_block), color = danger)
             Spacer(modifier = Modifier.height(16.dp))
             Card(
                 colors = CardDefaults.cardColors(containerColor = card),
@@ -67,28 +69,28 @@ fun SocialScreen(
             ) {
                 Column {
                     ToggleRow(
-                        name = "Instagram",
+                        name = stringResource(R.string.app_instagram),
                         color = Color(0xFFE1306C),
                         isBlocked = state.instagramBlocked,
                         onToggle = { viewModel.toggleInstagram() }
                     )
                     HorizontalDivider(color = cardBorder)
                     ToggleRow(
-                        name = "Snapchat",
+                        name = stringResource(R.string.app_snapchat),
                         color = Color(0xFFFFFC00),
                         isBlocked = state.snapchatBlocked,
                         onToggle = { viewModel.toggleSnapchat() }
                     )
                     HorizontalDivider(color = cardBorder)
                     ToggleRow(
-                        name = "X (Twitter)",
+                        name = stringResource(R.string.app_twitter),
                         color = Color(0xFF1DA1F2),
                         isBlocked = state.twitterBlocked,
                         onToggle = { viewModel.toggleTwitter() }
                     )
                     HorizontalDivider(color = cardBorder)
                     ToggleRow(
-                        name = "TikTok",
+                        name = stringResource(R.string.app_tiktok),
                         color = Color(0xFF69C9D0),
                         isBlocked = state.tiktokBlocked,
                         onToggle = { viewModel.toggleTiktok() }
@@ -99,7 +101,7 @@ fun SocialScreen(
             Spacer(modifier = Modifier.height(24.dp))
 
             // YouTube Section
-            SectionHeader(icon = Icons.Default.PlayArrow, title = "YouTube", color = Color(0xFFFF0000))
+            SectionHeader(icon = Icons.Default.PlayArrow, title = stringResource(R.string.app_youtube), color = Color(0xFFFF0000))
             Spacer(modifier = Modifier.height(16.dp))
             DropdownCard(
                 currentMode = state.youtubeMode,
@@ -107,13 +109,13 @@ fun SocialScreen(
             )
             if (state.youtubeMode == "shorts") {
                 Spacer(modifier = Modifier.height(8.dp))
-                InfoBox("When a user opens a Short or enters the Shorts section, they will be silently redirected to the YouTube home page without notification.")
+                InfoBox(stringResource(R.string.info_youtube))
             }
 
             Spacer(modifier = Modifier.height(24.dp))
 
             // Facebook Section
-            SectionHeader(icon = Icons.Default.Facebook, title = "Facebook", color = Color(0xFF1877F2))
+            SectionHeader(icon = Icons.Default.Facebook, title = stringResource(R.string.app_facebook), color = Color(0xFF1877F2))
             Spacer(modifier = Modifier.height(16.dp))
             DropdownCard(
                 currentMode = state.facebookMode,
@@ -121,7 +123,7 @@ fun SocialScreen(
             )
             if (state.facebookMode == "reels") {
                 Spacer(modifier = Modifier.height(8.dp))
-                InfoBox("Reels in the main feed are allowed. Blocking triggers only when entering the full-screen Reels section or tapping a Reel to open it.")
+                InfoBox(stringResource(R.string.info_facebook))
                 Spacer(modifier = Modifier.height(8.dp))
                 Button(
                     onClick = onLaunchFacebookWrapper,
@@ -134,7 +136,7 @@ fun SocialScreen(
                 ) {
                     Icon(Icons.Default.OpenInNew, contentDescription = null, modifier = Modifier.size(18.dp))
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("Launch Facebook Wrapper", fontWeight = FontWeight.SemiBold)
+                    Text(stringResource(R.string.btn_launch_facebook_wrapper), fontWeight = FontWeight.SemiBold)
                 }
             }
 
@@ -152,12 +154,12 @@ fun SocialScreen(
                 dragHandle = { BottomSheetDefaults.DragHandle(color = textMuted) }
             ) {
                 ModeSelectionSheet(
-                    title = "YouTube Restriction",
+                    title = stringResource(R.string.sheet_youtube_title),
                     currentMode = state.youtubeMode,
                     options = listOf(
-                        "off" to "No Block",
-                        "full" to "YT Full Block",
-                        "shorts" to "Block Shorts Only"
+                        "off" to stringResource(R.string.option_no_block),
+                        "full" to stringResource(R.string.option_yt_full_block),
+                        "shorts" to stringResource(R.string.option_block_shorts)
                     ),
                     onSelect = { 
                         viewModel.setYoutubeMode(it)
@@ -174,12 +176,12 @@ fun SocialScreen(
                 dragHandle = { BottomSheetDefaults.DragHandle(color = textMuted) }
             ) {
                 ModeSelectionSheet(
-                    title = "Facebook Restriction",
+                    title = stringResource(R.string.sheet_facebook_title),
                     currentMode = state.facebookMode,
                     options = listOf(
-                        "off" to "No Block",
-                        "full" to "FB Full Block",
-                        "reels" to "Block Reels Only"
+                        "off" to stringResource(R.string.option_no_block),
+                        "full" to stringResource(R.string.option_fb_full_block),
+                        "reels" to stringResource(R.string.option_block_reels)
                     ),
                     onSelect = { 
                         viewModel.setFacebookMode(it)
@@ -237,7 +239,7 @@ fun ToggleRow(name: String, color: Color, isBlocked: Boolean, onToggle: () -> Un
                     border = BorderStroke(1.dp, danger.copy(alpha = 0.3f))
                 ) {
                     Text(
-                        text = "BLOCKED",
+                        text = stringResource(R.string.badge_blocked),
                         color = danger,
                         fontSize = 10.sp,
                         fontWeight = FontWeight.Bold,
@@ -263,9 +265,9 @@ fun ToggleRow(name: String, color: Color, isBlocked: Boolean, onToggle: () -> Un
 @Composable
 fun DropdownCard(currentMode: String, onClick: () -> Unit) {
     val (label, badgeText, badgeColor) = when (currentMode) {
-        "full" -> Triple("Full Block", "BLOCKED", danger)
-        "shorts", "reels" -> Triple("Partial Block", "PARTIAL", warning)
-        else -> Triple("No Block", "OPEN", success)
+        "full" -> Triple(stringResource(R.string.label_full_block), stringResource(R.string.badge_blocked), danger)
+        "shorts", "reels" -> Triple(stringResource(R.string.label_partial_block), stringResource(R.string.badge_partial), warning)
+        else -> Triple(stringResource(R.string.option_no_block), stringResource(R.string.badge_open), success)
     }
 
     Card(
@@ -333,13 +335,13 @@ fun HowItWorksCard() {
         border = BorderStroke(1.dp, cardBorder)
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
-            Text("How it works", fontWeight = FontWeight.Bold, color = textSecondary, fontSize = 14.sp)
+            Text(stringResource(R.string.card_how_it_works), fontWeight = FontWeight.Bold, color = textSecondary, fontSize = 14.sp)
             Spacer(modifier = Modifier.height(12.dp))
-            HowItWorksRow(Icons.Default.Close, danger, "Full Block — Prevents opening the app entirely")
+            HowItWorksRow(Icons.Default.Close, danger, stringResource(R.string.row_how_full_block))
             Spacer(modifier = Modifier.height(8.dp))
-            HowItWorksRow(Icons.Default.SubdirectoryArrowLeft, warning, "Partial Block — Silently redirects short-form content")
+            HowItWorksRow(Icons.Default.SubdirectoryArrowLeft, warning, stringResource(R.string.row_how_partial_block))
             Spacer(modifier = Modifier.height(8.dp))
-            HowItWorksRow(Icons.Default.Check, success, "No Block — App is fully accessible")
+            HowItWorksRow(Icons.Default.Check, success, stringResource(R.string.row_how_no_block))
         }
     }
 }
@@ -380,9 +382,9 @@ fun ModeSelectionSheet(
                 else -> success
             }
             val badgeText = when (value) {
-                "full" -> "BLOCKED"
-                "shorts", "reels" -> "PARTIAL"
-                else -> "OPEN"
+                "full" -> stringResource(R.string.badge_blocked_upper)
+                "shorts", "reels" -> stringResource(R.string.badge_partial_upper)
+                else -> stringResource(R.string.badge_open_upper)
             }
 
             Row(

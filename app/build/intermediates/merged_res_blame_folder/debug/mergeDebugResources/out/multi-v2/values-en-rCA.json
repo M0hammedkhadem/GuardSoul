@@ -1,7 +1,7 @@
 {
     "logs": [
         {
-            "outputFile": "com.agon.app-mergeDebugResources-44:/values-en-rCA/values-en-rCA.xml",
+            "outputFile": "com.agon.app-mergeDebugResources-45:/values-en-rCA/values-en-rCA.xml",
             "map": [
                 {
                     "source": "C:\\Users\\moham\\.gradle\\caches\\8.14.3\\transforms\\f987aa96d0316e46c17002fbff23c4c2\\transformed\\foundation\\res\\values-en-rCA\\values-en-rCA.xml",

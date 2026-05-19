@@ -1,5 +1,6 @@
 package com.agon.app.ui.screens
 
+import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -20,25 +21,41 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.platform.LocalContext
+import com.agon.app.R
 
 class BlockActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        val appName = intent.getStringExtra("APP_NAME") ?: "This app"
+        val appName = intent.getStringExtra("APP_NAME") ?: getString(R.string.block_app_name_default)
         val blockReason = intent.getStringExtra("BLOCK_REASON") ?: ""
         val isAiBan = blockReason == "ai_scan"
+        val isTimeLimit = blockReason == "time_limit"
 
         setContent {
             BlockScreen(
                 appName = appName,
                 isAiBan = isAiBan,
-                onGoBack = { finish() }
+                isTimeLimit = isTimeLimit,
+                onGoBack = {
+                    val homeIntent = Intent(Intent.ACTION_MAIN).apply {
+                        addCategory(Intent.CATEGORY_HOME)
+                        flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                    }
+                    startActivity(homeIntent)
+                    finish()
+                }
             )
         }
     }
 
     @Deprecated("Deprecated in Java")
     override fun onBackPressed() {
+        val homeIntent = Intent(Intent.ACTION_MAIN).apply {
+            addCategory(Intent.CATEGORY_HOME)
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK
+        }
+        startActivity(homeIntent)
         finish()
     }
 }
@@ -47,8 +64,10 @@ class BlockActivity : ComponentActivity() {
 private fun BlockScreen(
     appName: String,
     isAiBan: Boolean,
+    isTimeLimit: Boolean,
     onGoBack: () -> Unit
 ) {
+    val context = LocalContext.current
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -70,7 +89,7 @@ private fun BlockScreen(
             ) {
                 Icon(
                     imageVector = Icons.Default.Shield,
-                    contentDescription = "Blocked",
+                    contentDescription = context.getString(R.string.contentdesc_blocked),
                     tint = Color(0xFFFF4444),
                     modifier = Modifier.size(64.dp)
                 )
@@ -79,7 +98,7 @@ private fun BlockScreen(
             Spacer(modifier = Modifier.height(32.dp))
 
             Text(
-                text = "App Blocked",
+                text = context.getString(R.string.screen_block_title),
                 color = Color.White,
                 fontSize = 32.sp,
                 fontWeight = FontWeight.Black,
@@ -89,8 +108,11 @@ private fun BlockScreen(
             Spacer(modifier = Modifier.height(16.dp))
 
             Text(
-                text = if (isAiBan) "$appName was blocked due to inappropriate content detected by AI Explorer."
-                       else "$appName has been blocked by Guardian.",
+                text = when {
+                           isAiBan -> context.getString(R.string.block_reason_ai, appName)
+                           isTimeLimit -> context.getString(R.string.block_reason_time_limit, appName)
+                           else -> context.getString(R.string.block_reason_normal, appName)
+                       },
                 color = Color(0xFFAAAAAA),
                 fontSize = 16.sp,
                 textAlign = TextAlign.Center,
@@ -110,7 +132,7 @@ private fun BlockScreen(
                     .height(56.dp)
             ) {
                 Text(
-                    text = "Go Back",
+                    text = context.getString(R.string.btn_go_back),
                     color = Color.White,
                     fontSize = 18.sp,
                     fontWeight = FontWeight.Bold

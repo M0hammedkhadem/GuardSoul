@@ -3,11 +3,14 @@ package com.agon.app.engine.safe
 import com.agon.app.engine.*
 import com.agon.app.engine.filter.DomainMatcher
 import com.agon.app.engine.filter.KeywordMatcher
+import java.util.regex.Pattern
 
 class PornBlockerEngine(
     private val active: Boolean = false,
     private val customBlocklist: Set<String> = emptySet(),
     private val customKeywords: Set<String> = emptySet(),
+    private val customAllowlist: Set<String> = emptySet(),
+    private val customAllowlistedDomains: Set<String> = emptySet(),
     private val useStrictMode: Boolean = false
 ) {
     data class ContentCategory(
@@ -75,27 +78,60 @@ class PornBlockerEngine(
             )
         )
 
-        val ALL_PORN_KEYWORDS: Set<String> by lazy {
-            ADULT_CONTENT_CATEGORIES.flatMap { it.keywords }.toSet() +
-            setOf("adult", "sex", "nude", "nsfw", "erotic", "naked", "nudity",
-                  "explicit", "mature", "18+", "strip", "camgirl", "webcam",
-                  "livecam", "sexchat", "fuck", "blowjob", "orgasm", "dildo",
-                  "vibrator", "bdsm", "dominatrix", "escort", "massage",
-                  "adultdating", "swinger", "milf", "ebony", "lesbian",
-                  "gayporn", "tranny", "shemale", "bigcock", "anal",
-                  "threesome", "gangbang", "creampie", "squirting")
-        }
-
         val ALL_PORN_DOMAINS: Set<String> by lazy {
             ADULT_CONTENT_CATEGORIES.flatMap { it.domains }.toSet()
         }
 
+        // Keywords safe for literal substring matching (domain-specific or unique terms)
+        private val SAFE_SUBSTRING_KEYWORDS: Set<String> = setOf(
+            "nsfw", "camgirl", "webcam", "livecam", "sexchat",
+            "fuck", "fucking", "blowjob", "cumshot", "orgasm",
+            "dildo", "vibrator", "bdsm", "dominatrix",
+            "adultdating", "swinger", "milf", "lesbian",
+            "gayporn", "shemale", "bigcock", "threesome",
+            "gangbang", "creampie", "squirting",
+            "18+", "pornhub", "xvideos", "xnxx", "redtube",
+            "youporn", "xhamster", "spankbang", "onlyfans",
+            "livejasmin", "chaturbate", "stripchat",
+            "hentai", "ecchi", "yaoi", "yuri", "rule34",
+            "doujinshi", "brazzers", "bangbros", "playboy",
+            "penthouse", "adultfriendfinder"
+        )
+
+        // Keywords that need word-boundary detection to avoid false positives
+        private val WORD_BOUNDED_KEYWORDS: Set<String> = setOf(
+            "porn", "porno", "xxx",
+            "adult", "sex", "sexy", "sexual",
+            "nude", "naked", "nudity", "erotic", "erotica",
+            "explicit", "mature", "strip", "stripper",
+            "escort", "massage", "anal", "ebony", "tranny"
+        )
+
+        // Pre-compiled word-bounded regex patterns
+        private val wordBoundedPatterns: List<Regex> by lazy {
+            WORD_BOUNDED_KEYWORDS.map {
+                Regex("\\b${Pattern.quote(it)}\\b", RegexOption.IGNORE_CASE)
+            }
+        }
+
+        // Explicit regex patterns from categories
+        private val EXPLICIT_REGEX_PATTERNS: Set<String> by lazy {
+            ADULT_CONTENT_CATEGORIES.flatMap { it.keywordRegex }.toSet()
+        }
+
+        // Regex matcher — now ONLY uses explicit regex patterns
         private val regexMatcher by lazy {
             KeywordMatcher(
-                blocklist = ALL_PORN_KEYWORDS + ADULT_CONTENT_CATEGORIES.flatMap { it.keywordRegex }.toSet(),
+                blocklist = EXPLICIT_REGEX_PATTERNS,
                 useRegex = true,
                 caseSensitive = false
             )
+        }
+
+        // Combined for logging/reporting
+        val ALL_PORN_KEYWORDS: Set<String> by lazy {
+            SAFE_SUBSTRING_KEYWORDS + WORD_BOUNDED_KEYWORDS +
+                ADULT_CONTENT_CATEGORIES.flatMap { it.keywords }.toSet()
         }
 
         val DNS_BLOCK_ZONES = setOf(
@@ -103,6 +139,24 @@ class PornBlockerEngine(
             "adultdating", "adultvideo", "adultlive", "adultcam",
             "adultchat", "adultweb", "adultcontent"
         )
+
+        // Domains that should never be blocked (educational, medical, gov, etc.)
+        val ALLOWLISTED_DOMAINS: Set<String> = setOf(
+            "middlesex.edu", "sussex.edu", "essex.edu", "wessex.edu",
+            "sexyman.com", "sexysoftware.com", "adultswim.com",
+            "matureswim.com", "nakedjuice.com", "nakedpizza.com",
+            "erictherobot.com", "analytics.google.com",
+            "analytics.yahoo.com", "analytics.microsoft.com",
+            "analytics.facebook.com", "sexologo.it",
+            "av-med.com", "medicalsexology.org",
+            "sexeducation.com", "sex-ed.com",
+            "18+.com", "1800contacts.com", "1800flowers.com",
+            "1888.com", "sexonthebeach.com"
+        )
+    }
+
+    private fun isAllowlistedDomain(domain: String): Boolean {
+        return ALLOWLISTED_DOMAINS.any { domain.endsWith(it, ignoreCase = true) || domain == it }
     }
 
     fun evaluate(ctx: FilterContext): BlockMatch? {
@@ -111,6 +165,11 @@ class PornBlockerEngine(
         val url = ctx.url
         if (url != null) {
             val domain = DomainMatcher.extractDomain(url) ?: return null
+
+            // Allowlist check — highest priority, before any blocking
+            if (isAllowlistedDomain(domain)) return null
+            if (customAllowlistedDomains.any { domain.endsWith(it, ignoreCase = true) || domain == it }) return null
+
             for (category in ADULT_CONTENT_CATEGORIES) {
                 for (blocked in category.domains + customBlocklist) {
                     if (domainMatches(domain, blocked)) {
@@ -121,7 +180,7 @@ class PornBlockerEngine(
 
             if (useStrictMode) {
                 for (zone in DNS_BLOCK_ZONES) {
-                    if (domain.contains(".$zone.") || domain.contains(".$zone/")) {
+                    if (domainMatchesZone(domain, zone)) {
                         return BlockMatch(BlockAction.BLOCK_FULL, "DNS zone block: $zone", MatchSource.DNS_FILTER, 90)
                     }
                 }
@@ -133,13 +192,28 @@ class PornBlockerEngine(
             ctx.visibleText?.let { append(" $it") }
         }
         if (textToCheck.isNotBlank()) {
-            val keywords = ALL_PORN_KEYWORDS + customKeywords
-            for (keyword in keywords) {
+            // 0. Allowlist override (text-based) — highest priority (AdGuard pattern)
+            val allAllowlisted = customAllowlist
+            if (allAllowlisted.any { textToCheck.contains(it, ignoreCase = true) }) {
+                return null
+            }
+
+            // 1. Word-bounded keywords (prevents "anal" matching "analysis")
+            for (pattern in wordBoundedPatterns) {
+                if (pattern.containsMatchIn(textToCheck)) {
+                    return BlockMatch(BlockAction.BLOCK_FULL, "Porn keyword: ${pattern.pattern}", MatchSource.PORN_CONTENT, 87)
+                }
+            }
+
+            // 2. Safe literal substring keywords
+            val allSafe = SAFE_SUBSTRING_KEYWORDS + customKeywords
+            for (keyword in allSafe) {
                 if (textToCheck.contains(keyword, ignoreCase = true)) {
                     return BlockMatch(BlockAction.BLOCK_FULL, "Porn keyword: $keyword", MatchSource.PORN_CONTENT, 85)
                 }
             }
 
+            // 3. Strict mode: explicit regex patterns only
             if (useStrictMode) {
                 val result = regexMatcher.match(textToCheck)
                 if (result.matched) {
@@ -154,12 +228,13 @@ class PornBlockerEngine(
     fun isPornDomain(domain: String): Boolean {
         return ALL_PORN_DOMAINS.any { domainMatches(domain, it) } ||
                customBlocklist.any { domainMatches(domain, it) } ||
-               DNS_BLOCK_ZONES.any { domain.contains(".$it.") }
+               DNS_BLOCK_ZONES.any { domainMatchesZone(domain, it) }
     }
 
     fun isPornKeyword(text: String): Boolean {
-        return ALL_PORN_KEYWORDS.any { text.contains(it, ignoreCase = true) } ||
-               customKeywords.any { text.contains(it, ignoreCase = true) }
+        if (SAFE_SUBSTRING_KEYWORDS.any { text.contains(it, ignoreCase = true) }) return true
+        if (customKeywords.any { text.contains(it, ignoreCase = true) }) return true
+        return wordBoundedPatterns.any { it.containsMatchIn(text) }
     }
 
     fun getPornCategory(domain: String): String? {
@@ -177,5 +252,13 @@ class PornBlockerEngine(
         if (d.endsWith(".$p")) return true
         if (p.startsWith("*.") && d.endsWith(p.removePrefix("*."))) return true
         return false
+    }
+
+    private fun domainMatchesZone(domain: String, zone: String): Boolean {
+        val d = domain.lowercase().trim('.')
+        return d == zone ||
+               d.startsWith("$zone.") ||
+               d.endsWith(".$zone") ||
+               d.contains(".$zone.")
     }
 }

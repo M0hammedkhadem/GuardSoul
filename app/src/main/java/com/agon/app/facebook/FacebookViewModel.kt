@@ -1,7 +1,7 @@
 package com.agon.app.facebook
 
 import android.app.Application
-import android.util.Log
+import timber.log.Timber
 import android.webkit.WebView
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -56,7 +56,7 @@ class FacebookViewModel(application: Application) : AndroidViewModel(application
     }
 
     fun handlePerfWarning(batchTimeMs: Double) {
-        Log.w(TAG, "Blocker performance warning: ${batchTimeMs}ms")
+        Timber.tag(TAG).w("Blocker performance warning: ${batchTimeMs}ms")
     }
 
     fun toggleBlocker() {

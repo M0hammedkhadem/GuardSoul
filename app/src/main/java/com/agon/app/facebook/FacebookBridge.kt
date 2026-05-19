@@ -1,6 +1,6 @@
 package com.agon.app.facebook
 
-import android.util.Log
+import timber.log.Timber
 import android.webkit.JavascriptInterface
 
 class FacebookBridge(
@@ -9,14 +9,14 @@ class FacebookBridge(
 ) {
     @JavascriptInterface
     fun onReelBlocked(count: Int) {
-        Log.d(TAG, "Reel blocked. Total count: $count")
+        Timber.tag(TAG).d("Reel blocked. Total count: $count")
         onBlocked(count)
     }
 
     @JavascriptInterface
     fun onPerformanceWarning(batchTimeMs: Double) {
         if (batchTimeMs > 16.0) {
-            Log.w(TAG, "Performance warning: batch took ${batchTimeMs}ms")
+            Timber.tag(TAG).w("Performance warning: batch took ${batchTimeMs}ms")
             onPerfWarning(batchTimeMs)
         }
     }

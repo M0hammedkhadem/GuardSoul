@@ -76,10 +76,15 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.9.0")
 
     implementation("androidx.datastore:datastore-preferences:1.2.0")
+    implementation("androidx.security:security-crypto:1.1.0-alpha06")
+
+    implementation("com.jakewharton.timber:timber:5.0.1")
 
     implementation("org.tensorflow:tensorflow-lite:2.16.1")
     implementation("org.tensorflow:tensorflow-lite-support:0.4.4")
     implementation("org.tensorflow:tensorflow-lite-metadata:0.4.4")
 
     debugImplementation("androidx.compose.ui:ui-tooling")
+
+    testImplementation("junit:junit:4.13.2")
 }

@@ -25,6 +25,7 @@
     <uses-permission android:name="com.agon.app.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION" />
 
     <application
+        android:name="com.agon.app.GuardianApp"
         android:allowBackup="true"
         android:appComponentFactory="androidx.core.app.CoreComponentFactory"
         android:debuggable="true"
@@ -96,6 +97,19 @@
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
             </intent-filter>
         </receiver>
+        <receiver
+            android:name="com.agon.app.services.AIExplorerRestartReceiver"
+            android:exported="true" >
+            <intent-filter>
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+                <action android:name="android.intent.action.PACKAGE_REPLACED" />
+
+                <data android:scheme="package" />
+            </intent-filter>
+        </receiver>
+        <receiver
+            android:name="com.agon.app.utils.ScheduleReceiver"
+            android:exported="false" />
 
         <activity
             android:name="androidx.compose.ui.tooling.PreviewActivity"

@@ -16,12 +16,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import android.content.pm.PackageManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.agon.app.R
 import com.agon.app.ui.theme.*
 import com.agon.app.viewmodel.GuardianViewModel
 
@@ -51,7 +53,7 @@ fun ListsScreen(viewModel: GuardianViewModel = viewModel()) {
         containerColor = background,
         topBar = {
             TopAppBar(
-                title = { Text("Lists", fontWeight = FontWeight.Bold) },
+                title = { Text(stringResource(R.string.screen_lists_title), fontWeight = FontWeight.Bold) },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = background,
                     titleContentColor = text
@@ -75,7 +77,7 @@ fun ListsScreen(viewModel: GuardianViewModel = viewModel()) {
                 Row(modifier = Modifier.fillMaxWidth()) {
                     ListTypeButton(
                         modifier = Modifier.weight(1f),
-                        title = "Blacklist",
+                        title = stringResource(R.string.btn_blacklist),
                         icon = Icons.Default.Block,
                         isSelected = selectedList == "blacklist",
                         color = danger,
@@ -83,7 +85,7 @@ fun ListsScreen(viewModel: GuardianViewModel = viewModel()) {
                     )
                     ListTypeButton(
                         modifier = Modifier.weight(1f),
-                        title = "Whitelist",
+                        title = stringResource(R.string.btn_whitelist),
                         icon = Icons.Default.CheckCircle,
                         isSelected = selectedList == "whitelist",
                         color = success,
@@ -101,7 +103,7 @@ fun ListsScreen(viewModel: GuardianViewModel = viewModel()) {
             ) {
                 CategoryTab(
                     modifier = Modifier.weight(1f),
-                    title = "Keywords",
+                    title = stringResource(R.string.tab_keywords),
                     icon = Icons.Default.TextFields,
                     isSelected = selectedCategory == "keywords",
                     count = if (selectedList == "blacklist") state.blacklistKeywords.size else state.whitelistKeywords.size,
@@ -110,7 +112,7 @@ fun ListsScreen(viewModel: GuardianViewModel = viewModel()) {
                 )
                 CategoryTab(
                     modifier = Modifier.weight(1f),
-                    title = "Websites",
+                    title = stringResource(R.string.tab_websites),
                     icon = Icons.Default.Language,
                     isSelected = selectedCategory == "websites",
                     count = if (selectedList == "blacklist") state.blacklistWebsites.size else state.whitelistWebsites.size,
@@ -119,7 +121,7 @@ fun ListsScreen(viewModel: GuardianViewModel = viewModel()) {
                 )
                 CategoryTab(
                     modifier = Modifier.weight(1f),
-                    title = "Apps",
+                    title = stringResource(R.string.tab_apps),
                     icon = Icons.Default.Apps,
                     isSelected = selectedCategory == "apps",
                     count = if (selectedList == "blacklist") state.blacklistApps.size else state.whitelistApps.size,
@@ -138,12 +140,12 @@ fun ListsScreen(viewModel: GuardianViewModel = viewModel()) {
                 modifier = Modifier.fillMaxWidth()
             ) {
                 val desc = when ("${selectedList}_$selectedCategory") {
-                    "blacklist_keywords" -> "If any of these keywords appear in a page or search, the user is ejected."
-                    "blacklist_websites" -> "These websites are fully blocked across all browsers."
-                    "blacklist_apps" -> "These apps are completely blocked and cannot be opened."
-                    "whitelist_keywords" -> "Pages containing these keywords bypass all blocking rules."
-                    "whitelist_websites" -> "These websites are exempt from all Guardian restrictions."
-                    "whitelist_apps" -> "These apps are fully exempt from all Guardian features."
+                    "blacklist_keywords" -> stringResource(R.string.desc_blacklist_keywords)
+                    "blacklist_websites" -> stringResource(R.string.desc_blacklist_websites)
+                    "blacklist_apps" -> stringResource(R.string.desc_blacklist_apps)
+                    "whitelist_keywords" -> stringResource(R.string.desc_whitelist_keywords)
+                    "whitelist_websites" -> stringResource(R.string.desc_whitelist_websites)
+                    "whitelist_apps" -> stringResource(R.string.desc_whitelist_apps)
                     else -> ""
                 }
                 Text(
@@ -200,7 +202,7 @@ fun ListsScreen(viewModel: GuardianViewModel = viewModel()) {
                             .clip(RoundedCornerShape(12.dp))
                             .background(listColor)
                     ) {
-                        Icon(Icons.Default.Add, contentDescription = "Add", tint = surface)
+                        Icon(Icons.Default.Add, contentDescription = stringResource(R.string.contentdesc_add), tint = surface)
                     }
                 }
             }
@@ -213,8 +215,8 @@ fun ListsScreen(viewModel: GuardianViewModel = viewModel()) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Icon(Icons.Default.List, contentDescription = null, tint = textMuted, modifier = Modifier.size(48.dp))
                         Spacer(modifier = Modifier.height(8.dp))
-                        Text("No items yet", color = textSecondary, fontWeight = FontWeight.Bold)
-                        Text("Add items above to populate this list.", color = textMuted, fontSize = 13.sp)
+                        Text(stringResource(R.string.empty_title), color = textSecondary, fontWeight = FontWeight.Bold)
+                        Text(stringResource(R.string.empty_subtitle), color = textMuted, fontSize = 13.sp)
                     }
                 }
             } else {
@@ -360,7 +362,7 @@ fun ListItemCard(
                 }
             }
             IconButton(onClick = onRemove) {
-                Icon(Icons.Default.Close, contentDescription = "Remove", tint = danger)
+                Icon(Icons.Default.Close, contentDescription = stringResource(R.string.contentdesc_remove), tint = danger)
             }
         }
     }
@@ -387,14 +389,14 @@ fun AppPickerDialog(currentItems: List<String>, onDismiss: () -> Unit, onAdd: (S
     AlertDialog(
         onDismissRequest = onDismiss,
         containerColor = surface,
-        title = { Text("Select App", color = text) },
+        title = { Text(stringResource(R.string.dialog_select_app_title), color = text) },
         text = {
             Column(modifier = Modifier.fillMaxWidth()) {
                 OutlinedTextField(
                     value = searchQuery,
                     onValueChange = { searchQuery = it },
                     modifier = Modifier.fillMaxWidth(),
-                    placeholder = { Text("Search apps...") },
+                    placeholder = { Text(stringResource(R.string.placeholder_search)) },
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedBorderColor = primary,
                         unfocusedBorderColor = cardBorder,
@@ -432,7 +434,7 @@ fun AppPickerDialog(currentItems: List<String>, onDismiss: () -> Unit, onAdd: (S
                                     Text(pkg, color = textMuted, fontSize = 10.sp)
                                 }
                             }
-                            Icon(Icons.Default.Add, contentDescription = "Add", tint = primary)
+                            Icon(Icons.Default.Add, contentDescription = stringResource(R.string.contentdesc_add), tint = primary)
                         }
                     }
                 }
@@ -440,7 +442,7 @@ fun AppPickerDialog(currentItems: List<String>, onDismiss: () -> Unit, onAdd: (S
         },
         confirmButton = {
             TextButton(onClick = onDismiss) {
-                Text("Cancel", color = textSecondary)
+                Text(stringResource(R.string.btn_cancel), color = textSecondary)
             }
         }
     )

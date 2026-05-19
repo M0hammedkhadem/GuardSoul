@@ -7,6 +7,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -14,6 +15,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -26,6 +28,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import com.agon.app.R
 import com.agon.app.utils.PermissionUtils
 import com.agon.app.ui.theme.*
 import com.agon.app.viewmodel.GuardianViewModel
@@ -74,9 +77,9 @@ fun PermissionsScreen(
         containerColor = background,
         topBar = {
             TopAppBar(
-                title = { Text("Permissions", fontWeight = FontWeight.Bold) },
+                title = { Text(stringResource(R.string.screen_permissions_title), fontWeight = FontWeight.Bold) },
                 navigationIcon = {
-                    IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, contentDescription = "Back") }
+                    IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.contentdesc_back)) }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = background,
@@ -105,7 +108,7 @@ fun PermissionsScreen(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text("Permission Status", fontWeight = FontWeight.Bold, color = text, fontSize = 16.sp)
+                        Text(stringResource(R.string.card_permission_status), fontWeight = FontWeight.Bold, color = text, fontSize = 16.sp)
                         Text("$grantedCount/5", color = if (grantedCount == 5) success else warning, fontWeight = FontWeight.Bold)
                     }
                     Spacer(modifier = Modifier.height(12.dp))
@@ -128,7 +131,7 @@ fun PermissionsScreen(
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
-                            text = if (grantedCount == 5) "All permissions granted. Shield ready." else "Grant all permissions to activate the shield.",
+                            text = if (grantedCount == 5) stringResource(R.string.status_all_granted) else stringResource(R.string.status_grant_permissions),
                             color = textSecondary,
                             fontSize = 13.sp
                         )
@@ -142,9 +145,9 @@ fun PermissionsScreen(
             val context = LocalContext.current
             
             PermissionCard(
-                title = "Accessibility Service",
-                desc = "Required to detect when blocked apps are opened and enforce block screens.",
-                instruction = "Settings → Accessibility → Installed Services → Guardian",
+                title = stringResource(R.string.perm_accessibility),
+                desc = stringResource(R.string.desc_accessibility),
+                instruction = stringResource(R.string.instruction_accessibility),
                 color = primary,
                 icon = Icons.Default.Accessibility,
                 isGranted = state.accessibilityGranted,
@@ -156,9 +159,9 @@ fun PermissionsScreen(
             Spacer(modifier = Modifier.height(16.dp))
             
             PermissionCard(
-                title = "VPN Permission",
-                desc = "Required for the Porn Blocker to filter web traffic and enforce safe search.",
-                instruction = "Requested automatically when enabling Porn Blocker",
+                title = stringResource(R.string.perm_vpn),
+                desc = stringResource(R.string.desc_vpn),
+                instruction = stringResource(R.string.instruction_vpn),
                 color = success,
                 icon = Icons.Default.VpnKey,
                 isGranted = state.vpnGranted,
@@ -174,9 +177,9 @@ fun PermissionsScreen(
             Spacer(modifier = Modifier.height(16.dp))
 
             PermissionCard(
-                title = "Device Administrator",
-                desc = "Required for Uninstall Protection to prevent the app from being deleted.",
-                instruction = "Settings → Security → Device Admin Apps → Guardian",
+                title = stringResource(R.string.perm_device_admin),
+                desc = stringResource(R.string.desc_device_admin),
+                instruction = stringResource(R.string.instruction_device_admin),
                 color = danger,
                 icon = Icons.Default.Security,
                 isGranted = state.deviceAdminGranted,
@@ -192,9 +195,9 @@ fun PermissionsScreen(
             Spacer(modifier = Modifier.height(16.dp))
 
             PermissionCard(
-                title = "Display Over Other Apps",
-                desc = "Required to show the block screen over restricted apps.",
-                instruction = "Settings → Apps → Guardian → Display over other apps",
+                title = stringResource(R.string.perm_overlay),
+                desc = stringResource(R.string.desc_overlay),
+                instruction = stringResource(R.string.instruction_overlay),
                 color = warning,
                 icon = Icons.Default.Layers,
                 isGranted = state.overlayGranted,
@@ -206,9 +209,9 @@ fun PermissionsScreen(
             Spacer(modifier = Modifier.height(16.dp))
 
             PermissionCard(
-                title = "Usage Access",
-                desc = "Required to detect current foreground app and block history.",
-                instruction = "Settings → Apps → Special App Access → Usage Access → Guardian",
+                title = stringResource(R.string.perm_usage),
+                desc = stringResource(R.string.desc_usage),
+                instruction = stringResource(R.string.instruction_usage),
                 color = accent,
                 icon = Icons.Default.DataUsage,
                 isGranted = state.usageAccessGranted,
@@ -228,7 +231,7 @@ fun PermissionsScreen(
             ) {
                 Icon(Icons.Default.Lock, contentDescription = null, tint = textMuted, modifier = Modifier.size(16.dp))
                 Spacer(modifier = Modifier.width(8.dp))
-                Text("Privacy Note: Guardian operates entirely on-device.", color = textMuted, fontSize = 12.sp)
+                Text(stringResource(R.string.privacy_permissions_note), color = textMuted, fontSize = 12.sp)
             }
             Spacer(modifier = Modifier.height(32.dp))
         }
@@ -275,7 +278,7 @@ fun PermissionCard(
                                 border = BorderStroke(1.dp, danger.copy(alpha = 0.3f))
                             ) {
                                 Text(
-                                    text = "Required",
+                                    text = stringResource(R.string.badge_required),
                                     color = danger,
                                     fontSize = 9.sp,
                                     fontWeight = FontWeight.Bold,
@@ -316,9 +319,9 @@ fun PermissionCard(
                 shape = RoundedCornerShape(12.dp)
             ) {
                 if (isGranted) {
-                    Text("Granted ✓", fontWeight = FontWeight.Bold)
+                    Text(stringResource(R.string.btn_granted), fontWeight = FontWeight.Bold)
                 } else {
-                    Text("Grant Permission", fontWeight = FontWeight.Bold)
+                    Text(stringResource(R.string.btn_grant_permission), fontWeight = FontWeight.Bold)
                 }
             }
         }
@@ -333,7 +336,7 @@ fun PermissionCard(
                 Column {
                     Text(desc, color = textSecondary)
                     Spacer(modifier = Modifier.height(16.dp))
-                    Text("How to grant:", fontWeight = FontWeight.Bold, color = text)
+                    Text(stringResource(R.string.label_how_to_grant), fontWeight = FontWeight.Bold, color = text)
                     Text(instruction, color = textMuted, fontSize = 13.sp)
                 }
             },
@@ -345,12 +348,12 @@ fun PermissionCard(
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = color)
                 ) {
-                    Text("Confirm Granted", color = surface)
+                    Text(stringResource(R.string.btn_confirm_granted), color = surface)
                 }
             },
             dismissButton = {
                 TextButton(onClick = { showDialog = false }) {
-                    Text("Cancel", color = textSecondary)
+                    Text(stringResource(R.string.btn_cancel), color = textSecondary)
                 }
             }
         )

@@ -1,7 +1,7 @@
 {
     "logs": [
         {
-            "outputFile": "com.agon.app-mergeDebugResources-44:/values-mr/values-mr.xml",
+            "outputFile": "com.agon.app-mergeDebugResources-45:/values-mr/values-mr.xml",
             "map": [
                 {
                     "source": "C:\\Users\\moham\\.gradle\\caches\\8.14.3\\transforms\\34df1b94b6393c8d16011feb1f819659\\transformed\\ui\\res\\values-mr\\values-mr.xml",

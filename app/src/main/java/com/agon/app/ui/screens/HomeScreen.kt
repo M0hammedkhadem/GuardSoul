@@ -25,11 +25,13 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.agon.app.data.GuardianState
+import com.agon.app.R
 import com.agon.app.ui.theme.*
 import com.agon.app.viewmodel.GuardianViewModel
 import kotlinx.coroutines.delay
@@ -165,13 +167,13 @@ fun HomeHeader(isShieldActive: Boolean) {
     ) {
         Column {
             Text(
-                text = "Guardian",
+                text = stringResource(R.string.screen_home_title),
                 fontSize = 28.sp,
                 fontWeight = FontWeight.Black,
                 color = text
             )
             Text(
-                text = "Digital Wellness Shield",
+                text = stringResource(R.string.screen_home_subtitle),
                 fontSize = 14.sp,
                 color = textSecondary
             )
@@ -194,7 +196,7 @@ fun HomeHeader(isShieldActive: Boolean) {
                         .background(if (isShieldActive) shieldGreen else shieldRed)
                 )
                 Text(
-                    text = if (isShieldActive) "Protected" else "Inactive",
+                    text = if (isShieldActive) stringResource(R.string.status_protected) else stringResource(R.string.status_inactive),
                     fontSize = 12.sp,
                     fontWeight = FontWeight.Bold,
                     color = if (isShieldActive) shieldGreen else shieldRed
@@ -234,12 +236,12 @@ fun CountdownBanner(
                 ) {
                     Icon(
                         imageVector = Icons.Default.Timer,
-                        contentDescription = "Timer",
+                        contentDescription = stringResource(R.string.contentdesc_timer),
                         tint = warning
                     )
                     Column {
                         Text(
-                            text = "Deactivating in...",
+                            text = stringResource(R.string.label_deactivating_in),
                             fontSize = 12.sp,
                             color = textSecondary
                         )
@@ -256,7 +258,7 @@ fun CountdownBanner(
                     onClick = onCancel,
                     colors = ButtonDefaults.textButtonColors(contentColor = text)
                 ) {
-                    Text("Cancel")
+                    Text(stringResource(R.string.btn_cancel))
                 }
             }
         }
@@ -348,13 +350,13 @@ fun ShieldOrb(
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Icon(
                         imageVector = if (isActive) Icons.Filled.Shield else Icons.Outlined.Shield,
-                        contentDescription = "Shield",
+                        contentDescription = stringResource(R.string.contentdesc_shield),
                         tint = color,
                         modifier = Modifier.size(48.dp)
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
-                        text = if (isActive) "ACTIVE" else "INACTIVE",
+                        text = if (isActive) stringResource(R.string.label_active) else stringResource(R.string.label_inactive),
                         fontSize = 11.sp,
                         fontWeight = FontWeight.ExtraBold,
                         letterSpacing = 3.sp,
@@ -368,9 +370,9 @@ fun ShieldOrb(
         
         Text(
             text = when {
-                isCountingDown -> "Counting down..."
-                isActive -> "Tap to deactivate"
-                else -> "Tap to activate"
+                isCountingDown -> stringResource(R.string.hint_counting_down)
+                isActive -> stringResource(R.string.hint_tap_deactivate)
+                else -> stringResource(R.string.hint_tap_activate)
             },
             color = textMuted,
             fontSize = 14.sp
@@ -396,16 +398,16 @@ fun StatsRow(
             modifier = Modifier.weight(1f),
             icon = Icons.Default.CalendarToday,
             value = days.toString(),
-            label = "Days",
-            subLabel = "streak",
+            label = stringResource(R.string.stat_days),
+            subLabel = stringResource(R.string.stat_streak),
             color = primary
         )
         StatCard(
             modifier = Modifier.weight(1f),
             icon = Icons.Default.Security,
             value = blocksCount.toString(),
-            label = "Blocks",
-            subLabel = "total",
+            label = stringResource(R.string.stat_blocks),
+            subLabel = stringResource(R.string.stat_total),
             color = accent
         )
     }
@@ -443,15 +445,15 @@ fun ActionButtonsRow(
                 ) {
                     Icon(
                         imageVector = Icons.Default.VpnKey,
-                        contentDescription = "Permissions",
+                        contentDescription = stringResource(R.string.contentdesc_permissions),
                         tint = if (permissionsGranted) success else warning,
                         modifier = Modifier.size(20.dp)
                     )
                 }
                 Spacer(modifier = Modifier.width(12.dp))
-                Text("Permissions", color = text, fontWeight = FontWeight.Medium, fontSize = 14.sp)
+                Text(stringResource(R.string.row_permissions), color = text, fontWeight = FontWeight.Medium, fontSize = 14.sp)
                 if (!permissionsGranted) {
-                    Spacer(modifier = Modifier.height(32.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
                     Box(
                         modifier = Modifier
                             .clip(RoundedCornerShape(99.dp))
@@ -487,13 +489,13 @@ fun ActionButtonsRow(
                 ) {
                     Icon(
                         imageVector = Icons.Default.Settings,
-                        contentDescription = "Settings",
+                        contentDescription = stringResource(R.string.contentdesc_settings),
                         tint = primary,
                         modifier = Modifier.size(20.dp)
                     )
                 }
                 Spacer(modifier = Modifier.width(12.dp))
-                Text("Settings", color = text, fontWeight = FontWeight.Medium, fontSize = 14.sp)
+                Text(stringResource(R.string.row_settings), color = text, fontWeight = FontWeight.Medium, fontSize = 14.sp)
             }
         }
     }
@@ -527,7 +529,7 @@ fun PermissionWarningBar(onClick: () -> Unit) {
             }
             Spacer(modifier = Modifier.width(12.dp))
             Text(
-                text = "Permissions required for shield",
+                text = stringResource(R.string.warning_permissions_required),
                 color = warning,
                 fontWeight = FontWeight.Medium,
                 modifier = Modifier.weight(1f)
@@ -629,19 +631,19 @@ fun TrialModeCard(
                 ) {
                     Icon(
                         imageVector = Icons.Default.Science,
-                        contentDescription = "Trial Mode",
+                        contentDescription = stringResource(R.string.contentdesc_trial_mode),
                         tint = warning,
                         modifier = Modifier.size(20.dp)
                     )
                 }
                 Column {
                     Text(
-                        text = "Trial Mode",
+                        text = stringResource(R.string.card_trial_title),
                         fontWeight = FontWeight.Bold,
                         color = text
                     )
                     Text(
-                        text = "Test features without delay restriction",
+                        text = stringResource(R.string.card_trial_subtitle),
                         fontSize = 12.sp,
                         color = textSecondary
                     )
@@ -697,19 +699,19 @@ fun DeactivationDelayCard(
                 ) {
                     Icon(
                         imageVector = Icons.Default.HourglassEmpty,
-                        contentDescription = "Deactivation Delay",
+                        contentDescription = stringResource(R.string.contentdesc_deactivation_delay),
                         tint = accent,
                         modifier = Modifier.size(20.dp)
                     )
                 }
                 Column {
                     Text(
-                        text = "Deactivation Delay",
+                        text = stringResource(R.string.card_delay_title),
                         fontWeight = FontWeight.Bold,
                         color = text
                     )
                     Text(
-                        text = "Time required before turning off shield",
+                        text = stringResource(R.string.card_delay_subtitle),
                         fontSize = 12.sp,
                         color = textSecondary
                     )
@@ -748,10 +750,10 @@ fun DelaySelectionSheet(
     onSelect: (Long) -> Unit
 ) {
     val options = listOf(
-        2 * 24 * 60L to "2 Days",
-        7 * 24 * 60L to "7 Days",
-        15 * 24 * 60L to "15 Days",
-        30 * 24 * 60L to "1 Month"
+        2 * 24 * 60L to stringResource(R.string.option_delay_2days),
+        7 * 24 * 60L to stringResource(R.string.option_delay_7days),
+        15 * 24 * 60L to stringResource(R.string.option_delay_15days),
+        30 * 24 * 60L to stringResource(R.string.option_delay_1month)
     )
 
     Column(
@@ -760,14 +762,14 @@ fun DelaySelectionSheet(
             .padding(bottom = 32.dp, top = 16.dp)
     ) {
         Text(
-            text = "Deactivation Delay",
+            text = stringResource(R.string.sheet_delay_title),
             fontSize = 20.sp,
             fontWeight = FontWeight.Bold,
             color = text,
             modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp)
         )
         Text(
-            text = "Choose how long you must wait before the shield can be turned off.",
+            text = stringResource(R.string.sheet_delay_desc),
             fontSize = 14.sp,
             color = textSecondary,
             modifier = Modifier.padding(start = 24.dp, end = 24.dp, bottom = 16.dp)
