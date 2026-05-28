@@ -1,5 +1,15 @@
 package com.agon.app.ui.screens
 
+import android.app.Activity
+import android.app.admin.DevicePolicyManager
+import android.content.ComponentName
+import android.content.Intent
+import android.net.Uri
+import android.net.VpnService
+import android.os.Build
+import android.provider.Settings
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -15,62 +25,78 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.platform.LocalContext
-import android.content.Intent
-import android.provider.Settings
-import android.net.Uri
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
-import androidx.compose.ui.platform.LocalLifecycleOwner
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
+import com.agon.app.GuardianApp
+import com.agon.app.GuardianDeviceAdminReceiver
 import com.agon.app.R
+import com.agon.app.utils.AccessibilityUtils
 import com.agon.app.utils.PermissionUtils
 import com.agon.app.ui.theme.*
-import com.agon.app.viewmodel.GuardianViewModel
-import androidx.lifecycle.viewmodel.compose.viewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PermissionsScreen(
-    onBack: () -> Unit,
-    viewModel: GuardianViewModel = viewModel()
+    onBack: () -> Unit
 ) {
-    val state by viewModel.state.collectAsState()
-    val scrollState = rememberScrollState()
     val context = LocalContext.current
-    val lifecycleOwner = LocalLifecycleOwner.current
+    val app = context.applicationContext as GuardianApp
+    val settings = app.repository.getAppSettings()
 
-    val vpnLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) {
-        viewModel.updatePermission("vpn", PermissionUtils.isVpnPrepared(context))
+    val accessibilityGranted by settings.permAccessibilityFlow.collectAsState(initial = false)
+    val vpnGranted by settings.permVpnFlow.collectAsState(initial = false)
+    val deviceAdminGranted by settings.permAdminFlow.collectAsState(initial = false)
+    val overlayGranted by settings.permOverlayFlow.collectAsState(initial = false)
+    val usageAccessGranted by settings.permUsageFlow.collectAsState(initial = false)
+    val notificationGranted by settings.permNotificationsFlow.collectAsState(initial = false)
+    
+    val scrollState = rememberScrollState()
+
+    fun refreshAllPermissions() {
+        PermissionUtils.syncPermissionsWithCache(context, settings)
     }
 
+    val vpnLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            refreshAllPermissions()
+        }
+    }
+
+    val adminLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        refreshAllPermissions()
+    }
+
+    LaunchedEffect(Unit) { refreshAllPermissions() }
+
+    val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
-                viewModel.updatePermission("accessibility", PermissionUtils.isAccessibilityServiceEnabled(context))
-                viewModel.updatePermission("vpn", PermissionUtils.isVpnPrepared(context))
-                viewModel.updatePermission("device_admin", PermissionUtils.isDeviceAdminEnabled(context))
-                viewModel.updatePermission("overlay", PermissionUtils.isOverlayPermissionGranted(context))
-                viewModel.updatePermission("usage", PermissionUtils.isUsageAccessGranted(context))
+                refreshAllPermissions()
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
-        onDispose {
-            lifecycleOwner.lifecycle.removeObserver(observer)
-        }
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
+    val totalPermissions = 6
     val grantedCount = listOf(
-        state.accessibilityGranted,
-        state.vpnGranted,
-        state.deviceAdminGranted,
-        state.overlayGranted,
-        state.usageAccessGranted
+        accessibilityGranted,
+        vpnGranted,
+        deviceAdminGranted,
+        overlayGranted,
+        usageAccessGranted,
+        notificationGranted
     ).count { it }
 
     Scaffold(
@@ -96,7 +122,6 @@ fun PermissionsScreen(
                 .padding(horizontal = 16.dp)
                 .verticalScroll(scrollState)
         ) {
-            // Progress Card
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 colors = CardDefaults.cardColors(containerColor = card),
@@ -109,29 +134,29 @@ fun PermissionsScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(stringResource(R.string.card_permission_status), fontWeight = FontWeight.Bold, color = text, fontSize = 16.sp)
-                        Text("$grantedCount/5", color = if (grantedCount == 5) success else warning, fontWeight = FontWeight.Bold)
+                        Text(stringResource(R.string.permissions_progress, grantedCount), color = if (grantedCount == totalPermissions) success else warning, fontWeight = FontWeight.Bold)
                     }
                     Spacer(modifier = Modifier.height(12.dp))
                     LinearProgressIndicator(
-                        progress = { grantedCount / 5f },
+                        progress = { grantedCount / totalPermissions.toFloat() },
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(8.dp)
                             .clip(RoundedCornerShape(4.dp)),
-                        color = if (grantedCount == 5) success else warning,
+                        color = if (grantedCount == totalPermissions) success else warning,
                         trackColor = surfaceLight
                     )
                     Spacer(modifier = Modifier.height(12.dp))
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(
-                            imageVector = if (grantedCount == 5) Icons.Default.CheckCircle else Icons.Default.Info,
+                            imageVector = if (grantedCount == totalPermissions) Icons.Default.CheckCircle else Icons.Default.Info,
                             contentDescription = null,
-                            tint = if (grantedCount == 5) success else textSecondary,
+                            tint = if (grantedCount == totalPermissions) success else textSecondary,
                             modifier = Modifier.size(16.dp)
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
-                            text = if (grantedCount == 5) stringResource(R.string.status_all_granted) else stringResource(R.string.status_grant_permissions),
+                            text = if (grantedCount == totalPermissions) stringResource(R.string.status_all_granted) else stringResource(R.string.status_grant_permissions),
                             color = textSecondary,
                             fontSize = 13.sp
                         )
@@ -141,36 +166,36 @@ fun PermissionsScreen(
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            // Permission Cards
-            val context = LocalContext.current
-            
             PermissionCard(
                 title = stringResource(R.string.perm_accessibility),
                 desc = stringResource(R.string.desc_accessibility),
                 instruction = stringResource(R.string.instruction_accessibility),
                 color = primary,
                 icon = Icons.Default.Accessibility,
-                isGranted = state.accessibilityGranted,
+                isGranted = accessibilityGranted,
                 onGrant = {
-                    val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
-                    context.startActivity(intent)
+                    if (!accessibilityGranted) {
+                        AccessibilityUtils.openAccessibilitySettings(context)
+                    }
                 }
             )
             Spacer(modifier = Modifier.height(16.dp))
-            
+
             PermissionCard(
                 title = stringResource(R.string.perm_vpn),
                 desc = stringResource(R.string.desc_vpn),
                 instruction = stringResource(R.string.instruction_vpn),
                 color = success,
                 icon = Icons.Default.VpnKey,
-                isGranted = state.vpnGranted,
+                isGranted = vpnGranted,
                 onGrant = {
-                    val intent = android.net.VpnService.prepare(context)
-                    if (intent != null) {
-                        vpnLauncher.launch(intent)
-                    } else {
-                        viewModel.updatePermission("vpn", true)
+                    if (!vpnGranted) {
+                        val intent = VpnService.prepare(context)
+                        if (intent != null) {
+                            vpnLauncher.launch(intent)
+                        } else {
+                            refreshAllPermissions()
+                        }
                     }
                 }
             )
@@ -182,14 +207,15 @@ fun PermissionsScreen(
                 instruction = stringResource(R.string.instruction_device_admin),
                 color = danger,
                 icon = Icons.Default.Security,
-                isGranted = state.deviceAdminGranted,
+                isGranted = deviceAdminGranted,
                 onGrant = {
-                    val componentName = android.content.ComponentName(context, com.agon.app.receivers.GuardianDeviceAdminReceiver::class.java)
-                    val intent = Intent(android.app.admin.DevicePolicyManager.ACTION_ADD_DEVICE_ADMIN).apply {
-                        putExtra(android.app.admin.DevicePolicyManager.EXTRA_DEVICE_ADMIN, componentName)
-                        putExtra(android.app.admin.DevicePolicyManager.EXTRA_ADD_EXPLANATION, "Required for Uninstall Protection.")
+                    if (!deviceAdminGranted) {
+                        val intent = Intent(DevicePolicyManager.ACTION_ADD_DEVICE_ADMIN).apply {
+                            putExtra(DevicePolicyManager.EXTRA_DEVICE_ADMIN, ComponentName(context, GuardianDeviceAdminReceiver::class.java))
+                            putExtra(DevicePolicyManager.EXTRA_ADD_EXPLANATION, context.getString(R.string.device_admin_explanation))
+                        }
+                        adminLauncher.launch(intent)
                     }
-                    context.startActivity(intent)
                 }
             )
             Spacer(modifier = Modifier.height(16.dp))
@@ -200,10 +226,15 @@ fun PermissionsScreen(
                 instruction = stringResource(R.string.instruction_overlay),
                 color = warning,
                 icon = Icons.Default.Layers,
-                isGranted = state.overlayGranted,
+                isGranted = overlayGranted,
                 onGrant = {
-                    val intent = Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:${context.packageName}"))
-                    context.startActivity(intent)
+                    if (!overlayGranted) {
+                        val intent = Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION).apply {
+                            data = Uri.parse("package:${context.packageName}")
+                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        }
+                        context.startActivity(intent)
+                    }
                 }
             )
             Spacer(modifier = Modifier.height(16.dp))
@@ -214,16 +245,47 @@ fun PermissionsScreen(
                 instruction = stringResource(R.string.instruction_usage),
                 color = accent,
                 icon = Icons.Default.DataUsage,
-                isGranted = state.usageAccessGranted,
+                isGranted = usageAccessGranted,
                 onGrant = {
-                    val intent = Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS)
-                    context.startActivity(intent)
+                    if (!usageAccessGranted) {
+                        val intent = Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS).apply {
+                            // On some Android versions, we can try to point to the specific package
+                            // though it's not officially supported for this intent by all.
+                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        }
+                        try {
+                            context.startActivity(intent)
+                        } catch (e: Exception) {
+                            // Fallback if the specific intent fails
+                            context.startActivity(Intent(Settings.ACTION_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                        }
+                    }
+                }
+            )
+            Spacer(modifier = Modifier.height(16.dp))
+
+            PermissionCard(
+                title = stringResource(R.string.perm_notifications),
+                desc = stringResource(R.string.desc_notifications),
+                instruction = stringResource(R.string.instruction_notifications),
+                color = accent,
+                icon = Icons.Default.Notifications,
+                isGranted = notificationGranted,
+                onGrant = {
+                    if (!notificationGranted) {
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                            Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).apply {
+                                putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
+                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                context.startActivity(this)
+                            }
+                        }
+                    }
                 }
             )
 
             Spacer(modifier = Modifier.height(32.dp))
 
-            // Privacy Note
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.Center,
@@ -246,10 +308,8 @@ fun PermissionCard(
     color: Color,
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     isGranted: Boolean,
-    onGrant: () -> Unit
+    onGrant: () -> Unit = {},
 ) {
-    var showDialog by remember { mutableStateOf(false) }
-
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = card),
@@ -293,7 +353,7 @@ fun PermissionCard(
             }
 
             Spacer(modifier = Modifier.height(16.dp))
-            
+
             Surface(
                 color = surfaceLight,
                 shape = RoundedCornerShape(8.dp),
@@ -310,7 +370,7 @@ fun PermissionCard(
             Spacer(modifier = Modifier.height(16.dp))
 
             Button(
-                onClick = { if (!isGranted) showDialog = true },
+                onClick = onGrant,
                 colors = ButtonDefaults.buttonColors(
                     containerColor = if (isGranted) color.copy(alpha = 0.1f) else color,
                     contentColor = if (isGranted) color else surface
@@ -325,37 +385,5 @@ fun PermissionCard(
                 }
             }
         }
-    }
-
-    if (showDialog) {
-        AlertDialog(
-            onDismissRequest = { showDialog = false },
-            containerColor = surface,
-            title = { Text("Grant $title", color = text) },
-            text = {
-                Column {
-                    Text(desc, color = textSecondary)
-                    Spacer(modifier = Modifier.height(16.dp))
-                    Text(stringResource(R.string.label_how_to_grant), fontWeight = FontWeight.Bold, color = text)
-                    Text(instruction, color = textMuted, fontSize = 13.sp)
-                }
-            },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        onGrant()
-                        showDialog = false
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = color)
-                ) {
-                    Text(stringResource(R.string.btn_confirm_granted), color = surface)
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showDialog = false }) {
-                    Text(stringResource(R.string.btn_cancel), color = textSecondary)
-                }
-            }
-        )
     }
 }

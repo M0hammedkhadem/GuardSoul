@@ -25,477 +25,447 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.lifecycle.viewmodel.compose.viewModel
-import com.agon.app.data.GuardianState
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.agon.app.GuardianApp
+import com.agon.app.LanguageManager
 import com.agon.app.R
 import com.agon.app.ui.theme.*
-import com.agon.app.viewmodel.GuardianViewModel
-import kotlinx.coroutines.delay
+import com.agon.app.viewmodel.HomeViewModel
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(
-    viewModel: GuardianViewModel = viewModel(),
+    vm: HomeViewModel,
     onNavigateToPermissions: () -> Unit,
     onNavigateToSettings: () -> Unit
 ) {
-    val state by viewModel.state.collectAsState()
-    var showDelaySheet by remember { mutableStateOf(false) }
+    val context = LocalContext.current
     val scrollState = rememberScrollState()
+    val scope = rememberCoroutineScope()
+    val shieldActive by vm.shieldActive.collectAsStateWithLifecycle()
+    val trialMode by vm.trialMode.collectAsStateWithLifecycle()
+    val deactivationDelay by vm.deactivationDelay.collectAsStateWithLifecycle()
+    val strictMode by vm.strictMode.collectAsStateWithLifecycle()
+    val totalBlocks by vm.totalBlocks.collectAsStateWithLifecycle()
+    val blocksToday by vm.blocksToday.collectAsStateWithLifecycle()
+    val streakCount by vm.streakCount.collectAsStateWithLifecycle()
+    val profileName by vm.profileName.collectAsStateWithLifecycle()
+    val hasPin by vm.hasPin.collectAsStateWithLifecycle()
+    val countdownActive by vm.countdownActive.collectAsStateWithLifecycle()
+    val remainingSeconds by vm.remainingSeconds.collectAsStateWithLifecycle()
+    val showPinDialog by vm.showPinDialog.collectAsStateWithLifecycle()
+    val pinError by vm.pinError.collectAsStateWithLifecycle()
+    val xpPoints by vm.xpPoints.collectAsStateWithLifecycle()
+    val level by vm.level.collectAsStateWithLifecycle()
 
-    // Countdown logic
-    var remainingMillis by remember { mutableStateOf(0L) }
-    
-    LaunchedEffect(state.countdownEndTime) {
-        while (state.countdownEndTime != null) {
-            val now = System.currentTimeMillis()
-            remainingMillis = state.countdownEndTime!! - now
-            if (remainingMillis <= 0) {
-                viewModel.finalizeDeactivation()
-                remainingMillis = 0
-                break
-            }
-            delay(1000)
-        }
-    }
+    val app = context.applicationContext as GuardianApp
+    val appSettings = app.repository.getAppSettings()
+    val permAccessibility by appSettings.permAccessibilityFlow.collectAsState(initial = false)
+    val permVpn by appSettings.permVpnFlow.collectAsState(initial = false)
+    val permAdmin by appSettings.permAdminFlow.collectAsState(initial = false)
+    val permOverlay by appSettings.permOverlayFlow.collectAsState(initial = false)
+    val permUsage by appSettings.permUsageFlow.collectAsState(initial = false)
+    val permNotifications by appSettings.permNotificationsFlow.collectAsState(initial = false)
+    val permissionsGranted = permAccessibility && permVpn && permAdmin && permOverlay && permUsage && permNotifications
 
-    Scaffold(
-        containerColor = background,
-        topBar = { HomeHeader(state.isShieldActive) }
-    ) { paddingValues ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(paddingValues)
-                .padding(horizontal = 16.dp)
-                .verticalScroll(scrollState),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            Spacer(modifier = Modifier.height(16.dp))
+    var pinInput by remember { mutableStateOf("") }
+    var showDelayDialog by remember { mutableStateOf(false) }
 
-            CountdownBanner(
-                isVisible = state.countdownEndTime != null && remainingMillis > 0,
-                remainingMillis = remainingMillis,
-                onCancel = { viewModel.cancelCountdown() }
-            )
-
-            Spacer(modifier = Modifier.height(32.dp))
-
-            ShieldOrb(
-                isActive = state.isShieldActive,
-                isCountingDown = state.countdownEndTime != null,
-                onClick = {
-                    if (!state.isShieldActive) {
-                        if (!state.permissionsGranted) {
-                            onNavigateToPermissions()
-                        } else {
-                            viewModel.toggleShield()
-                        }
-                    } else {
-                        viewModel.toggleShield()
-                    }
-                }
-            )
-
-            Spacer(modifier = Modifier.height(32.dp))
-
-            StatsRow(
-                activatedAt = state.shieldActivatedAt,
-                blocksCount = state.blocksCount
-            )
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            ActionButtonsRow(
-                permissionsGranted = state.permissionsGranted,
-                onNavigateToPermissions = onNavigateToPermissions,
-                onNavigateToSettings = onNavigateToSettings
-            )
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            if (!state.permissionsGranted) {
-                PermissionWarningBar(onClick = onNavigateToPermissions)
-                Spacer(modifier = Modifier.height(16.dp))
-            }
-
-            TrialModeCard(
-                isTrialMode = state.isTrialModeActive,
-                onToggle = { viewModel.toggleTrialMode() }
-            )
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            DeactivationDelayCard(
-                currentDelayMinutes = state.deactivationDelayMinutes,
-                onClick = { showDelaySheet = true }
-            )
-
-            Spacer(modifier = Modifier.height(24.dp))
-        }
-
-        if (showDelaySheet) {
-            ModalBottomSheet(
-                onDismissRequest = { showDelaySheet = false },
-                containerColor = surface,
-                dragHandle = { BottomSheetDefaults.DragHandle(color = textMuted) }
+    Box(modifier = Modifier.fillMaxSize()) {
+        Scaffold(
+            containerColor = background,
+            topBar = { HomeHeader(isShieldActive = shieldActive) }
+        ) { paddingValues ->
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(paddingValues)
+                    .padding(horizontal = 16.dp)
+                    .verticalScroll(scrollState),
+                horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                DelaySelectionSheet(
-                    currentDelayMinutes = state.deactivationDelayMinutes,
-                    onSelect = { 
-                        viewModel.setDeactivationDelay(it)
-                        showDelaySheet = false
+                Spacer(modifier = Modifier.height(32.dp))
+
+                ShieldOrb(
+                    isActive = shieldActive,
+                    isCountingDown = countdownActive,
+                    onClick = {
+                        if (!shieldActive) {
+                            vm.toggleShield()
+                        } else {
+                            vm.startDeactivation()
+                        }
                     }
                 )
+
+                Spacer(modifier = Modifier.height(32.dp))
+
+                StatsRow(
+                    activatedAt = if (streakCount > 0) System.currentTimeMillis() - (streakCount * 86400000L) else null,
+                    blocksCount = totalBlocks
+                )
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                GamificationCard(
+                    level = level,
+                    xpPoints = xpPoints,
+                    xpProgress = vm.xpProgress,
+                    xpForNextLevel = vm.xpForNextLevel
+                )
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                ActionButtonsRow(
+                    permissionsGranted = permissionsGranted,
+                    onNavigateToPermissions = onNavigateToPermissions,
+                    onNavigateToSettings = onNavigateToSettings
+                )
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                if (!shieldActive) {
+                    PermissionWarningBar(onClick = onNavigateToPermissions)
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                TrialModeCard(
+                    isTrialMode = trialMode,
+                    onToggle = { vm.setTrialMode(it) }
+                )
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                DeactivationDelayCard(
+                    currentDelayMinutes = deactivationDelay,
+                    onClick = { showDelayDialog = true }
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                StrictModeCard(
+                    isStrictMode = strictMode,
+                    onToggle = { vm.setStrictMode(it) },
+                    hasPin = hasPin
+                )
+
+                Spacer(modifier = Modifier.height(24.dp))
             }
+        }
+
+        if (countdownActive) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.7f))
+                    .clickable { },
+                contentAlignment = Alignment.Center
+            ) {
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = card),
+                    shape = RoundedCornerShape(24.dp),
+                    border = BorderStroke(1.dp, cardBorder),
+                    modifier = Modifier
+                        .padding(32.dp)
+                        .fillMaxWidth()
+                ) {
+                    Column(
+                        modifier = Modifier.padding(24.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Icon(
+                            Icons.Default.Timer,
+                            null,
+                            tint = warning,
+                            modifier = Modifier.size(48.dp)
+                        )
+                        Spacer(Modifier.height(16.dp))
+                        Text(
+                            stringResource(R.string.shield_deactivation_title),
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 18.sp,
+                            color = text
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            stringResource(R.string.shield_deactivation_desc),
+                            fontSize = 14.sp,
+                            color = textSecondary
+                        )
+                        Spacer(Modifier.height(16.dp))
+                        val minutes = remainingSeconds / 60
+                        val seconds = remainingSeconds % 60
+                        Text(
+                            stringResource(R.string.countdown_minutes_seconds, minutes, seconds),
+                            fontSize = 48.sp,
+                            fontWeight = FontWeight.Black,
+                            color = warning
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        LinearProgressIndicator(
+                            progress = { remainingSeconds.toFloat() / (deactivationDelay * 60).coerceAtLeast(1) },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(6.dp)
+                                .clip(RoundedCornerShape(3.dp)),
+                            color = warning,
+                            trackColor = cardBorder
+                        )
+                        Spacer(Modifier.height(24.dp))
+                        Button(
+                            onClick = { vm.cancelDeactivation() },
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(12.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = surfaceLight)
+                        ) {
+                            Text(stringResource(R.string.btn_cancel_deactivation), color = text)
+                        }
+                    }
+                }
+            }
+        }
+
+        if (showPinDialog) {
+            AlertDialog(
+                onDismissRequest = { vm.dismissPinDialog() },
+                title = {
+                    Text(stringResource(R.string.pin_strict_title), fontWeight = FontWeight.Bold)
+                },
+                text = {
+                    Column {
+                        Text(stringResource(R.string.pin_strict_desc), color = textSecondary)
+                        Spacer(Modifier.height(16.dp))
+                        OutlinedTextField(
+                            value = pinInput,
+                            onValueChange = { if (it.length <= 6) pinInput = it },
+                            label = { Text(stringResource(R.string.pin_enter)) },
+                            visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
+                            keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                                keyboardType = androidx.compose.ui.text.input.KeyboardType.NumberPassword
+                            ),
+                            singleLine = true,
+                            isError = pinError,
+                            supportingText = if (pinError) {
+                                { Text(stringResource(R.string.pin_strict_error), color = MaterialTheme.colorScheme.error) }
+                            } else null,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+                },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            vm.verifyPin(pinInput)
+                            pinInput = ""
+                        },
+                        enabled = pinInput.length >= 4,
+                        shape = RoundedCornerShape(12.dp)
+                    ) { Text(stringResource(R.string.pin_btn_confirm)) }
+                },
+                dismissButton = {
+                    TextButton(onClick = { vm.dismissPinDialog(); pinInput = "" }) {
+                        Text(stringResource(R.string.btn_cancel))
+                    }
+                },
+                containerColor = card,
+                shape = RoundedCornerShape(24.dp)
+            )
+        }
+
+        if (showDelayDialog) {
+            val delayOptions = listOf(
+                0 to stringResource(R.string.delay_none),
+                2880 to stringResource(R.string.delay_2_days),
+                10080 to stringResource(R.string.delay_7_days),
+                21600 to stringResource(R.string.delay_15_days),
+                43200 to stringResource(R.string.delay_1_month)
+            )
+            AlertDialog(
+                onDismissRequest = { showDelayDialog = false },
+                title = { Text(stringResource(R.string.card_delay_title), fontWeight = FontWeight.Bold) },
+                text = {
+                    Column {
+                        delayOptions.forEach { (minutes, label) ->
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        vm.setDeactivationDelay(minutes)
+                                        showDelayDialog = false
+                                    }
+                                    .padding(vertical = 12.dp, horizontal = 8.dp)
+                                    .then(if (minutes == deactivationDelay) Modifier.background(primary.copy(alpha = 0.1f), RoundedCornerShape(8.dp)) else Modifier),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                RadioButton(
+                                    selected = minutes == deactivationDelay,
+                                    onClick = {
+                                        vm.setDeactivationDelay(minutes)
+                                        showDelayDialog = false
+                                    },
+                                    colors = RadioButtonDefaults.colors(selectedColor = primary)
+                                )
+                                Spacer(Modifier.width(8.dp))
+                                Text(label, fontWeight = FontWeight.Medium, color = text)
+                            }
+                        }
+                    }
+                },
+                confirmButton = {},
+                dismissButton = {
+                    TextButton(onClick = { showDelayDialog = false }) {
+                        Text(stringResource(R.string.btn_cancel))
+                    }
+                },
+                containerColor = card,
+                shape = RoundedCornerShape(24.dp)
+            )
         }
     }
 }
 
 @Composable
 fun HomeHeader(isShieldActive: Boolean) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val currentLang = LanguageManager.currentLanguageCode
+    val langIcon = if (currentLang == "ar") Icons.Default.Translate else Icons.Default.Language
+
     Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 24.dp),
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 24.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
         Column {
-            Text(
-                text = stringResource(R.string.screen_home_title),
-                fontSize = 28.sp,
-                fontWeight = FontWeight.Black,
-                color = text
-            )
-            Text(
-                text = stringResource(R.string.screen_home_subtitle),
-                fontSize = 14.sp,
-                color = textSecondary
-            )
+            Text(stringResource(R.string.screen_home_title), fontSize = 28.sp, fontWeight = FontWeight.Black, color = text)
+            Text(stringResource(R.string.screen_home_subtitle), fontSize = 14.sp, color = textSecondary)
         }
-
-        Surface(
-            shape = RoundedCornerShape(16.dp),
-            color = if (isShieldActive) shieldGreen.copy(alpha = 0.1f) else shieldRed.copy(alpha = 0.1f),
-            border = BorderStroke(1.dp, if (isShieldActive) shieldGreen.copy(alpha = 0.3f) else shieldRed.copy(alpha = 0.3f))
-        ) {
-            Row(
-                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Surface(
+                shape = RoundedCornerShape(16.dp),
+                color = if (isShieldActive) shieldGreen.copy(alpha = 0.1f) else shieldRed.copy(alpha = 0.1f),
+                border = BorderStroke(1.dp, if (isShieldActive) shieldGreen.copy(alpha = 0.3f) else shieldRed.copy(alpha = 0.3f))
             ) {
-                Box(
-                    modifier = Modifier
-                        .size(8.dp)
-                        .clip(CircleShape)
-                        .background(if (isShieldActive) shieldGreen else shieldRed)
-                )
-                Text(
-                    text = if (isShieldActive) stringResource(R.string.status_protected) else stringResource(R.string.status_inactive),
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = if (isShieldActive) shieldGreen else shieldRed
-                )
-            }
-        }
-    }
-}
-
-@Composable
-fun CountdownBanner(
-    isVisible: Boolean,
-    remainingMillis: Long,
-    onCancel: () -> Unit
-) {
-    AnimatedVisibility(
-        visible = isVisible,
-        enter = expandVertically() + fadeIn(),
-        exit = fadeOut()
-    ) {
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(containerColor = warning.copy(alpha = 0.1f)),
-            border = BorderStroke(1.dp, warning.copy(alpha = 0.3f)),
-            shape = RoundedCornerShape(16.dp)
-        ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Timer,
-                        contentDescription = stringResource(R.string.contentdesc_timer),
-                        tint = warning
-                    )
-                    Column {
-                        Text(
-                            text = stringResource(R.string.label_deactivating_in),
-                            fontSize = 12.sp,
-                            color = textSecondary
-                        )
-                        Text(
-                            text = formatMillis(remainingMillis),
-                            fontSize = 18.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = warning
-                        )
-                    }
-                }
-                
-                TextButton(
-                    onClick = onCancel,
-                    colors = ButtonDefaults.textButtonColors(contentColor = text)
-                ) {
-                    Text(stringResource(R.string.btn_cancel))
+                Row(Modifier.padding(horizontal = 12.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Box(Modifier.size(8.dp).clip(CircleShape).background(if (isShieldActive) shieldGreen else shieldRed))
+                    Text(if (isShieldActive) stringResource(R.string.status_protected) else stringResource(R.string.status_inactive), fontSize = 12.sp, fontWeight = FontWeight.Bold, color = if (isShieldActive) shieldGreen else shieldRed)
                 }
             }
         }
     }
 }
 
-fun formatMillis(millis: Long): String {
-    val totalSeconds = millis / 1000
-    val days = totalSeconds / (24 * 3600)
-    val hours = (totalSeconds % (24 * 3600)) / 3600
-    val minutes = (totalSeconds % 3600) / 60
-    val seconds = totalSeconds % 60
-
-    return when {
-        days > 0 -> "${days}d ${hours}h ${minutes}m"
-        hours > 0 -> "${hours}h ${minutes}m ${seconds}s"
-        else -> "${minutes}m ${seconds}s"
-    }
-}
-
 @Composable
-fun ShieldOrb(
-    isActive: Boolean,
-    isCountingDown: Boolean,
-    onClick: () -> Unit
-) {
-    val infiniteTransition = rememberInfiniteTransition()
-    
-    val scale by infiniteTransition.animateFloat(
-        initialValue = 1.0f,
-        targetValue = if (isActive && !isCountingDown) 1.06f else 1.0f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(1800, easing = LinearEasing),
-            repeatMode = RepeatMode.Reverse
-        )
+fun ShieldOrb(isActive: Boolean, isCountingDown: Boolean, onClick: () -> Unit) {
+    val infiniteTransition = rememberInfiniteTransition(label = "shield")
+    val pulseScale by infiniteTransition.animateFloat(
+        initialValue = 1f, targetValue = 1.06f,
+        animationSpec = infiniteRepeatable(tween(1200, easing = FastOutSlowInEasing), RepeatMode.Reverse),
+        label = "pulse"
     )
-    
-    val alpha by infiniteTransition.animateFloat(
-        initialValue = 0.3f,
-        targetValue = if (isActive && !isCountingDown) 0.9f else 0.3f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(1500, easing = LinearEasing),
-            repeatMode = RepeatMode.Reverse
-        )
+    val ringAlpha by infiniteTransition.animateFloat(
+        initialValue = 0.3f, targetValue = 0.6f,
+        animationSpec = infiniteRepeatable(tween(1200, easing = FastOutSlowInEasing), RepeatMode.Reverse),
+        label = "ring"
     )
 
-    val color = if (isActive) shieldGreen else shieldRed
-
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
-        modifier = Modifier.clickable(onClick = onClick, indication = null, interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() })
-    ) {
+    Box(contentAlignment = Alignment.Center, modifier = Modifier.clickable(onClick = onClick)) {
+        if (isActive) {
+            Box(Modifier.size(220.dp).scale(pulseScale).border(1.dp, primary.copy(alpha = ringAlpha), CircleShape))
+            Box(Modifier.size(190.dp).scale(pulseScale * 0.95f).border(1.dp, primary.copy(alpha = ringAlpha * 0.7f), CircleShape))
+        }
         Box(
-            modifier = Modifier.size(240.dp),
+            modifier = Modifier
+                .size(160.dp)
+                .scale(if (isActive) pulseScale else 1f)
+                .clip(CircleShape)
+                .then(
+                    if (isActive) Modifier.background(Brush.sweepGradient(listOf(primary, accent, primary)))
+                    else Modifier.background(surfaceLight)
+                )
+                .border(3.dp, if (isActive) primary else cardBorder, CircleShape),
             contentAlignment = Alignment.Center
         ) {
-            // Outer ring
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .scale(scale)
-                    .border(1.dp, color.copy(alpha = if (isActive) alpha * 0.5f else 0.1f), CircleShape)
-            )
-            
-            // Middle ring
-            Box(
-                modifier = Modifier
-                    .size(200.dp)
-                    .scale(scale * 0.98f)
-                    .border(1.5.dp, color.copy(alpha = if (isActive) alpha else 0.2f), CircleShape)
-            )
-            
-            // Inner filled circle
-            Box(
-                modifier = Modifier
-                    .size(160.dp)
-                    .clip(CircleShape)
-                    .background(
-                        Brush.radialGradient(
-                            colors = listOf(
-                                color.copy(alpha = 0.2f),
-                                color.copy(alpha = 0.05f)
-                            )
-                        )
-                    )
-                    .border(2.dp, color, CircleShape),
-                contentAlignment = Alignment.Center
-            ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(
-                        imageVector = if (isActive) Icons.Filled.Shield else Icons.Outlined.Shield,
-                        contentDescription = stringResource(R.string.contentdesc_shield),
-                        tint = color,
-                        modifier = Modifier.size(48.dp)
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        text = if (isActive) stringResource(R.string.label_active) else stringResource(R.string.label_inactive),
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.ExtraBold,
-                        letterSpacing = 3.sp,
-                        color = color
-                    )
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Icon(
+                    imageVector = if (isActive) Icons.Default.Shield else Icons.Outlined.Shield,
+                    contentDescription = null,
+                    tint = if (isActive) surface else textMuted,
+                    modifier = Modifier.size(56.dp)
+                )
+                if (isCountingDown) {
+                    Text(stringResource(R.string.hint_counting_down), fontSize = 10.sp, color = surface)
+                } else if (isActive) {
+                    Text(stringResource(R.string.label_active), fontSize = 10.sp, fontWeight = FontWeight.Bold, color = surface)
                 }
             }
         }
-        
-        Spacer(modifier = Modifier.height(24.dp))
-        
-        Text(
-            text = when {
-                isCountingDown -> stringResource(R.string.hint_counting_down)
-                isActive -> stringResource(R.string.hint_tap_deactivate)
-                else -> stringResource(R.string.hint_tap_activate)
-            },
-            color = textMuted,
-            fontSize = 14.sp
-        )
+        if (!isActive) {
+            Text(stringResource(R.string.hint_tap_activate), fontSize = 11.sp, color = textMuted, modifier = Modifier.offset(y = 100.dp))
+        }
     }
 }
 
 @Composable
-fun StatsRow(
-    activatedAt: Long?,
-    blocksCount: Int
-) {
-    val days = if (activatedAt != null) {
-        val diff = System.currentTimeMillis() - activatedAt
-        (diff / (1000 * 60 * 60 * 24)).toInt()
-    } else 0
+fun StatsRow(activatedAt: Long?, blocksCount: Int) {
+    val daysActive = if (activatedAt != null) ((System.currentTimeMillis() - activatedAt) / 86400000).toInt() else 0
 
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(16.dp)
-    ) {
-        StatCard(
-            modifier = Modifier.weight(1f),
-            icon = Icons.Default.CalendarToday,
-            value = days.toString(),
-            label = stringResource(R.string.stat_days),
-            subLabel = stringResource(R.string.stat_streak),
-            color = primary
-        )
-        StatCard(
-            modifier = Modifier.weight(1f),
-            icon = Icons.Default.Security,
-            value = blocksCount.toString(),
-            label = stringResource(R.string.stat_blocks),
-            subLabel = stringResource(R.string.stat_total),
-            color = accent
-        )
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        StatCard(title = stringResource(R.string.stat_days), value = "$daysActive", sub = stringResource(R.string.stat_streak), color = primary, modifier = Modifier.weight(1f))
+        StatCard(title = stringResource(R.string.stat_blocks), value = "$blocksCount", sub = stringResource(R.string.stat_total), color = accent, modifier = Modifier.weight(1f))
     }
 }
 
 @Composable
-fun ActionButtonsRow(
-    permissionsGranted: Boolean,
-    onNavigateToPermissions: () -> Unit,
-    onNavigateToSettings: () -> Unit
-) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
+private fun StatCard(title: String, value: String, sub: String, color: Color, modifier: Modifier = Modifier) {
+    Card(colors = CardDefaults.cardColors(containerColor = card), shape = RoundedCornerShape(16.dp), border = BorderStroke(1.dp, cardBorder), modifier = modifier) {
+        Column(Modifier.padding(16.dp)) {
+            Text(title, fontSize = 12.sp, color = textSecondary)
+            Spacer(Modifier.height(4.dp))
+            Text(value, fontSize = 32.sp, fontWeight = FontWeight.Black, color = text)
+            Text(sub, fontSize = 11.sp, color = color, fontWeight = FontWeight.Bold)
+        }
+    }
+}
+
+@Composable
+fun ActionButtonsRow(permissionsGranted: Boolean, onNavigateToPermissions: () -> Unit, onNavigateToSettings: () -> Unit) {
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         Card(
-            modifier = Modifier
-                .weight(1f)
-                .clickable(onClick = onNavigateToPermissions),
             colors = CardDefaults.cardColors(containerColor = card),
             shape = RoundedCornerShape(16.dp),
-            border = BorderStroke(1.dp, cardBorder)
+            border = BorderStroke(1.dp, cardBorder),
+            modifier = Modifier.weight(1f).clickable(onClick = onNavigateToPermissions)
         ) {
-            Row(
-                modifier = Modifier.padding(16.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(40.dp)
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(if (permissionsGranted) success.copy(alpha = 0.15f) else warning.copy(alpha = 0.15f))
-                        .border(1.dp, if (permissionsGranted) success.copy(alpha = 0.3f) else warning.copy(alpha = 0.3f), RoundedCornerShape(10.dp)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.VpnKey,
-                        contentDescription = stringResource(R.string.contentdesc_permissions),
-                        tint = if (permissionsGranted) success else warning,
-                        modifier = Modifier.size(20.dp)
-                    )
-                }
-                Spacer(modifier = Modifier.width(12.dp))
-                Text(stringResource(R.string.row_permissions), color = text, fontWeight = FontWeight.Medium, fontSize = 14.sp)
-                if (!permissionsGranted) {
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(99.dp))
-                            .background(warning)
-                            .padding(horizontal = 6.dp, vertical = 2.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text("!", color = surface, fontWeight = FontWeight.ExtraBold, fontSize = 10.sp)
-                    }
+            Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Default.Shield, null, tint = if (permissionsGranted) success else warning, modifier = Modifier.size(24.dp))
+                Spacer(Modifier.width(12.dp))
+                Column {
+                    Text(stringResource(R.string.row_permissions), color = text, fontWeight = FontWeight.Medium)
+                    Text(if (permissionsGranted) stringResource(R.string.status_all_granted) else stringResource(R.string.warning_permissions_required), fontSize = 11.sp, color = if (permissionsGranted) success else warning)
                 }
             }
         }
-
         Card(
-            modifier = Modifier
-                .weight(1f)
-                .clickable(onClick = onNavigateToSettings),
             colors = CardDefaults.cardColors(containerColor = card),
             shape = RoundedCornerShape(16.dp),
-            border = BorderStroke(1.dp, cardBorder)
+            border = BorderStroke(1.dp, cardBorder),
+            modifier = Modifier.weight(1f).clickable(onClick = onNavigateToSettings)
         ) {
-            Row(
-                modifier = Modifier.padding(16.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(40.dp)
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(primary.copy(alpha = 0.15f))
-                        .border(1.dp, primary.copy(alpha = 0.3f), RoundedCornerShape(10.dp)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Settings,
-                        contentDescription = stringResource(R.string.contentdesc_settings),
-                        tint = primary,
-                        modifier = Modifier.size(20.dp)
-                    )
+            Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Default.Settings, null, tint = textMuted, modifier = Modifier.size(24.dp))
+                Spacer(Modifier.width(12.dp))
+                Column {
+                    Text(stringResource(R.string.row_settings), color = text, fontWeight = FontWeight.Medium)
+                    Text(stringResource(R.string.section_quick_access), fontSize = 11.sp, color = textMuted)
                 }
-                Spacer(modifier = Modifier.width(12.dp))
-                Text(stringResource(R.string.row_settings), color = text, fontWeight = FontWeight.Medium, fontSize = 14.sp)
             }
         }
     }
@@ -503,161 +473,109 @@ fun ActionButtonsRow(
 
 @Composable
 fun PermissionWarningBar(onClick: () -> Unit) {
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick),
-        colors = CardDefaults.cardColors(containerColor = warning.copy(alpha = 0.1f)),
-        shape = RoundedCornerShape(16.dp),
+    Surface(
+        onClick = onClick,
+        color = warning.copy(alpha = 0.1f),
+        shape = RoundedCornerShape(12.dp),
         border = BorderStroke(1.dp, warning.copy(alpha = 0.3f))
     ) {
+        Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Default.Warning, null, tint = warning, modifier = Modifier.size(20.dp))
+            Spacer(Modifier.width(12.dp))
+            Text(stringResource(R.string.warning_permissions_required), color = warning, fontSize = 13.sp, modifier = Modifier.weight(1f))
+            Icon(Icons.Default.ChevronRight, null, tint = warning)
+        }
+    }
+}
+
+@Composable
+fun TrialModeCard(isTrialMode: Boolean, onToggle: (Boolean) -> Unit) {
+    Card(colors = CardDefaults.cardColors(containerColor = card), shape = RoundedCornerShape(16.dp), border = BorderStroke(1.dp, cardBorder)) {
+        Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.size(40.dp).clip(RoundedCornerShape(10.dp)).background(accent.copy(alpha = 0.15f)), contentAlignment = Alignment.Center) {
+                Icon(Icons.Default.Science, null, tint = accent, modifier = Modifier.size(20.dp))
+            }
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text(stringResource(R.string.card_trial_title), fontWeight = FontWeight.Bold, color = text)
+                Text(stringResource(R.string.card_trial_subtitle), fontSize = 12.sp, color = textMuted)
+            }
+            Switch(checked = isTrialMode, onCheckedChange = onToggle, colors = SwitchDefaults.colors(checkedTrackColor = accent, checkedThumbColor = surface))
+        }
+    }
+}
+
+@Composable
+fun DeactivationDelayCard(currentDelayMinutes: Int, onClick: () -> Unit) {
+    val delayText = formatDelay(currentDelayMinutes)
+
+    Card(
+        colors = CardDefaults.cardColors(containerColor = card),
+        shape = RoundedCornerShape(16.dp),
+        border = BorderStroke(1.dp, cardBorder),
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick)
+    ) {
+        Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.size(40.dp).clip(RoundedCornerShape(10.dp)).background(warning.copy(alpha = 0.15f)), contentAlignment = Alignment.Center) {
+                Icon(Icons.Default.Timer, null, tint = warning, modifier = Modifier.size(20.dp))
+            }
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text(stringResource(R.string.card_delay_title), fontWeight = FontWeight.Bold, color = text)
+                Text(stringResource(R.string.card_delay_subtitle), fontSize = 12.sp, color = textMuted)
+            }
+            Text(delayText, fontWeight = FontWeight.Bold, color = warning)
+            Spacer(Modifier.width(4.dp))
+            Icon(Icons.Default.ChevronRight, null, tint = textMuted)
+        }
+    }
+}
+
+@Composable
+fun StrictModeCard(isStrictMode: Boolean, onToggle: (Boolean) -> Unit, hasPin: Boolean) {
+    Card(
+        colors = CardDefaults.cardColors(containerColor = card),
+        shape = RoundedCornerShape(16.dp),
+        border = BorderStroke(1.dp, if (isStrictMode) accent.copy(alpha = 0.3f) else cardBorder)
+    ) {
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
+            Modifier.fillMaxWidth().padding(16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Box(
-                modifier = Modifier
-                    .size(40.dp)
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(warning.copy(alpha = 0.15f))
-                    .border(1.dp, warning.copy(alpha = 0.3f), RoundedCornerShape(10.dp)),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(Icons.Default.Warning, contentDescription = null, tint = warning, modifier = Modifier.size(20.dp))
-            }
-            Spacer(modifier = Modifier.width(12.dp))
-            Text(
-                text = stringResource(R.string.warning_permissions_required),
-                color = warning,
-                fontWeight = FontWeight.Medium,
-                modifier = Modifier.weight(1f)
-            )
-            Icon(Icons.Default.ChevronRight, contentDescription = null, tint = warning)
-        }
-    }
-}
-
-@Composable
-fun StatCard(
-    modifier: Modifier = Modifier,
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    value: String,
-    label: String,
-    subLabel: String,
-    color: Color
-) {
-    Card(
-        modifier = modifier,
-        colors = CardDefaults.cardColors(containerColor = card),
-        shape = RoundedCornerShape(16.dp),
-        border = BorderStroke(1.dp, cardBorder)
-    ) {
-        Column(
-            modifier = Modifier.padding(16.dp),
-            horizontalAlignment = Alignment.Start
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(40.dp)
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(color.copy(alpha = 0.15f))
-                    .border(1.dp, color.copy(alpha = 0.3f), RoundedCornerShape(10.dp)),
+                Modifier.size(40.dp).clip(RoundedCornerShape(10.dp))
+                    .background(accent.copy(alpha = 0.15f)),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
-                    imageVector = icon,
-                    contentDescription = null,
-                    tint = color,
+                    Icons.Default.Lock,
+                    null,
+                    tint = accent,
                     modifier = Modifier.size(20.dp)
                 )
             }
-            Spacer(modifier = Modifier.height(12.dp))
-            Text(
-                text = value,
-                fontSize = 28.sp,
-                fontWeight = FontWeight.Bold,
-                color = text
-            )
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
                 Text(
-                    text = label,
-                    fontSize = 14.sp,
-                    color = color,
-                    fontWeight = FontWeight.Medium
+                    stringResource(R.string.card_strict_title),
+                    fontWeight = FontWeight.Bold,
+                    color = text
                 )
-                Spacer(modifier = Modifier.width(4.dp))
                 Text(
-                    text = subLabel,
-                    fontSize = 14.sp,
+                    if (!hasPin) stringResource(R.string.card_strict_no_pin)
+                    else if (isStrictMode) stringResource(R.string.card_strict_on)
+                    else stringResource(R.string.card_strict_off),
+                    fontSize = 12.sp,
                     color = textMuted
                 )
             }
-        }
-    }
-}
-
-@Composable
-fun TrialModeCard(
-    isTrialMode: Boolean,
-    onToggle: () -> Unit
-) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = card),
-        shape = RoundedCornerShape(16.dp),
-        border = BorderStroke(1.dp, cardBorder)
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(16.dp),
-                modifier = Modifier.weight(1f)
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(40.dp)
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(warning.copy(alpha = 0.15f))
-                        .border(1.dp, warning.copy(alpha = 0.3f), RoundedCornerShape(10.dp)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Science,
-                        contentDescription = stringResource(R.string.contentdesc_trial_mode),
-                        tint = warning,
-                        modifier = Modifier.size(20.dp)
-                    )
-                }
-                Column {
-                    Text(
-                        text = stringResource(R.string.card_trial_title),
-                        fontWeight = FontWeight.Bold,
-                        color = text
-                    )
-                    Text(
-                        text = stringResource(R.string.card_trial_subtitle),
-                        fontSize = 12.sp,
-                        color = textSecondary
-                    )
-                }
-            }
-            
             Switch(
-                checked = isTrialMode,
-                onCheckedChange = { onToggle() },
+                checked = isStrictMode,
+                onCheckedChange = { if (hasPin) onToggle(it) },
+                enabled = hasPin,
                 colors = SwitchDefaults.colors(
-                    checkedThumbColor = surface,
-                    checkedTrackColor = warning,
-                    uncheckedThumbColor = textSecondary,
-                    uncheckedTrackColor = surfaceLight
+                    checkedTrackColor = accent,
+                    checkedThumbColor = surface
                 )
             )
         }
@@ -665,139 +583,58 @@ fun TrialModeCard(
 }
 
 @Composable
-fun DeactivationDelayCard(
-    currentDelayMinutes: Long,
-    onClick: () -> Unit
-) {
+fun GamificationCard(level: Int, xpPoints: Int, xpProgress: Float, xpForNextLevel: Int) {
     Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick),
         colors = CardDefaults.cardColors(containerColor = card),
         shape = RoundedCornerShape(16.dp),
         border = BorderStroke(1.dp, cardBorder)
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(16.dp),
-                modifier = Modifier.weight(1f)
-            ) {
+        Column(Modifier.padding(16.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
                 Box(
-                    modifier = Modifier
-                        .size(40.dp)
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(accent.copy(alpha = 0.15f))
-                        .border(1.dp, accent.copy(alpha = 0.3f), RoundedCornerShape(10.dp)),
+                    Modifier.size(40.dp).clip(RoundedCornerShape(10.dp)).background(accent.copy(alpha = 0.15f)),
                     contentAlignment = Alignment.Center
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.HourglassEmpty,
-                        contentDescription = stringResource(R.string.contentdesc_deactivation_delay),
-                        tint = accent,
-                        modifier = Modifier.size(20.dp)
-                    )
+                    Icon(Icons.Default.EmojiEvents, null, tint = accent, modifier = Modifier.size(20.dp))
                 }
-                Column {
+                Spacer(Modifier.width(12.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(stringResource(R.string.level_title, level), fontWeight = FontWeight.Bold, color = text)
+                    Text(stringResource(R.string.xp_subtitle, xpPoints, xpForNextLevel), fontSize = 12.sp, color = textMuted)
+                }
+                Surface(
+                    color = accent.copy(alpha = 0.1f),
+                    shape = RoundedCornerShape(8.dp),
+                    border = BorderStroke(1.dp, accent.copy(alpha = 0.3f))
+                ) {
                     Text(
-                        text = stringResource(R.string.card_delay_title),
-                        fontWeight = FontWeight.Bold,
-                        color = text
-                    )
-                    Text(
-                        text = stringResource(R.string.card_delay_subtitle),
+                        text = stringResource(R.string.level_badge, level),
+                        color = accent,
                         fontSize = 12.sp,
-                        color = textSecondary
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                     )
                 }
             }
-            
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    text = formatDelay(currentDelayMinutes),
-                    color = accent,
-                    fontWeight = FontWeight.Medium
-                )
-                Spacer(modifier = Modifier.width(4.dp))
-                Icon(
-                    imageVector = Icons.Default.ChevronRight,
-                    contentDescription = null,
-                    tint = textMuted
-                )
-            }
-        }
-    }
-}
-
-fun formatDelay(minutes: Long): String {
-    val days = minutes / (24 * 60)
-    return when {
-        days == 30L -> "1 Month"
-        days > 0 -> "$days Days"
-        else -> "$minutes Mins"
-    }
-}
-
-@Composable
-fun DelaySelectionSheet(
-    currentDelayMinutes: Long,
-    onSelect: (Long) -> Unit
-) {
-    val options = listOf(
-        2 * 24 * 60L to stringResource(R.string.option_delay_2days),
-        7 * 24 * 60L to stringResource(R.string.option_delay_7days),
-        15 * 24 * 60L to stringResource(R.string.option_delay_15days),
-        30 * 24 * 60L to stringResource(R.string.option_delay_1month)
-    )
-
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(bottom = 32.dp, top = 16.dp)
-    ) {
-        Text(
-            text = stringResource(R.string.sheet_delay_title),
-            fontSize = 20.sp,
-            fontWeight = FontWeight.Bold,
-            color = text,
-            modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp)
-        )
-        Text(
-            text = stringResource(R.string.sheet_delay_desc),
-            fontSize = 14.sp,
-            color = textSecondary,
-            modifier = Modifier.padding(start = 24.dp, end = 24.dp, bottom = 16.dp)
-        )
-        
-        options.forEach { (minutes, label) ->
-            Row(
+            Spacer(Modifier.height(12.dp))
+            LinearProgressIndicator(
+                progress = { xpProgress },
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clickable { onSelect(minutes) }
-                    .padding(horizontal = 24.dp, vertical = 12.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Text(
-                    text = label,
-                    fontSize = 16.sp,
-                    color = text
-                )
-                RadioButton(
-                    selected = currentDelayMinutes == minutes,
-                    onClick = { onSelect(minutes) },
-                    colors = RadioButtonDefaults.colors(
-                        selectedColor = accent,
-                        unselectedColor = textMuted
-                    )
-                )
-            }
+                    .height(6.dp)
+                    .clip(RoundedCornerShape(3.dp)),
+                color = accent,
+                trackColor = cardBorder
+            )
         }
+    }
+}
+
+private fun formatDelay(minutes: Int): String {
+    return when {
+        minutes <= 0 -> ""
+        minutes == 43200 -> "1 Month"
+        minutes % 1440 == 0 -> "${minutes / 1440} Days"
+        else -> "$minutes Mins"
     }
 }

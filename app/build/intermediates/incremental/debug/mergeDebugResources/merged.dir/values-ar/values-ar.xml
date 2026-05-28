@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<resources xmlns:ns١="urn:oasis:names:tc:xliff:document:1.2">
+<resources xmlns:ns1="urn:oasis:names:tc:xliff:document:1.2">
     <string name="about_description">جارديان هو درع قوي للعافية الرقمية مصمم لمساعدتك على استعادة التركيز والتخلص من العادات الرقمية الإدمانية من خلال حظر المحتوى القوي والمسح الذكي بالذكاء الاصطناعي.</string>
     <string name="about_title">جارديان</string>
     <string name="about_version">الإصدار 1.0.0</string>
@@ -7,14 +7,20 @@
     <string msgid="8719607706653693137" name="androidx_compose_foundation_autofill">"الملء التلقائي"</string>
     <string msgid="1150566100598813236" name="androidx_compose_ui_autofill">"الملء التلقائي"</string>
     <string name="app_facebook">فيسبوك</string>
+    <string name="app_fallback_label">تطبيق</string>
     <string name="app_instagram">إنستغرام</string>
     <string name="app_name">جارديان</string>
     <string name="app_snapchat">سناب شات</string>
     <string name="app_tiktok">تيك توك</string>
     <string name="app_twitter">إكس (تويتر)</string>
     <string name="app_youtube">يوتيوب</string>
+    <string name="auto_lock_desc">قفل الهاتف عند تجاوز حد وقت الشاشة</string>
+    <string name="auto_lock_title">قفل تلقائي عند الوصول للحد</string>
+    <string name="badge_ai">الذكاء الاصطناعي</string>
     <string name="badge_blocked">محظور</string>
     <string name="badge_blocked_upper">محظور</string>
+    <string name="badge_dns">DNS</string>
+    <string name="badge_manual">يدوي</string>
     <string name="badge_not_protected">غير محمي</string>
     <string name="badge_open">مفتوح</string>
     <string name="badge_open_upper">مفتوح</string>
@@ -23,21 +29,33 @@
     <string name="badge_protected">محمي</string>
     <string name="badge_required">مطلوب</string>
     <string name="badge_scanning">جارٍ المسح</string>
+    <string name="badge_time">الوقت</string>
     <string name="badge_vpn_active">VPN نشط</string>
+    <string name="bedtime_desc">حظر جميع التطبيقات أثناء وقت النوم</string>
+    <string name="bedtime_title">وضع النوم</string>
     <string name="block_app_name_default">هذا التطبيق</string>
     <string name="block_reason_ai">%1$s تم حظره بسبب محتوى غير لائق اكتشفه المستكشف الذكي.</string>
+    <string name="block_reason_ai_repeat">%1$s تم حظره مؤقتاً لمدة 15 دقيقة بسبب تكرار مخالفات المحتوى غير اللائق.</string>
     <string name="block_reason_normal">%1$s تم حظره بواسطة جارديان.</string>
     <string name="block_reason_time_limit">%1$s وصل إلى الحد اليومي المسموح به.</string>
+    <string name="block_shorts_action_block_screen">شاشة الحظر</string>
+    <string name="block_shorts_action_exit">إغلاق التطبيق</string>
+    <string name="block_shorts_action_redirect">العودة للرئيسية</string>
     <string name="btn_blacklist">القائمة السوداء</string>
     <string name="btn_cancel">إلغاء</string>
+    <string name="btn_cancel_deactivation">إلغاء</string>
+    <string name="btn_change">تغيير</string>
     <string name="btn_confirm_add">إضافة</string>
     <string name="btn_confirm_granted">تأكيد المنح</string>
     <string name="btn_go_back">رجوع</string>
     <string name="btn_grant_permission">منح الإذن</string>
     <string name="btn_granted">تم المنح ✓</string>
+    <string name="btn_later">لاحقاً</string>
     <string name="btn_launch_facebook_wrapper">فتح غلاف فيسبوك</string>
     <string name="btn_reset_all_settings">إعادة تعيين كل الإعدادات</string>
     <string name="btn_reset_statistics">إعادة تعيين الإحصائيات</string>
+    <string name="btn_save">حفظ</string>
+    <string name="btn_set">تعيين</string>
     <string name="btn_whitelist">القائمة البيضاء</string>
     <string msgid="881409763997275156" name="call_notification_answer_action">"ردّ"</string>
     <string msgid="8793775615905189152" name="call_notification_answer_video_action">"فيديو"</string>
@@ -50,17 +68,35 @@
     <string name="card_ai_explorer_title">المستكشف الذكي</string>
     <string name="card_delay_subtitle">الوقت المطلوب قبل إيقاف تشغيل الدرع</string>
     <string name="card_delay_title">تأخير إلغاء التنشيط</string>
+    <string name="card_fb_reels_off">Reels مسموح بها</string>
+    <string name="card_fb_reels_on">سيتم حظر Reels</string>
+    <string name="card_fb_reels_title">حظر Facebook Reels</string>
     <string name="card_how_ai_title">كيف يعمل المسح بالذكاء الاصطناعي</string>
     <string name="card_how_it_works">كيف يعمل</string>
     <string name="card_permission_status">حالة الإذن</string>
     <string name="card_porn_blocker_subtitle">يفعّل فلترة البحث الآمن عبر VPN على Google ويوتيوب وجميع المتصفحات. يحظر نتائج البحث الصريحة.</string>
     <string name="card_porn_blocker_title">حظر الإباحية</string>
+    <string name="card_strict_no_pin">قم بتعيين PIN أولاً في الإعدادات</string>
+    <string name="card_strict_off">لا حاجة لـ PIN للإلغاء</string>
+    <string name="card_strict_on">مطلوب PIN لإلغاء التنشيط</string>
+    <string name="card_strict_title">الوضع الصارم</string>
     <string name="card_trial_subtitle">اختبر الميزات بدون قيود التأخير</string>
     <string name="card_trial_title">الوضع التجريبي</string>
     <string name="card_uninstall_subtitle">يمنع حذف جارديان. يمنع الوصول إلى إعدادات التطبيق وإزالة مشرف الجهاز وتغييرات DNS وتجاوز الوضع الآمن.</string>
     <string name="card_uninstall_title">حماية الإلغاء</string>
+    <string name="card_youtube_shorts_off">Shorts مسموح بها</string>
+    <string name="card_youtube_shorts_on">سيتم حظر Shorts</string>
+    <string name="card_youtube_shorts_title">حظر YouTube Shorts</string>
+    <string name="channel_app_blocker">حظر التطبيقات</string>
+    <string name="channel_app_blocker_desc">جارديان يراقب استخدام التطبيقات</string>
     <string name="channel_ban">حظر التطبيقات</string>
     <string name="channel_ban_desc">إشعارات التطبيقات المحظورة</string>
+    <string name="channel_facebook_video">حظر فيديوهات فيسبوك</string>
+    <string name="channel_facebook_video_desc">إشعارات عند حظر فيديوهات فيسبوك</string>
+    <string name="channel_reenable_notifications">الإذن مطلوب</string>
+    <string name="channel_reenable_notifications_desc">انتهت صلاحية إذن التقاط الشاشة — اضغط لإعادة التفعيل</string>
+    <string name="channel_restart_notifications">إعادة تشغيل الخدمة</string>
+    <string name="channel_restart_notifications_desc">مستكشف جارديان الذكي يحتاج إلى انتباه</string>
     <string name="channel_scanner">المستكشف الذكي</string>
     <string name="channel_scanner_desc">المستكشف الذكي يمسح المحتوى غير الآمن</string>
     <string msgid="406453423630273620" name="close_drawer">"إغلاق قائمة التنقل"</string>
@@ -73,24 +109,59 @@
     <string name="contentdesc_permissions">الأذونات</string>
     <string name="contentdesc_refresh">تحديث</string>
     <string name="contentdesc_remove">إزالة</string>
+    <string name="contentdesc_reset">إعادة تعيين</string>
     <string name="contentdesc_settings">الإعدادات</string>
     <string name="contentdesc_settings_webview">الإعدادات</string>
     <string name="contentdesc_shield">درع</string>
     <string name="contentdesc_timer">مؤقت</string>
     <string name="contentdesc_trial_mode">الوضع التجريبي</string>
+    <string name="countdown_days_hours_minutes">%1$dي %2$dس %3$dد</string>
+    <string name="countdown_hours_minutes_seconds">%1$dس %2$dد %3$dث</string>
+    <string name="countdown_minutes_seconds">%1$dد %2$dث</string>
+    <string name="day_fri">الجمعة</string>
+    <string name="day_mon">الإثنين</string>
+    <string name="day_sat">السبت</string>
+    <string name="day_sun">الأحد</string>
+    <string name="day_thu">الخميس</string>
+    <string name="day_tue">الثلاثاء</string>
+    <string name="day_wed">الأربعاء</string>
     <string msgid="8038256446254964252" name="default_error_message">"إدخال غير صالح"</string>
     <string msgid="6312721426453364202" name="default_popup_window_title">"نافذة منبثقة"</string>
+    <string name="delay_15_days">15 يوماً</string>
+    <string name="delay_1_month">شهر واحد</string>
+    <string name="delay_2_days">يومان</string>
+    <string name="delay_7_days">7 أيام</string>
+    <string name="delay_days">%d أيام</string>
+    <string name="delay_minutes">%d دقيقة</string>
+    <string name="delay_none">بدون تأخير</string>
+    <string name="delay_one_month">شهر واحد</string>
     <string name="desc_accessibility">مطلوب لاكتشاف فتح التطبيقات المحظورة وفرض شاشات الحظر.</string>
     <string name="desc_blacklist_apps">هذه التطبيقات محظورة بالكامل ولا يمكن فتحها.</string>
     <string name="desc_blacklist_keywords">إذا ظهرت أي من هذه الكلمات في صفحة أو بحث، يتم إخراج المستخدم.</string>
     <string name="desc_blacklist_websites">هذه المواقع محظورة بالكامل عبر جميع المتصفحات.</string>
     <string name="desc_device_admin">مطلوب لحماية الإلغاء لمنع حذف التطبيق.</string>
+    <string name="desc_facebook_full">تطبيق فيسبوك محظور بالكامل</string>
+    <string name="desc_facebook_off">فيسبوك متاح بالكامل</string>
+    <string name="desc_facebook_reels">يتم إعادة توجيه Reels فقط بصمت</string>
+    <string name="desc_nextdns_profile">أدخل معرف ملف NextDNS لاستخدام قواعد فلترة مخصصة. اتركه فارغاً لاستخدام قائمة الحظر الافتراضية (البرامج الضارة + المحتوى الإباحي).</string>
+    <string name="desc_notifications">مطلوب لعرض تنبيهات الحظر وتنبيهات حالة الخدمة.</string>
     <string name="desc_overlay">مطلوب لعرض شاشة الحظر فوق التطبيقات المقيدة.</string>
     <string name="desc_usage">مطلوب لاكتشاف التطبيق النشط حاليًا وسجل الحظر.</string>
     <string name="desc_vpn">مطلوب لحظر الإباحية لفلترة حركة المرور على الويب وفرض البحث الآمن.</string>
     <string name="desc_whitelist_apps">هذه التطبيقات مستثناة بالكامل من جميع ميزات جارديان.</string>
     <string name="desc_whitelist_keywords">الصفحات التي تحتوي على هذه الكلمات تتجاوز جميع قواعد الحظر.</string>
     <string name="desc_whitelist_websites">هذه المواقع مستثناة من جميع قيود جارديان.</string>
+    <string name="desc_youtube_full">تطبيق يوتيوب محظور بالكامل</string>
+    <string name="desc_youtube_off">يوتيوب متاح بالكامل</string>
+    <string name="desc_youtube_shorts">يتم إعادة توجيه Shorts فقط بصمت</string>
+    <string name="device_admin_disable_warning">سيؤدي تعطيل مشرف جهاز جارديان إلى إزالة حماية الإلغاء وقد يترك جهازك غير محمي.</string>
+    <string name="device_admin_disabled_toast">تم تعطيل مشرف جهاز جارديان</string>
+    <string name="device_admin_enabled_toast">تم تفعيل مشرف جهاز جارديان</string>
+    <string name="device_admin_explanation">مطلوب لحماية الإلغاء.</string>
+    <string name="device_admin_explanation_long">يحتاج جارديان إلى مشرف الجهاز لمنع إلغاء التثبيت والحفاظ على حماية عافيتك الرقمية نشطة.</string>
+    <string name="dialog_accessibility_btn">فتح الإعدادات</string>
+    <string name="dialog_accessibility_text">يحتاج جارديان لخدمة إمكانية الوصول لاكتشاف النقر على فيديوهات فيسبوك وحظرها.\n\nاذهب إلى:\nالإعدادات ← إمكانية الوصول ← الخدمات المثبتة ← جارديان</string>
+    <string name="dialog_accessibility_title">تفعيل خدمة إمكانية الوصول</string>
     <string name="dialog_reset_all_confirm">إعادة تعيين الكل</string>
     <string name="dialog_reset_all_message">سيؤدي هذا إلى تعطيل الدرع ومسح جميع القوائم المخصصة وإعادة جميع الإعدادات إلى الوضع الافتراضي. لا يمكن التراجع عن هذا.</string>
     <string name="dialog_reset_all_title">إعادة تعيين كل الإعدادات</string>
@@ -104,10 +175,39 @@
     <string name="export_btn">تصدير</string>
     <string name="export_card_desc">احفظ القائمة السوداء والبيضاء في ملف</string>
     <string name="export_card_title">تصدير قوائم الحظر</string>
+    <string name="export_default_filename">guardian_blocklist.txt</string>
+    <string name="export_example_app">app:com.instagram.android</string>
+    <string name="export_example_keyword">kw:porn</string>
+    <string name="export_example_keyword2">kw:xxx</string>
+    <string name="export_example_website">pornhub.com</string>
+    <string name="export_example_website2">xnxx.com</string>
     <string name="export_failed">فشل التصدير</string>
+    <string name="export_format_apps"># التطبيقات (مسبوقة بـ app:)</string>
+    <string name="export_format_keywords"># الكلمات المفتاحية (مسبوقة بـ kw:)</string>
     <string name="export_format_title">تنسيق الملف</string>
+    <string name="export_format_websites"># المواقع (واحد لكل سطر)</string>
     <string name="export_success">تم التصدير بنجاح!</string>
     <string name="export_title">تصدير / استيراد</string>
+    <string name="facebook_blocked">محظور</string>
+    <string name="facebook_blocker">الحاجب</string>
+    <string name="facebook_blocker_active">نشط</string>
+    <string name="facebook_blocker_disabled">معطل</string>
+    <string name="facebook_confidence_threshold">عتبة الثقة: %1$d%%</string>
+    <string name="facebook_detection_sensitivity">حساسية الكشف</string>
+    <string name="facebook_end">النهاية</string>
+    <string name="facebook_friend_protection">عدم حظر الأصدقاء أبداً</string>
+    <string name="facebook_friends_safe">منشورات الأصدقاء آمنة</string>
+    <string name="facebook_may_block_friends">قد يحظر مقاطع الأصدقاء</string>
+    <string name="facebook_saved">تم التوفير</string>
+    <string name="facebook_schedule_format">%1$d:00 - %2$d:00</string>
+    <string name="facebook_schedule_off">متوقف</string>
+    <string name="facebook_scheduled_blocking">الحظر المجدول</string>
+    <string name="facebook_sensitivity_fewer">95%% (أقل)</string>
+    <string name="facebook_sensitivity_more">70%% (أكثر)</string>
+    <string name="facebook_settings_title">إعدادات حظر فيسبوك</string>
+    <string name="facebook_start">البداية</string>
+    <string name="facebook_time_saved">%1$dد</string>
+    <string name="facebook_today_stats">إحصائيات اليوم</string>
     <string name="feature_ai_active">الماسح الذكي نشط</string>
     <string name="feature_app_settings_blocked">تم حظر الوصول إلى إعدادات التطبيق</string>
     <string name="feature_bing_safe_search">البحث الآمن من Bing</string>
@@ -122,6 +222,8 @@
     <string name="feature_safe_search_active">فلتر الأمان عبر VPN نشط</string>
     <string name="feature_youtube_restricted">الوضع المقيد ليوتيوب</string>
     <string name="hint_counting_down">جارٍ العد التنازلي…</string>
+    <string name="hint_nextdns_profile">مثال: abc123</string>
+    <string name="hint_nextdns_profile_empty">لم يتم تعيين ملف - استخدام المرشحات الافتراضية</string>
     <string name="hint_tap_activate">اضغط للتفعيل</string>
     <string name="hint_tap_deactivate">اضغط لتعطيل الحماية</string>
     <string name="import_btn">استيراد</string>
@@ -129,6 +231,7 @@
     <string name="import_card_title">استيراد قوائم الحظر</string>
     <string name="import_failed">فشل الاستيراد - تنسيق ملف غير صالح</string>
     <string name="import_success">تم الاستيراد بنجاح</string>
+    <string name="import_success_count">تم استيراد %1$d عنصر بنجاح</string>
     <string name="import_success_format">تم استيراد %1$d مواقع و %2$d كلمات مفتاحية</string>
     <string msgid="6827826412747255547" name="in_progress">"قيد التقدم"</string>
     <string msgid="7933458017204019916" name="indeterminate">"تم وضع علامة في المربّع بشكل جزئي"</string>
@@ -136,15 +239,24 @@
     <string name="info_youtube">عندما يفتح المستخدم مقطع Shorts أو يدخل إلى قسم Shorts، سيتم إعادة توجيهه بصمت إلى الصفحة الرئيسية ليوتيوب دون إشعار.</string>
     <string name="instruction_accessibility">الإعدادات ← إمكانية الوصول ← الخدمات المثبتة ← جارديان</string>
     <string name="instruction_device_admin">الإعدادات ← الأمان ← تطبيقات مشرف الجهاز ← جارديان</string>
+    <string name="instruction_notifications">الإعدادات → التطبيقات → جارديان → الإشعارات → السماح</string>
     <string name="instruction_overlay">الإعدادات ← التطبيقات ← جارديان ← العرض فوق التطبيقات الأخرى</string>
     <string name="instruction_usage">الإعدادات ← التطبيقات ← الوصول الخاص ← إذن الاستخدام ← جارديان</string>
     <string name="instruction_vpn">يُطلب تلقائيًا عند تفعيل حظر الإباحية</string>
     <string name="label_active">نشط</string>
     <string name="label_deactivating_in">سيتم إلغاء التنشيط خلال…</string>
+    <string name="label_dns_provider">مزود DNS</string>
     <string name="label_full_block">حظر كامل</string>
     <string name="label_how_to_grant">كيفية المنح:</string>
     <string name="label_inactive">غير نشط</string>
+    <string name="label_nextdns_profile">معرف ملف NextDNS</string>
     <string name="label_partial_block">حظر جزئي</string>
+    <string name="lang_arabic">العربية</string>
+    <string name="lang_english">الإنجليزية</string>
+    <string name="level_badge">م.%1$d</string>
+    <string name="level_title">المستوى %1$d</string>
+    <string name="lists_add_app_to">إضافة تطبيق إلى %1$s</string>
+    <string name="lists_add_new">إضافة %1$s جديد…</string>
     <string msgid="2988463736136100848" name="m3c_bottom_sheet_collapse_description">"تصغير البطاقة السفلية"</string>
     <string msgid="1555567894577437024" name="m3c_bottom_sheet_dismiss_description">"إغلاق البطاقة السفلية"</string>
     <string msgid="8403354765404029791" name="m3c_bottom_sheet_drag_handle_description">"مقبض السحب"</string>
@@ -216,17 +328,52 @@
     <string name="mini_shield">الدرع</string>
     <string name="mini_uninstall">حماية الإلغاء</string>
     <string name="mini_vpn_filter">فلتر VPN</string>
+    <string name="nav_content">محتوى</string>
+    <string name="nav_lists">قوائم</string>
+    <string name="nav_profile">الملف</string>
+    <string name="nav_shield">الدرع</string>
+    <string name="nav_social">تواصل</string>
+    <string name="nav_stats">إحصائيات</string>
     <string msgid="542007171693138492" name="navigation_menu">"قائمة تنقل"</string>
     <string msgid="6610465462668679431" name="not_selected">"غير محدّد"</string>
+    <string name="notification_app_blocked_text">تم حظر %1$s بواسطة جارديان</string>
+    <string name="notification_app_blocked_title">تم حظر التطبيق</string>
+    <string name="notification_ban_text">%1$s تم حظره لمدة %2$d دقيقة بسبب مخالفات متكررة</string>
+    <string name="notification_ban_title">تم حظر التطبيق</string>
+    <string name="notification_blocker_text">يراقب التطبيقات للحفاظ على تركيزك</string>
+    <string name="notification_blocker_title">جارديان نشط</string>
+    <string name="notification_paused_text">اضغط لإعادة منح إذن التقاط الشاشة للمستكشف الذكي</string>
+    <string name="notification_paused_title">تم إيقاف مسح الشاشة</string>
+    <string name="notification_restart_text">اضغط لإعادة تفعيل مسح الشاشة</string>
+    <string name="notification_restart_title">تمت إعادة تشغيل المستكشف الذكي</string>
+    <string name="notification_scanner_title">مستكشف جارديان الذكي</string>
+    <string name="notification_video_blocked_text">تم حظر هذا الفيديو بواسطة جارديان</string>
+    <string name="notification_video_blocked_title">تم حظر الفيديو</string>
     <string name="onboarding_btn_continue">متابعة</string>
     <string name="onboarding_btn_grant">منح الإذن</string>
     <string name="onboarding_btn_protect">ابدأ الحماية</string>
     <string name="onboarding_btn_start">ابدأ</string>
+    <string name="onboarding_granted_chip">تم المنح</string>
     <string name="onboarding_profile_label">اسمك</string>
     <string name="onboarding_skip">تخطي</string>
     <string name="onboarding_skip_step">تخطي هذه الخطوة</string>
+    <string name="onboarding_step1_desc">درع العافية الرقمية الخاص بك. احجب المشتتات، وصنف المحتوى الصريح، وابنِ عادات رقمية صحية.\n\nدعنا نعد ملفك الشخصي في 5 خطوات سريعة.</string>
+    <string name="onboarding_step2_desc">يحتاج جارديان إلى ذلك لاكتشاف فتح التطبيقات المحظورة وفرض قواعد التركيز.\n\nسيتم نقلك إلى إعدادات النظام لتفعيلها.</string>
+    <string name="onboarding_step2_title">خدمة إمكانية الوصول</string>
+    <string name="onboarding_step3_desc">مطلوب لحظر الإباحية لفلترة حركة المرور على الويب وفرض البحث الآمن على جميع المتصفحات.\n\nسترى طلب اتصال VPN.</string>
+    <string name="onboarding_step3_title">إذن VPN</string>
+    <string name="onboarding_step4_desc">يمنع إلغاء تثبيت التطبيق أو العبث بالإعدادات.\n\nسيُطلب منك تفعيل مشرف الجهاز.</string>
+    <string name="onboarding_step4_title">مشرف الجهاز</string>
+    <string name="onboarding_step5_desc">يسمح لجارديان بعرض شاشة الحظر فوق التطبيقات المقيدة.\n\nسيتم نقلك إلى إعدادات العرض فوق التطبيقات.</string>
+    <string name="onboarding_step5_title">العرض فوق التطبيقات</string>
+    <string name="onboarding_step6_desc">مطلوب لاكتشاف التطبيق المفتوح حالياً وتتبع حدود الاستخدام اليومية.\n\nسيتم نقلك إلى إعدادات إذن الاستخدام.</string>
+    <string name="onboarding_step6_title">إذن الاستخدام</string>
+    <string name="onboarding_step7_desc">يحتاج جارديان إلى إذن الإشعارات لتنبيهك عند حظر التطبيقات والمحتوى.\n\nسيتم نقلك إلى إعدادات الإشعارات لتفعيله.</string>
+    <string name="onboarding_step7_title">إذن الإشعارات</string>
+    <string name="onboarding_step8_desc">جارديان الآن جاهز لحماية عافيتك الرقمية.\n\nراجع وخصص إعداداتك في أي وقت من التطبيق.</string>
+    <string name="onboarding_step8_title">كل شيء جاهز!</string>
     <string name="onboarding_step_granted">تم المنح ✓</string>
-    <string name="onboarding_welcome_desc">درع العافية الرقمية الخاص بك. احجب المشتتات، وصنف المحتوى الصريح، وابنِ عادات رقمية صحية.</string>
+    <string name="onboarding_welcome_desc">درع العافية الرقمية الخاص بك. احجب المشتتات، وصنف المحتوى الصريح، وابنِ عادات رقمية صحية.\n\nدعنا نعد ملفك الشخصي في 5 خطوات سريعة.</string>
     <string name="onboarding_welcome_title">مرحبًا بك في جارديان</string>
     <string name="option_block_reels">حظر Reels فقط</string>
     <string name="option_block_shorts">حظر Shorts فقط</string>
@@ -239,9 +386,12 @@
     <string name="option_yt_full_block">حظر كامل</string>
     <string name="perm_accessibility">خدمة إمكانية الوصول</string>
     <string name="perm_device_admin">مشرف الجهاز</string>
+    <string name="perm_notifications">الإشعارات</string>
     <string name="perm_overlay">العرض فوق التطبيقات الأخرى</string>
     <string name="perm_usage">إذن الاستخدام</string>
     <string name="perm_vpn">إذن VPN</string>
+    <string name="permissions_grant_title">منح %1$s</string>
+    <string name="permissions_progress">%1$d/6</string>
     <string name="pin_btn_confirm">تأكيد</string>
     <string name="pin_btn_continue">متابعة</string>
     <string name="pin_btn_unlock">فتح</string>
@@ -250,22 +400,32 @@
     <string name="pin_enter">أدخل رمز PIN من 4-6 أرقام لحماية إعداداتك</string>
     <string name="pin_error_mismatch">رمزا PIN غير متطابقين</string>
     <string name="pin_error_short">يجب أن يتكون PIN من 4 أرقام على الأقل</string>
+    <string name="pin_forgot">نسيت PIN؟</string>
+    <string name="pin_forgot_admin_explanation">أعد تنشيط مشرف الجهاز لتأكيد ملكية هذا الجهاز وإعادة تعيين PIN.</string>
     <string name="pin_gate_desc">أدخل PIN للوصول إلى الإعدادات</string>
     <string name="pin_gate_title">جارديان مقفل</string>
+    <string name="pin_label">PIN</string>
     <string name="pin_set_title">تعيين رمز PIN</string>
     <string name="pin_skip">تخطي</string>
+    <string name="pin_strict_desc">أدخل رقم PIN لإلغاء تنشيط الدرع</string>
+    <string name="pin_strict_error">رقم PIN خاطئ</string>
+    <string name="pin_strict_title">رقم PIN مطلوب</string>
     <string name="pin_success">تم تعيين PIN بنجاح!</string>
+    <string name="pin_wrong">PIN خطأ</string>
     <string name="placeholder_add_new">إضافة جديد…</string>
     <string name="placeholder_search">ابحث عن تطبيقات…</string>
     <string name="privacy_ai_note">ملاحظة الخصوصية: جميع عمليات الذكاء الاصطناعي تتم على الجهاز. لا تغادر أي بيانات شاشتك هاتفك أبدًا.</string>
     <string name="privacy_permissions_note">ملاحظة الخصوصية: جارديان يعمل بالكامل على الجهاز.</string>
     <string name="profile_account_summary">ملخص الحساب</string>
     <string name="profile_app_info">معلومات التطبيق</string>
+    <string name="profile_default_user">مستخدم</string>
     <string name="profile_disabled">معطل</string>
     <string name="profile_edit_name">تعديل الاسم</string>
     <string name="profile_enabled">مفعل</string>
     <string name="profile_expired">منتهي</string>
+    <string name="profile_guardian_user">مستخدم جارديان</string>
     <string name="profile_installed">تاريخ التثبيت</string>
+    <string name="profile_name_label">الاسم</string>
     <string name="profile_no">لا</string>
     <string name="profile_pin_protection">حماية PIN</string>
     <string name="profile_save">حفظ</string>
@@ -273,7 +433,10 @@
     <string name="profile_title">الملف الشخصي</string>
     <string name="profile_total_blocks">إجمالي الحظر</string>
     <string name="profile_trial_mode">الوضع التجريبي</string>
+    <string name="profile_trial_off">متوقف</string>
+    <string name="profile_unknown">غير معروف</string>
     <string name="profile_version">الإصدار</string>
+    <string name="profile_version_value">1.0.0</string>
     <string name="profile_yes">نعم</string>
     <string msgid="5941395253238309765" name="range_end">"نهاية النطاق"</string>
     <string msgid="7097486360902471446" name="range_start">"بداية النطاق"</string>
@@ -282,6 +445,7 @@
     <string name="row_how_full_block">الحظر الكامل - يمنع فتح التطبيق بالكامل</string>
     <string name="row_how_no_block">بدون حظر - التطبيق متاح بالكامل</string>
     <string name="row_how_partial_block">الحظر الجزئي - يعيد توجيه المحتوى القصير بصمت</string>
+    <string name="row_language">اللغة</string>
     <string name="row_permissions">الأذونات</string>
     <string name="row_permissions_settings">الأذونات</string>
     <string name="row_settings">الإعدادات</string>
@@ -289,11 +453,15 @@
     <string name="schedule_add_title">جدول جديد</string>
     <string name="schedule_btn_add">إضافة جدول</string>
     <string name="schedule_days">الأيام</string>
+    <string name="schedule_delete">حذف</string>
     <string name="schedule_empty_desc">اضغط + لإنشاء جدول حظر</string>
     <string name="schedule_empty_title">لا توجد جداول بعد</string>
     <string name="schedule_end">وقت النهاية</string>
+    <string name="schedule_fab_description">إضافة جدول</string>
     <string name="schedule_start">وقت البداية</string>
     <string name="schedule_title">الجدولة</string>
+    <string name="school_time_desc">حظر جميع التطبيقات أثناء ساعات المدرسة</string>
+    <string name="school_time_title">وقت المدرسة</string>
     <string name="screen_block_title">تم حظر التطبيق</string>
     <string name="screen_content_title">فلتر المحتوى</string>
     <string name="screen_home_subtitle">درع العافية الرقمية</string>
@@ -314,6 +482,8 @@
     <string name="sheet_delay_title">تأخير إلغاء التنشيط</string>
     <string name="sheet_facebook_title">تقييد فيسبوك</string>
     <string name="sheet_youtube_title">تقييد يوتيوب</string>
+    <string name="shield_deactivation_desc">سيتم إلغاء تنشيط الدرع بعد</string>
+    <string name="shield_deactivation_title">جاري إلغاء تنشيط الدرع</string>
     <string msgid="2792228137354697160" name="snackbar_pane_title">"تنبيه"</string>
     <string name="stat_blocks">حظر</string>
     <string name="stat_days">أيام</string>
@@ -328,8 +498,10 @@
     <string name="statistics_empty">لم يتم تسجيل أي أحداث حظر بعد</string>
     <string name="statistics_most_blocked">التطبيق الأكثر حظرًا</string>
     <string name="statistics_recent">أحداث الحظر الأخيرة</string>
+    <string name="statistics_streak">سلسلة الأيام</string>
     <string name="statistics_title">إحصائيات الاستخدام</string>
     <string name="statistics_today">اليوم</string>
+    <string name="statistics_today_breakdown">تفصيل اليوم</string>
     <string name="statistics_total">إجمالي</string>
     <string name="status_active">نشط</string>
     <string name="status_all_granted">تم منح جميع الأذونات. الدرع جاهز.</string>
@@ -342,12 +514,13 @@
     <string name="step_ai_capture">التقاط الشاشة كل 3 ثوانٍ</string>
     <string name="step_ai_detect">اكتشاف محتوى صريح → إغلاق التطبيق قسريًا</string>
     <string name="step_ai_notify">إرسال إشعار يشرح سبب الحظر</string>
+    <string name="summary_blocks_today">الحظر اليوم</string>
     <string msgid="2561197295334830845" name="switch_role">"تبديل"</string>
     <string msgid="1672349317127674378" name="tab">"علامة تبويب"</string>
     <string name="tab_apps">التطبيقات</string>
     <string name="tab_keywords">الكلمات المفتاحية</string>
     <string name="tab_websites">المواقع</string>
-    <string msgid="5946805113151406391" name="template_percent">"<ns١:g id="PERCENTAGE">%1$d</ns١:g> في المئة."</string>
+    <string msgid="5946805113151406391" name="template_percent">"<ns1:g id="PERCENTAGE">%1$d</ns1:g> في المئة."</string>
     <string name="timelimits_add">إضافة</string>
     <string name="timelimits_app_limits">حدود التطبيقات</string>
     <string name="timelimits_btn_add">إضافة</string>
@@ -355,15 +528,26 @@
     <string name="timelimits_empty_desc">أضف حدودًا زمنية للتطبيقات</string>
     <string name="timelimits_empty_title">لا توجد حدود</string>
     <string name="timelimits_grant">منح</string>
+    <string name="timelimits_min_per_day">%1$d دقيقة/يوم</string>
     <string name="timelimits_minutes">دقيقة/يوم:</string>
+    <string name="timelimits_remove">إزالة</string>
     <string name="timelimits_search">ابحث عن تطبيق</string>
+    <string name="timelimits_selected_minutes">%1$d دقيقة</string>
     <string name="timelimits_title">الحدود الزمنية اليومية</string>
+    <string name="timelimits_usage_format">%1$d/%2$d دقيقة مستخدمة اليوم</string>
     <string name="timelimits_usage_required">إذن الاستخدام مطلوب لتتبع وقت التطبيق</string>
+    <string name="timelimits_used_today">مستخدم اليوم</string>
+    <string name="title_nextdns_profile">ملف NextDNS</string>
     <string name="toast_link_blocked">تم حظر هذا الرابط للحفاظ على تركيزك</string>
     <string msgid="3765533235322692011" name="tooltip_description">"تلميح"</string>
     <string msgid="3124740595719787496" name="tooltip_label">"إظهار التلميح"</string>
+    <string name="upgrade_btn_continue">المتابعة مجاناً</string>
+    <string name="upgrade_btn_upgrade">ترقية</string>
+    <string name="upgrade_subtitle">المتابعة مجاناً مع الميزات الأساسية أو الترقية</string>
+    <string name="upgrade_title">انتهت الفترة التجريبية المجانية</string>
     <string name="warning_admin_not_granted">لم يتم منح مشرف الجهاز. اضغط على المفتاح أعلاه واقبل طلب مشرف الجهاز لتفعيل حماية الإلغاء الحقيقية.</string>
     <string name="warning_auto_ban">قاعدة الحظر التلقائي: 3 اكتشافات في 4 دقائق → حظر التطبيق لمدة 15 دقيقة</string>
     <string name="warning_content_filter">تقوم المرشحات بحظر المحتوى الصريح والمواقع الإباحية ونتائج البحث غير الآمنة عبر جميع المتصفحات والتطبيقات.</string>
     <string name="warning_permissions_required">الأذونات مطلوبة للدرع</string>
+    <string name="xp_subtitle">%1$d / %2$d نقطة خبرة</string>
 </resources>

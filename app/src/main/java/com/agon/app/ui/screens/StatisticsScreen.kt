@@ -14,211 +14,172 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.agon.app.data.BlockEvent
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.agon.app.R
 import com.agon.app.ui.theme.*
+import com.agon.app.viewmodel.StatisticsViewModel
+import java.text.SimpleDateFormat
+import java.util.*
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun StatisticsScreen(
-    blocksCount: Int,
-    shieldActivatedAt: Long?,
-    blockEvents: List<BlockEvent>,
-    onReset: () -> Unit,
+    vm: StatisticsViewModel,
     onBack: () -> Unit
 ) {
-    val daysActive = if (shieldActivatedAt != null) {
-        ((System.currentTimeMillis() - shieldActivatedAt) / (86400000)).toInt()
-    } else 0
+    val totalBlocks by vm.totalBlocks.collectAsStateWithLifecycle()
+    val blocksToday by vm.blocksToday.collectAsStateWithLifecycle()
+    val streak by vm.streakCount.collectAsStateWithLifecycle()
+    val mostBlocked by vm.mostBlockedApp.collectAsStateWithLifecycle()
+    val recentEvents by vm.recentEvents.collectAsStateWithLifecycle()
+    val daysActive = 0
 
-    val todayBlocks = blockEvents.count {
-        java.util.Calendar.getInstance().apply { timeInMillis = it.timestamp }.let { cal ->
-            val today = java.util.Calendar.getInstance()
-            cal.get(java.util.Calendar.DAY_OF_YEAR) == today.get(java.util.Calendar.DAY_OF_YEAR) &&
-            cal.get(java.util.Calendar.YEAR) == today.get(java.util.Calendar.YEAR)
-        }
-    }
-
-    val blocksByApp = blockEvents
-        .groupBy { it.packageName }
-        .mapValues { it.value.size }
-        .entries
-        .sortedByDescending { it.value }
-        .take(5)
-
-    val mostBlockedApp = blocksByApp.firstOrNull()
+    LaunchedEffect(Unit) { vm.refreshStreak() }
 
     Scaffold(
         containerColor = background,
         topBar = {
-            @OptIn(ExperimentalMaterial3Api::class)
             TopAppBar(
-                title = { Text("Usage Statistics", fontWeight = FontWeight.Bold) },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back")
-                    }
-                },
+                title = { Text(stringResource(R.string.statistics_title), fontWeight = FontWeight.Bold) },
+                navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.contentdesc_back)) } },
                 actions = {
-                    IconButton(onClick = onReset) {
-                        Icon(Icons.Default.Delete, "Reset")
+                    IconButton(onClick = { vm.resetStatistics() }) {
+                        Icon(Icons.Default.Delete, stringResource(R.string.contentdesc_reset), tint = textMuted)
                     }
                 },
-                colors = @OptIn(ExperimentalMaterial3Api::class)
-                TopAppBarDefaults.topAppBarColors(containerColor = background)
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = background)
             )
         }
     ) { padding ->
         LazyColumn(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-                .padding(16.dp),
+            modifier = Modifier.fillMaxSize().padding(padding).padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            // Summary cards
             item {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    StatCard(
-                        modifier = Modifier.weight(1f),
-                        icon = Icons.Default.CalendarToday,
-                        value = daysActive.toString(),
-                        label = "Days",
-                        subLabel = "active",
-                        color = primary
-                    )
-                    StatCard(
-                        modifier = Modifier.weight(1f),
-                        icon = Icons.Default.Shield,
-                        value = blocksCount.toString(),
-                        label = "Total",
-                        subLabel = "blocks",
-                        color = accent
-                    )
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    StatCard(stringResource(R.string.statistics_total), totalBlocks.toString(), Icons.Default.Block, danger, Modifier.weight(1f))
+                    StatCard(stringResource(R.string.statistics_today), blocksToday.toString(), Icons.Default.Today, accent, Modifier.weight(1f))
+                }
+            }
+            item {
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    StatCard(stringResource(R.string.statistics_streak), "$streak ${stringResource(R.string.statistics_days)}", Icons.Default.LocalFireDepartment, warning, Modifier.weight(1f))
+                    StatCard(stringResource(R.string.statistics_active), "$daysActive ${stringResource(R.string.statistics_days)}", Icons.Default.CalendarMonth, success, Modifier.weight(1f))
                 }
             }
 
-            item {
-                StatCard(
-                    modifier = Modifier.fillMaxWidth(),
-                    icon = Icons.Default.Today,
-                    value = todayBlocks.toString(),
-                    label = "Today's",
-                    subLabel = "blocks",
-                    color = shieldGreen
-                )
-            }
-
-            // Most blocked app badge
-            if (mostBlockedApp != null) {
+            if (mostBlocked != null) {
                 item {
                     Card(
                         colors = CardDefaults.cardColors(containerColor = card),
                         shape = RoundedCornerShape(16.dp),
                         border = BorderStroke(1.dp, cardBorder)
                     ) {
-                        Row(
-                            Modifier.fillMaxWidth().padding(16.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Box(
-                                Modifier.size(40.dp).clip(RoundedCornerShape(10.dp))
-                                    .background(warning.copy(alpha = 0.15f)),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(Icons.Default.Block, null, tint = warning, modifier = Modifier.size(20.dp))
-                            }
+                        Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.Dangerous, null, tint = danger, modifier = Modifier.size(32.dp))
                             Spacer(Modifier.width(12.dp))
-                            Column(Modifier.weight(1f)) {
-                                Text("Most Blocked App", fontSize = 12.sp, color = textSecondary)
-                                Text(
-                                    mostBlockedApp.key.substringAfterLast('.'),
-                                    fontWeight = FontWeight.Bold, color = text
-                                )
-                            }
-                            Card(
-                                colors = CardDefaults.cardColors(containerColor = warning.copy(alpha = 0.15f)),
-                                shape = RoundedCornerShape(8.dp)
-                            ) {
-                                Text(
-                                    "${mostBlockedApp.value}×",
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                                    color = warning, fontWeight = FontWeight.Bold, fontSize = 14.sp
-                                )
+                            Column {
+                                Text(stringResource(R.string.statistics_most_blocked), fontSize = 12.sp, color = textMuted)
+                                Text(mostBlocked!!.appLabel.ifBlank { mostBlocked!!.packageName }, fontWeight = FontWeight.Bold, color = text)
+                                Text("${mostBlocked!!.count} ${stringResource(R.string.statistics_blocks)}", fontSize = 12.sp, color = primary)
                             }
                         }
                     }
                 }
             }
 
-            // Block history
             item {
-                Text(
-                    "Recent Block Events",
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = text,
-                    modifier = Modifier.padding(top = 8.dp)
-                )
-            }
-
-            if (blockEvents.isEmpty()) {
-                item {
-                    Box(Modifier.fillMaxWidth().padding(vertical = 32.dp), contentAlignment = Alignment.Center) {
-                        Text("No block events recorded yet", color = textMuted)
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = card),
+                    shape = RoundedCornerShape(16.dp),
+                    border = BorderStroke(1.dp, cardBorder)
+                ) {
+                    Column(Modifier.padding(16.dp)) {
+                        Text(stringResource(R.string.statistics_today_breakdown), fontWeight = FontWeight.Bold, color = text)
+                        Spacer(Modifier.height(8.dp))
+                        val recentToday = recentEvents.filter { it.timestamp >= getTodayStart() }
+                        if (recentToday.isEmpty()) {
+                            Text(stringResource(R.string.statistics_empty), fontSize = 13.sp, color = textMuted)
+                        } else {
+                            recentToday.groupBy { it.appLabel.ifBlank { it.packageName } }.forEach { (app, events) ->
+                                val pct = events.size.toFloat() / maxOf(1, recentToday.size)
+                                Column {
+                                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                        Text(app, fontSize = 13.sp, color = text, modifier = Modifier.weight(1f))
+                                        Text("${events.size}", fontSize = 13.sp, color = primary, fontWeight = FontWeight.Bold)
+                                    }
+                                    Spacer(Modifier.height(4.dp))
+                                    LinearProgressIndicator(
+                                        progress = { pct },
+                                        modifier = Modifier.fillMaxWidth().height(4.dp).clip(RoundedCornerShape(2.dp)),
+                                        color = primary, trackColor = surfaceLight
+                                    )
+                                    Spacer(Modifier.height(8.dp))
+                                }
+                            }
+                        }
                     }
                 }
-            } else {
-                items(blockEvents.takeLast(50).reversed()) { event ->
-                    Card(
-                        colors = CardDefaults.cardColors(containerColor = card),
-                        shape = RoundedCornerShape(12.dp)
-                    ) {
-                        Row(
-                            Modifier.fillMaxWidth().padding(12.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(
-                                when (event.blockType) {
-                                    "ai_scan" -> Icons.Default.VisibilityOff
-                                    "porn" -> Icons.Default.Block
-                                    "time_limit" -> Icons.Default.Timer
-                                    else -> Icons.Default.Block
-                                },
-                                null,
-                                tint = shieldRed,
-                                modifier = Modifier.size(20.dp)
-                            )
-                            Spacer(Modifier.width(8.dp))
-                            Column(Modifier.weight(1f)) {
-                                Text(
-                                    event.packageName.substringAfterLast('.'),
-                                    fontSize = 14.sp,
-                                    fontWeight = FontWeight.Medium,
-                                    color = text
-                                )
-                                Text(
-                                    java.text.SimpleDateFormat("MMM dd, HH:mm", java.util.Locale.getDefault())
-                                        .format(java.util.Date(event.timestamp)),
-                                    fontSize = 11.sp,
-                                    color = textMuted
-                                )
+            }
+
+            item {
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = card),
+                    shape = RoundedCornerShape(16.dp),
+                    border = BorderStroke(1.dp, cardBorder)
+                ) {
+                    Column(Modifier.padding(16.dp)) {
+                        Text(stringResource(R.string.statistics_recent), fontWeight = FontWeight.Bold, color = text)
+                        Spacer(Modifier.height(8.dp))
+                        if (recentEvents.isEmpty()) {
+                            Text(stringResource(R.string.statistics_empty), fontSize = 13.sp, color = textMuted)
+                        } else {
+                            recentEvents.take(20).forEach { event ->
+                                Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(
+                                        when (event.blockType) { "ai" -> Icons.Default.VisibilityOff; "time" -> Icons.Default.Timer; else -> Icons.Default.Block },
+                                        null, tint = textMuted, modifier = Modifier.size(16.dp)
+                                    )
+                                    Spacer(Modifier.width(8.dp))
+                                    Text(event.appLabel.ifBlank { event.packageName.substringAfterLast('.') }, color = text, fontSize = 13.sp, modifier = Modifier.weight(1f))
+                                    Text(formatTime(event.timestamp), color = textMuted, fontSize = 11.sp)
+                                }
                             }
-                            Text(
-                                when (event.blockType) {
-                                    "ai_scan" -> "AI"
-                                    "porn" -> "DNS"
-                                    "time_limit" -> "Time"
-                                    else -> "Manual"
-                                },
-                                fontSize = 11.sp,
-                                color = textSecondary
-                            )
                         }
                     }
                 }
             }
         }
     }
+}
+
+@Composable
+private fun StatCard(label: String, value: String, icon: androidx.compose.ui.graphics.vector.ImageVector, iconColor: Color, modifier: Modifier = Modifier) {
+    Card(colors = CardDefaults.cardColors(containerColor = card), shape = RoundedCornerShape(16.dp), border = BorderStroke(1.dp, cardBorder), modifier = modifier) {
+        Column(Modifier.padding(16.dp)) {
+            Icon(icon, null, tint = iconColor, modifier = Modifier.size(24.dp))
+            Spacer(Modifier.height(8.dp))
+            Text(value, fontSize = 24.sp, fontWeight = FontWeight.Bold, color = text)
+            Text(label, fontSize = 12.sp, color = textMuted)
+        }
+    }
+}
+
+private fun formatTime(timestamp: Long): String {
+    val sdf = SimpleDateFormat("HH:mm", Locale.getDefault())
+    return sdf.format(Date(timestamp))
+}
+
+private fun getTodayStart(): Long {
+    val cal = Calendar.getInstance()
+    cal.set(Calendar.HOUR_OF_DAY, 0)
+    cal.set(Calendar.MINUTE, 0)
+    cal.set(Calendar.SECOND, 0)
+    cal.set(Calendar.MILLISECOND, 0)
+    return cal.timeInMillis
 }

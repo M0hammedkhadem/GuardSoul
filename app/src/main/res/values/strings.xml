@@ -19,6 +19,18 @@
     <string name="stat_streak">streak</string>
     <string name="stat_blocks">Blocks</string>
     <string name="stat_total">total</string>
+    <string name="level_title">Level %1$d</string>
+    <string name="level_badge">Lv.%1$d</string>
+    <string name="xp_subtitle">%1$d / %2$d XP</string>
+    <string name="block_shorts_action_redirect">Redirect to Home</string>
+    <string name="block_shorts_action_exit">Exit App</string>
+    <string name="block_shorts_action_block_screen">Show Block Screen</string>
+    <string name="school_time_title">School Time</string>
+    <string name="school_time_desc">Block all apps during school hours</string>
+    <string name="bedtime_title">Bedtime Mode</string>
+    <string name="bedtime_desc">Block all apps during bedtime</string>
+    <string name="auto_lock_title">Auto-Lock on Limit</string>
+    <string name="auto_lock_desc">Lock phone when screen time limit exceeded</string>
     <string name="contentdesc_permissions">Permissions</string>
     <string name="row_permissions">Permissions</string>
     <string name="contentdesc_settings">Settings</string>
@@ -30,6 +42,11 @@
     <string name="contentdesc_deactivation_delay">Deactivation Delay</string>
     <string name="card_delay_title">Deactivation Delay</string>
     <string name="card_delay_subtitle">Time required before turning off shield</string>
+    <string name="delay_none">No Delay</string>
+    <string name="delay_2_days">2 Days</string>
+    <string name="delay_7_days">7 Days</string>
+    <string name="delay_15_days">15 Days</string>
+    <string name="delay_1_month">1 Month</string>
     <string name="label_deactivating_in">Deactivating in…</string>
     <string name="btn_cancel">Cancel</string>
     <string name="sheet_delay_title">Deactivation Delay</string>
@@ -72,9 +89,19 @@
     <string name="badge_blocked_upper">BLOCKED</string>
     <string name="badge_partial_upper">PARTIAL</string>
     <string name="badge_open_upper">OPEN</string>
+    <string name="summary_blocks_today">Blocks today</string>
+    <string name="desc_youtube_off">YouTube is fully accessible</string>
+    <string name="desc_youtube_full">The YouTube app is completely blocked</string>
+    <string name="desc_youtube_shorts">Only Shorts are silently redirected</string>
+    <string name="desc_facebook_off">Facebook is fully accessible</string>
+    <string name="desc_facebook_full">The Facebook app is completely blocked</string>
+    <string name="desc_facebook_reels">Only Reels are silently redirected</string>
 
     <!-- SettingsScreen -->
     <string name="screen_settings_title">Settings</string>
+    <string name="row_language">Language</string>
+    <string name="lang_english">English</string>
+    <string name="lang_arabic">Arabic</string>
     <string name="contentdesc_back">Back</string>
     <string name="section_quick_access">Quick Access</string>
     <string name="section_status_overview">Status Overview</string>
@@ -114,6 +141,15 @@
     <string name="feature_bing_safe_search">Bing Safe Search</string>
     <string name="feature_browser_filter">Browser Content Filter</string>
     <string name="feature_dns_blocking">DNS-level Blocking</string>
+    <string name="label_dns_provider">DNS Provider</string>
+    <string name="label_nextdns_profile">NextDNS Profile ID</string>
+    <string name="hint_nextdns_profile_empty">No profile set — using default filters</string>
+    <string name="hint_nextdns_profile">e.g. abc123</string>
+    <string name="title_nextdns_profile">NextDNS Profile</string>
+    <string name="desc_nextdns_profile">Enter your NextDNS profile ID to use custom filtering rules. Leave empty to use the default NextDNS blocklist (malware + adult content).</string>
+    <string name="btn_set">Set</string>
+    <string name="btn_change">Change</string>
+    <string name="btn_save">Save</string>
     <string name="card_ai_explorer_title">AI Explorer</string>
     <string name="card_ai_explorer_subtitle">Uses AI to scan your screen every 3 seconds. Explicit content detected → app closed &amp; notified. 3 detections in 4 min → 15 min app ban.</string>
     <string name="badge_scanning">SCANNING</string>
@@ -190,6 +226,7 @@
     <string name="contentdesc_blocked">Blocked</string>
     <string name="screen_block_title">App Blocked</string>
     <string name="block_reason_ai">%1$s was blocked due to inappropriate content detected by AI Explorer.</string>
+    <string name="block_reason_ai_repeat">%1$s has been temporarily banned for 15 minutes due to repeated inappropriate content violations.</string>
     <string name="block_reason_normal">%1$s has been blocked by Guardian.</string>
     <string name="block_reason_time_limit">%1$s has reached its daily time limit.</string>
     <string name="btn_go_back">Go Back</string>
@@ -211,7 +248,7 @@
 
     <!-- Onboarding -->
     <string name="onboarding_welcome_title">Welcome to Guardian</string>
-    <string name="onboarding_welcome_desc">Your digital wellness shield. Block distractions, filter explicit content, and build healthier digital habits.</string>
+    <string name="onboarding_welcome_desc">Your digital wellness shield. Block distractions, filter explicit content, and build healthier digital habits.\n\nLet\'s set up your profile in 5 quick steps.</string>
     <string name="onboarding_profile_label">Your name</string>
     <string name="onboarding_btn_start">Get Started</string>
     <string name="onboarding_btn_protect">Start Protecting</string>
@@ -235,6 +272,14 @@
     <string name="pin_btn_confirm">Confirm</string>
     <string name="pin_btn_unlock">Unlock</string>
     <string name="pin_skip">Skip</string>
+    <string name="pin_forgot">Forgot PIN?</string>
+    <string name="pin_forgot_admin_explanation">Re-activate Device Admin to confirm you own this device and reset the PIN.</string>
+    <string name="pin_strict_title">PIN Required</string>
+    <string name="pin_strict_desc">Enter your PIN to deactivate the shield</string>
+    <string name="pin_strict_error">Wrong PIN</string>
+    <string name="shield_deactivation_title">Deactivating Shield</string>
+    <string name="shield_deactivation_desc">Shield will be deactivated in</string>
+    <string name="btn_cancel_deactivation">Cancel</string>
 
     <!-- Schedule Blocking -->
     <string name="schedule_title">Schedule Blocking</string>
@@ -258,6 +303,8 @@
     <string name="timelimits_search">Search app</string>
     <string name="timelimits_minutes">Minutes per day:</string>
     <string name="timelimits_btn_add">Add</string>
+    <string name="timelimits_used_today">used today</string>
+    <string name="timelimits_usage_format">%1$d/%2$d min used today</string>
 
     <!-- Statistics -->
     <string name="statistics_title">Usage Statistics</string>
@@ -269,6 +316,8 @@
     <string name="statistics_most_blocked">Most Blocked App</string>
     <string name="statistics_recent">Recent Block Events</string>
     <string name="statistics_empty">No block events recorded yet</string>
+    <string name="statistics_streak">Streak</string>
+    <string name="statistics_today_breakdown">Today\'s Breakdown</string>
 
     <!-- Export/Import -->
     <string name="export_title">Export / Import</string>
@@ -281,7 +330,9 @@
     <string name="export_success">Exported successfully!</string>
     <string name="export_failed">Export failed</string>
     <string name="import_success">Imported successfully</string>
+    <string name="import_success_count">Imported %1$d items successfully</string>
     <string name="import_success_format">Imported %1$d websites, %2$d keywords</string>
+    <string name="import_success_summary">تمت إضافة %1$d عنصراً جديداً، تجاهل %2$d مكررة</string>
     <string name="import_failed">Import failed — invalid file format</string>
     <string name="export_format_title">File Format</string>
 
@@ -302,4 +353,186 @@
     <string name="profile_enabled">Enabled</string>
     <string name="profile_disabled">Disabled</string>
     <string name="profile_expired">Expired</string>
+
+    <!-- Profile - additional -->
+    <string name="profile_name_label">Name</string>
+    <string name="profile_default_user">User</string>
+    <string name="profile_guardian_user">Guardian User</string>
+    <string name="profile_version_value">1.0.0</string>
+    <string name="profile_unknown">Unknown</string>
+    <string name="profile_trial_off">Off</string>
+
+    <!-- Statistics - badges -->
+    <string name="badge_ai">AI</string>
+    <string name="badge_dns">DNS</string>
+    <string name="badge_time">Time</string>
+    <string name="badge_manual">Manual</string>
+    <string name="contentdesc_reset">Reset</string>
+
+    <!-- Time Limits - additional -->
+    <string name="timelimits_min_per_day">%1$d min/day</string>
+    <string name="timelimits_remove">Remove</string>
+    <string name="timelimits_selected_minutes">%1$d min</string>
+
+    <!-- Schedule - day names -->
+    <string name="day_mon">Mon</string>
+    <string name="day_tue">Tue</string>
+    <string name="day_wed">Wed</string>
+    <string name="day_thu">Thu</string>
+    <string name="day_fri">Fri</string>
+    <string name="day_sat">Sat</string>
+    <string name="day_sun">Sun</string>
+
+    <!-- Schedule - additional -->
+    <string name="schedule_fab_description">Add schedule</string>
+    <string name="schedule_delete">Delete</string>
+
+    <!-- HomeScreen countdown & delay -->
+    <string name="countdown_days_hours_minutes">%1$dd %2$dh %3$dm</string>
+    <string name="countdown_hours_minutes_seconds">%1$dh %2$dm %3$ds</string>
+    <string name="countdown_minutes_seconds">%1$dm %2$ds</string>
+    <string name="delay_one_month">1 Month</string>
+    <string name="delay_days">%d Days</string>
+    <string name="delay_minutes">%d Mins</string>
+
+    <!-- YouTube Shorts -->
+    <string name="card_youtube_shorts_title">YouTube Shorts Blocker</string>
+    <string name="card_youtube_shorts_on">Shorts will be blocked</string>
+    <string name="card_youtube_shorts_off">Shorts are allowed</string>
+
+    <!-- Facebook Reels -->
+    <string name="card_fb_reels_title">Facebook Reels Blocker</string>
+    <string name="card_fb_reels_on">Reels will be blocked</string>
+    <string name="card_fb_reels_off">Reels are allowed</string>
+
+    <!-- Strict Mode -->
+    <string name="card_strict_title">Strict Mode</string>
+    <string name="card_strict_on">PIN required to deactivate</string>
+    <string name="card_strict_off">No PIN required to deactivate</string>
+    <string name="card_strict_no_pin">Set a PIN first in Settings</string>
+
+    <!-- Permissions - additional -->
+    <string name="permissions_progress">%1$d/6</string>
+    <string name="device_admin_explanation">Required for Uninstall Protection.</string>
+    <string name="permissions_grant_title">Grant %1$s</string>
+    <string name="perm_notifications">Notifications</string>
+    <string name="desc_notifications">Required for the app to show block alerts and service status notifications.</string>
+    <string name="instruction_notifications">Settings → Apps → Guardian → Notifications → Allow</string>
+
+    <!-- Export/Import format info -->
+    <string name="export_format_websites"># Websites (one per line)</string>
+    <string name="export_format_keywords"># Keywords (prefixed with kw:)</string>
+    <string name="export_format_apps"># Apps (prefixed with app:)</string>
+    <string name="export_example_website">pornhub.com</string>
+    <string name="export_example_website2">xnxx.com</string>
+    <string name="export_example_keyword">kw:porn</string>
+    <string name="export_example_keyword2">kw:xxx</string>
+    <string name="export_example_app">app:com.instagram.android</string>
+    <string name="export_default_filename">guardian_blocklist.txt</string>
+
+    <!-- Lists - additional -->
+    <string name="lists_add_app_to">Add App to %1$s</string>
+    <string name="lists_add_new">Add new %1$s…</string>
+
+    <!-- Onboarding step strings -->
+    <string name="onboarding_step1_desc">Your digital wellness shield. Block distractions, filter explicit content, and build healthier digital habits.\n\nLet\'s set up your profile in 5 quick steps.</string>
+    <string name="onboarding_step2_title">Accessibility Service</string>
+    <string name="onboarding_step2_desc">Guardian needs this to detect when you open blocked apps and enforce focus rules.\n\nYou\'ll be taken to system settings to enable it.</string>
+    <string name="onboarding_step3_title">VPN Permission</string>
+    <string name="onboarding_step3_desc">Required for the Porn Blocker to filter web traffic and enforce safe search on all browsers.\n\nYou\'ll see a VPN connection request.</string>
+    <string name="onboarding_step4_title">Device Admin</string>
+    <string name="onboarding_step4_desc">Prevents the app from being uninstalled and settings from being tampered with.\n\nYou\'ll be asked to activate device admin.</string>
+    <string name="onboarding_step5_title">Display Overlay</string>
+    <string name="onboarding_step5_desc">Allows Guardian to show the block screen on top of restricted apps.\n\nYou\'ll be taken to system overlay settings.</string>
+    <string name="onboarding_step6_title">Usage Access</string>
+    <string name="onboarding_step6_desc">Guardian needs Usage Access to detect which app is currently open and track daily usage limits.\n\nYou\'ll be taken to usage access settings.</string>
+    <string name="onboarding_step7_title">Notification Permission</string>
+    <string name="onboarding_step7_desc">Guardian needs notification access to alert you about blocked apps and content.\n\nYou\'ll be taken to notification settings to enable it.</string>
+    <string name="onboarding_step8_title">You\'re All Set!</string>
+    <string name="onboarding_step8_desc">Guardian is now ready to protect your digital wellness.\n\nReview and customize your settings anytime from the app.</string>
+    <string name="onboarding_granted_chip">Granted</string>
+
+    <!-- PIN - additional -->
+    <string name="pin_label">PIN</string>
+    <string name="pin_wrong">Wrong PIN</string>
+
+    <!-- Facebook settings -->
+    <string name="facebook_settings_title">Facebook Blocker Settings</string>
+    <string name="facebook_blocker">Blocker</string>
+    <string name="facebook_blocker_active">Active</string>
+    <string name="facebook_blocker_disabled">Disabled</string>
+    <string name="facebook_detection_sensitivity">Detection Sensitivity</string>
+    <string name="facebook_confidence_threshold">Confidence threshold: %1$d%%</string>
+    <string name="facebook_sensitivity_more">70%% (More)</string>
+    <string name="facebook_sensitivity_fewer">95%% (Fewer)</string>
+    <string name="facebook_scheduled_blocking">Scheduled Blocking</string>
+    <string name="facebook_schedule_off">Off</string>
+    <string name="facebook_schedule_format">%1$d:00 - %2$d:00</string>
+    <string name="facebook_start">Start</string>
+    <string name="facebook_end">End</string>
+    <string name="facebook_friend_protection">Never block friends</string>
+    <string name="facebook_friends_safe">Friends\' posts are safe</string>
+    <string name="facebook_may_block_friends">May block friends\' reels</string>
+    <string name="facebook_today_stats">Today\'s Stats</string>
+    <string name="facebook_blocked">Blocked</string>
+    <string name="facebook_saved">Saved</string>
+    <string name="facebook_time_saved">%1$dm</string>
+
+    <!-- Bottom navigation -->
+    <string name="nav_shield">Shield</string>
+    <string name="nav_social">Social</string>
+    <string name="nav_content">Content</string>
+    <string name="nav_lists">Lists</string>
+    <string name="nav_stats">Stats</string>
+    <string name="nav_profile">Profile</string>
+
+    <!-- GuardianViewModel -->
+    <string name="device_admin_explanation_long">Guardian needs Device Admin to prevent uninstallation and keep your digital wellness protections active.</string>
+
+    <!-- AIExplorerService notifications -->
+    <string name="channel_restart_notifications">Service Restart</string>
+    <string name="channel_restart_notifications_desc">Guardian AI Explorer needs attention</string>
+    <string name="notification_restart_title">AI Explorer Restarted</string>
+    <string name="notification_restart_text">Tap to re-enable screen scanning</string>
+    <string name="channel_reenable_notifications">Permission Required</string>
+    <string name="channel_reenable_notifications_desc">Screen capture permission expired — tap to re-enable</string>
+    <string name="notification_paused_title">Screen Scanning Paused</string>
+    <string name="notification_paused_text">Tap to re-grant screen capture permission for AI Explorer</string>
+    <string name="notification_ban_title">App Banned</string>
+    <string name="notification_ban_text">%1$s has been banned for %2$d minutes due to repeated violations</string>
+    <string name="notification_scanner_title">Guardian AI Explorer</string>
+
+    <!-- Upgrade Screen -->
+    <string name="upgrade_title">Free trial has ended</string>
+    <string name="upgrade_subtitle">Continue for free with basic features or upgrade</string>
+    <string name="upgrade_btn_upgrade">Upgrade</string>
+    <string name="upgrade_btn_continue">Continue for free</string>
+
+    <!-- GuardianDeviceAdminReceiver -->
+    <string name="device_admin_disable_warning">Disabling Guardian Device Admin will remove Uninstall Protection and may leave your device unprotected.</string>
+    <string name="device_admin_enabled_toast">Guardian Device Admin Enabled</string>
+    <string name="device_admin_disabled_toast">Guardian Device Admin Disabled</string>
+
+    <!-- AppBlocker -->
+    <string name="app_fallback_label">App</string>
+    <string name="channel_app_blocker">App Blocker</string>
+    <string name="channel_app_blocker_desc">Guardian is monitoring app usage</string>
+    <string name="notification_blocker_title">Guardian is Active</string>
+    <string name="notification_blocker_text">Monitoring apps to keep you focused</string>
+
+    <!-- Facebook Video Blocker -->
+    <string name="channel_facebook_video">Facebook Video Block</string>
+    <string name="channel_facebook_video_desc">Notifications when Facebook videos are blocked</string>
+    <string name="notification_video_blocked_title">Video Blocked</string>
+    <string name="notification_video_blocked_text">This Facebook video has been blocked by Guardian</string>
+
+    <!-- App Blocker Notifications -->
+    <string name="notification_app_blocked_title">App Blocked</string>
+    <string name="notification_app_blocked_text">%1$s has been blocked by Guardian</string>
+
+    <!-- Accessibility Dialog -->
+    <string name="dialog_accessibility_title">Enable Accessibility Service</string>
+    <string name="dialog_accessibility_text">Guardian needs the Accessibility Service to detect when a Facebook video is tapped and block it.\n\nGo to:\nSettings → Accessibility → Installed Services → Guardian</string>
+    <string name="dialog_accessibility_btn">Open Settings</string>
+    <string name="btn_later">Later</string>
 </resources>

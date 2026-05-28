@@ -4,65 +4,101 @@ import android.app.AppOpsManager
 import android.app.admin.DevicePolicyManager
 import android.content.ComponentName
 import android.content.Context
-import android.net.VpnService
+import android.content.pm.PackageManager
 import android.os.Build
+import android.os.Process
 import android.provider.Settings
-import com.agon.app.receivers.GuardianDeviceAdminReceiver
-import com.agon.app.services.GuardianAccessibilityService
+import com.agon.app.utils.AccessibilityUtils
+import com.agon.app.FacebookBlockerService
+import com.agon.app.GuardianDeviceAdminReceiver
+import com.agon.app.data.settings.AppSettings
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 
 object PermissionUtils {
 
-    fun isAccessibilityServiceEnabled(context: Context): Boolean {
-        val expectedComponentName = ComponentName(context, GuardianAccessibilityService::class.java)
-        val enabledServicesSetting = Settings.Secure.getString(
-            context.contentResolver,
-            Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
-        ) ?: return false
+    private val syncScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
-        val colonSplitter = android.text.TextUtils.SimpleStringSplitter(':')
-        colonSplitter.setString(enabledServicesSetting)
+    fun areAllPermissionsGranted(context: Context): Boolean {
+        return isAccessibilityGranted(context) &&
+                isVpnGranted(context) &&
+                isDeviceAdminGranted(context) &&
+                isOverlayGranted(context) &&
+                isUsageAccessGranted(context) &&
+                isNotificationGranted(context)
+    }
 
-        while (colonSplitter.hasNext()) {
-            val componentNameString = colonSplitter.next()
-            val enabledComponent = ComponentName.unflattenFromString(componentNameString)
-            if (enabledComponent != null && enabledComponent == expectedComponentName) {
-                return true
-            }
+    /**
+     * Synchronizes the actual system permission status with the internal AppSettings cache.
+     */
+    fun syncPermissionsWithCache(context: Context, appSettings: AppSettings) {
+        syncScope.launch {
+            appSettings.setPermAccessibility(isAccessibilityGranted(context))
+            appSettings.setPermVpn(isVpnGranted(context))
+            appSettings.setPermAdmin(isDeviceAdminGranted(context))
+            appSettings.setPermOverlay(isOverlayGranted(context))
+            appSettings.setPermUsage(isUsageAccessGranted(context))
+            appSettings.setPermNotifications(isNotificationGranted(context))
         }
-        return false
     }
 
-    fun isVpnPrepared(context: Context): Boolean {
-        // If prepare returns null, the VPN permission is already granted.
-        return VpnService.prepare(context) == null
+    fun isAccessibilityGranted(context: Context): Boolean =
+        AccessibilityUtils.isServiceEnabled(context, FacebookBlockerService::class.java)
+
+    fun isVpnGranted(context: Context): Boolean {
+        return try {
+            // On some newer Android versions, we check the app op for VPN binding
+            if (Build.VERSION.SDK_INT >= 34) {
+                val appOps = context.getSystemService(Context.APP_OPS_SERVICE) as AppOpsManager
+                val mode = appOps.checkOpNoThrow("android:bind_vpn", Process.myUid(), context.packageName)
+                mode == AppOpsManager.MODE_ALLOWED
+            } else {
+                android.net.VpnService.prepare(context) == null
+            }
+        } catch (_: Exception) {
+            android.net.VpnService.prepare(context) == null
+        }
     }
 
-    fun isDeviceAdminEnabled(context: Context): Boolean {
+    fun isDeviceAdminGranted(context: Context): Boolean {
         val dpm = context.getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
-        val componentName = ComponentName(context, GuardianDeviceAdminReceiver::class.java)
-        return dpm.isAdminActive(componentName)
+        val component = ComponentName(context, GuardianDeviceAdminReceiver::class.java)
+        return dpm.isAdminActive(component)
     }
 
-    fun isOverlayPermissionGranted(context: Context): Boolean {
-        return Settings.canDrawOverlays(context)
-    }
+    fun isOverlayGranted(context: Context): Boolean =
+        Settings.canDrawOverlays(context)
 
     fun isUsageAccessGranted(context: Context): Boolean {
-        val appOps = context.getSystemService(Context.APP_OPS_SERVICE) as AppOpsManager
-        val mode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            appOps.unsafeCheckOpNoThrow(
-                AppOpsManager.OPSTR_GET_USAGE_STATS,
-                android.os.Process.myUid(),
-                context.packageName
-            )
-        } else {
-            @Suppress("DEPRECATION")
-            appOps.checkOpNoThrow(
-                AppOpsManager.OPSTR_GET_USAGE_STATS,
-                android.os.Process.myUid(),
-                context.packageName
-            )
+        return try {
+            val appOps = context.getSystemService(Context.APP_OPS_SERVICE) as AppOpsManager
+            val mode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                appOps.unsafeCheckOpNoThrow(
+                    AppOpsManager.OPSTR_GET_USAGE_STATS,
+                    Process.myUid(),
+                    context.packageName
+                )
+            } else {
+                @Suppress("DEPRECATION")
+                appOps.checkOpNoThrow(
+                    AppOpsManager.OPSTR_GET_USAGE_STATS,
+                    Process.myUid(),
+                    context.packageName
+                )
+            }
+            mode == AppOpsManager.MODE_ALLOWED
+        } catch (e: Exception) {
+            false
         }
-        return mode == AppOpsManager.MODE_ALLOWED
+    }
+
+    fun isNotificationGranted(context: Context): Boolean {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            context.checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
+        } else {
+            true
+        }
     }
 }

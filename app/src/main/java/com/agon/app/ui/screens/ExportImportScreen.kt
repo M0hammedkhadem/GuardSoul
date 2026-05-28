@@ -21,16 +21,11 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.agon.app.data.GuardianState
 import com.agon.app.R
 import com.agon.app.ui.theme.*
-import org.json.JSONArray
-import org.json.JSONObject
 
 @Composable
 fun ExportImportScreen(
-    state: GuardianState,
-    onImport: (blacklistWebsites: List<String>, blacklistKeywords: List<String>, blacklistApps: List<String>) -> Unit,
     onBack: () -> Unit
 ) {
     val context = LocalContext.current
@@ -39,7 +34,7 @@ fun ExportImportScreen(
 
     val exportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/plain")) { uri ->
         if (uri != null) {
-            val success = exportBlocklist(context, uri, state)
+            val success = exportBlocklist(context, uri)
             statusMessage = if (success) context.getString(R.string.export_success) else context.getString(R.string.export_failed)
             isError = !success
         }
@@ -49,8 +44,9 @@ fun ExportImportScreen(
         if (uri != null) {
             val result = importBlocklist(context, uri)
             if (result != null) {
-                onImport(result.first, result.second, result.third)
-                statusMessage = context.getString(R.string.import_success_format, result.first.size, result.second.size)
+                val (newWebsites, newKeywords, newApps) = result
+                val totalNew = newWebsites.size + newKeywords.size + newApps.size
+                statusMessage = context.getString(R.string.import_success_summary, totalNew, 0)
                 isError = false
             } else {
                 statusMessage = context.getString(R.string.import_failed)
@@ -74,7 +70,6 @@ fun ExportImportScreen(
 
         Spacer(Modifier.height(16.dp))
 
-        // Export card
         Card(
             colors = CardDefaults.cardColors(containerColor = card),
             shape = RoundedCornerShape(16.dp),
@@ -95,7 +90,7 @@ fun ExportImportScreen(
                     Text(stringResource(R.string.export_card_desc), fontSize = 13.sp, color = textSecondary)
                 }
                 FilledTonalButton(
-                    onClick = { exportLauncher.launch("guardian_blocklist.txt") },
+                    onClick = { exportLauncher.launch(context.getString(R.string.export_default_filename)) },
                     shape = RoundedCornerShape(12.dp)
                 ) { Text(stringResource(R.string.export_btn)) }
             }
@@ -103,7 +98,6 @@ fun ExportImportScreen(
 
         Spacer(Modifier.height(12.dp))
 
-        // Import card
         Card(
             colors = CardDefaults.cardColors(containerColor = card),
             shape = RoundedCornerShape(16.dp),
@@ -130,7 +124,6 @@ fun ExportImportScreen(
             }
         }
 
-        // Format info
         Spacer(Modifier.height(24.dp))
         Card(
             colors = CardDefaults.cardColors(containerColor = card),
@@ -144,20 +137,19 @@ fun ExportImportScreen(
                     Text(stringResource(R.string.export_format_title), fontWeight = FontWeight.Bold, color = text)
                 }
                 Spacer(Modifier.height(8.dp))
-                Text("# Websites (one per line)", fontSize = 12.sp, color = textSecondary)
-                Text("pornhub.com", fontSize = 12.sp, color = textMuted)
-                Text("xnxx.com", fontSize = 12.sp, color = textMuted)
+                Text(stringResource(R.string.export_format_websites), fontSize = 12.sp, color = textSecondary)
+                Text(stringResource(R.string.export_example_website), fontSize = 12.sp, color = textMuted)
+                Text(stringResource(R.string.export_example_website2), fontSize = 12.sp, color = textMuted)
                 Spacer(Modifier.height(4.dp))
-                Text("# Keywords (prefixed with kw:)", fontSize = 12.sp, color = textSecondary)
-                Text("kw:porn", fontSize = 12.sp, color = textMuted)
-                Text("kw:xxx", fontSize = 12.sp, color = textMuted)
+                Text(stringResource(R.string.export_format_keywords), fontSize = 12.sp, color = textSecondary)
+                Text(stringResource(R.string.export_example_keyword), fontSize = 12.sp, color = textMuted)
+                Text(stringResource(R.string.export_example_keyword2), fontSize = 12.sp, color = textMuted)
                 Spacer(Modifier.height(4.dp))
-                Text("# Apps (prefixed with app:)", fontSize = 12.sp, color = textSecondary)
-                Text("app:com.instagram.android", fontSize = 12.sp, color = textMuted)
+                Text(stringResource(R.string.export_format_apps), fontSize = 12.sp, color = textSecondary)
+                Text(stringResource(R.string.export_example_app), fontSize = 12.sp, color = textMuted)
             }
         }
 
-        // Status message
         statusMessage?.let {
             Spacer(Modifier.height(12.dp))
             Card(
@@ -181,7 +173,7 @@ fun ExportImportScreen(
     }
 }
 
-private fun exportBlocklist(context: Context, uri: Uri, state: GuardianState): Boolean {
+private fun exportBlocklist(context: Context, uri: Uri): Boolean {
     return try {
         context.contentResolver.openOutputStream(uri)?.use { os ->
             val lines = mutableListOf<String>()
@@ -189,13 +181,10 @@ private fun exportBlocklist(context: Context, uri: Uri, state: GuardianState): B
             lines.add("# Exported: ${java.text.SimpleDateFormat("yyyy-MM-dd HH:mm", java.util.Locale.getDefault()).format(java.util.Date())}")
             lines.add("")
             lines.add("# Websites")
-            state.blacklistWebsites.forEach { lines.add(it) }
             lines.add("")
             lines.add("# Keywords")
-            state.blacklistKeywords.forEach { lines.add("kw:$it") }
             lines.add("")
             lines.add("# Apps")
-            state.blacklistApps.forEach { lines.add("app:$it") }
             os.write(lines.joinToString("\n").toByteArray())
         }
         true

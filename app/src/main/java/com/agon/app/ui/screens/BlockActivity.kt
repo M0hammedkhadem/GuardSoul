@@ -1,9 +1,11 @@
 package com.agon.app.ui.screens
 
 import android.content.Intent
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.OnBackPressedCallback
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
@@ -27,30 +29,31 @@ import com.agon.app.R
 class BlockActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        onBackPressedDispatcher.addCallback(object : OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() {
+                goToHome()
+            }
+        })
+
         val appName = intent.getStringExtra("APP_NAME") ?: getString(R.string.block_app_name_default)
         val blockReason = intent.getStringExtra("BLOCK_REASON") ?: ""
-        val isAiBan = blockReason == "ai_scan"
+        val isAiBan = blockReason == "ai_nsfw_block"
+        val isRepeatOffender = blockReason == "ai_repeat_offender"
         val isTimeLimit = blockReason == "time_limit"
 
         setContent {
             BlockScreen(
                 appName = appName,
                 isAiBan = isAiBan,
+                isRepeatOffender = isRepeatOffender,
                 isTimeLimit = isTimeLimit,
-                onGoBack = {
-                    val homeIntent = Intent(Intent.ACTION_MAIN).apply {
-                        addCategory(Intent.CATEGORY_HOME)
-                        flags = Intent.FLAG_ACTIVITY_NEW_TASK
-                    }
-                    startActivity(homeIntent)
-                    finish()
-                }
+                onGoBack = { goToHome() }
             )
         }
     }
 
-    @Deprecated("Deprecated in Java")
-    override fun onBackPressed() {
+    private fun goToHome() {
         val homeIntent = Intent(Intent.ACTION_MAIN).apply {
             addCategory(Intent.CATEGORY_HOME)
             flags = Intent.FLAG_ACTIVITY_NEW_TASK
@@ -64,6 +67,7 @@ class BlockActivity : ComponentActivity() {
 private fun BlockScreen(
     appName: String,
     isAiBan: Boolean,
+    isRepeatOffender: Boolean = false,
     isTimeLimit: Boolean,
     onGoBack: () -> Unit
 ) {
@@ -109,6 +113,7 @@ private fun BlockScreen(
 
             Text(
                 text = when {
+                           isRepeatOffender -> context.getString(R.string.block_reason_ai_repeat, appName)
                            isAiBan -> context.getString(R.string.block_reason_ai, appName)
                            isTimeLimit -> context.getString(R.string.block_reason_time_limit, appName)
                            else -> context.getString(R.string.block_reason_normal, appName)

@@ -13,19 +13,16 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.agon.app.R
 import com.agon.app.ui.theme.*
 import kotlinx.coroutines.delay
-
-private fun String.sha256(): String {
-    val digest = java.security.MessageDigest.getInstance("SHA-256")
-    return digest.digest(this.toByteArray()).joinToString("") { "%02x".format(it) }
-}
 
 @Composable
 fun PinSetupScreen(
@@ -38,6 +35,8 @@ fun PinSetupScreen(
     var pin by remember { mutableStateOf("") }
     var confirmPin by remember { mutableStateOf("") }
     var error by remember { mutableStateOf<String?>(null) }
+    val pinErrorShort = stringResource(R.string.pin_error_short)
+    val pinErrorMismatch = stringResource(R.string.pin_error_mismatch)
 
     Column(
         modifier = Modifier
@@ -55,7 +54,7 @@ fun PinSetupScreen(
         )
         Spacer(modifier = Modifier.height(16.dp))
         Text(
-            text = if (isChanging) "Change PIN" else "Set PIN Code",
+            text = if (isChanging) stringResource(R.string.pin_change_title) else stringResource(R.string.pin_set_title),
             fontSize = 24.sp,
             fontWeight = FontWeight.Bold,
             color = text
@@ -63,9 +62,9 @@ fun PinSetupScreen(
         Spacer(modifier = Modifier.height(8.dp))
         Text(
             text = when (step) {
-                0 -> "Enter a 4-6 digit PIN to protect your settings"
-                1 -> "Confirm your PIN"
-                else -> "PIN set successfully!"
+                0 -> stringResource(R.string.pin_enter)
+                1 -> stringResource(R.string.pin_confirm)
+                else -> stringResource(R.string.pin_success)
             },
             fontSize = 14.sp,
             color = textSecondary
@@ -83,7 +82,7 @@ fun PinSetupScreen(
                 Button(
                     onClick = {
                         if (pin.length < 4) {
-                            error = "PIN must be at least 4 digits"
+                            error = pinErrorShort
                         } else {
                             error = null
                             step = 1
@@ -92,11 +91,11 @@ fun PinSetupScreen(
                     enabled = pin.length >= 4,
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(12.dp)
-                ) { Text("Continue") }
+                ) { Text(stringResource(R.string.pin_btn_continue)) }
                 if (onSkip != null) {
                     Spacer(modifier = Modifier.height(8.dp))
                     TextButton(onClick = onSkip) {
-                        Text("Skip", color = textMuted)
+                        Text(stringResource(R.string.pin_skip), color = textMuted)
                     }
                 }
             }
@@ -110,19 +109,18 @@ fun PinSetupScreen(
                 Button(
                     onClick = {
                         if (confirmPin != pin) {
-                            error = "PINs don't match"
+                            error = pinErrorMismatch
                             confirmPin = ""
                         } else {
                             error = null
-                            val hashed = pin.sha256()
-                            onPinSet(hashed)
+                            onPinSet(pin)
                             step = 2
                         }
                     },
                     enabled = confirmPin.length >= 4,
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(12.dp)
-                ) { Text("Confirm") }
+                ) { Text(stringResource(R.string.pin_btn_confirm)) }
             }
             2 -> {
                 Icon(
@@ -132,7 +130,7 @@ fun PinSetupScreen(
                     modifier = Modifier.size(80.dp)
                 )
                 Spacer(modifier = Modifier.height(16.dp))
-                LaunchedEffect(Unit) { delay(1500); onPinSet(pin.sha256()) }
+                LaunchedEffect(Unit) { delay(1500); onPinSet(pin) }
             }
         }
     }
@@ -147,7 +145,7 @@ private fun PinInputField(
     OutlinedTextField(
         value = pin,
         onValueChange = onPinChange,
-        label = { Text("PIN") },
+        label = { Text(stringResource(R.string.pin_label)) },
         visualTransformation = PasswordVisualTransformation(),
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
         singleLine = true,
@@ -181,6 +179,7 @@ fun PinGateScreen(
 ) {
     var pin by remember { mutableStateOf("") }
     var error by remember { mutableStateOf<String?>(null) }
+    val wrongPin = stringResource(R.string.pin_wrong)
 
     Column(
         modifier = Modifier
@@ -197,8 +196,8 @@ fun PinGateScreen(
             modifier = Modifier.size(72.dp)
         )
         Spacer(modifier = Modifier.height(16.dp))
-        Text("Guardian Locked", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = text)
-        Text("Enter PIN to access settings", fontSize = 14.sp, color = textSecondary)
+        Text(stringResource(R.string.pin_gate_title), fontSize = 24.sp, fontWeight = FontWeight.Bold, color = text)
+        Text(stringResource(R.string.pin_gate_desc), fontSize = 14.sp, color = textSecondary)
         Spacer(modifier = Modifier.height(32.dp))
         PinInputField(
             pin = pin,
@@ -213,13 +212,13 @@ fun PinGateScreen(
                 if (storedPinHash == hashed) {
                     onUnlock()
                 } else {
-                    error = "Wrong PIN"
+                    error = wrongPin
                     pin = ""
                 }
             },
             enabled = pin.length >= 4,
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(12.dp)
-        ) { Text("Unlock") }
+        ) { Text(stringResource(R.string.pin_btn_unlock)) }
     }
 }

@@ -10,6 +10,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.*
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -21,406 +22,271 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.res.stringResource
-import com.agon.app.R
-import androidx.lifecycle.viewmodel.compose.viewModel
-import com.agon.app.data.GuardianState
-import com.agon.app.ui.theme.*
-import com.agon.app.viewmodel.GuardianViewModel
 import androidx.compose.ui.platform.LocalContext
-import android.content.Intent
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.agon.app.utils.AccessibilityUtils
+import com.agon.app.FacebookBlockerService
+import com.agon.app.R
+import com.agon.app.ui.theme.*
+import com.agon.app.viewmodel.SocialViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SocialScreen(
-    viewModel: GuardianViewModel = viewModel(),
-    onLaunchFacebookWrapper: () -> Unit = {}
-) {
-    val state by viewModel.state.collectAsState()
+fun SocialScreen(vm: SocialViewModel) {
+    val context = LocalContext.current
+    val instagramBlocked by vm.instagram.collectAsStateWithLifecycle()
+    val snapchatBlocked by vm.snapchat.collectAsStateWithLifecycle()
+    val twitterBlocked by vm.twitter.collectAsStateWithLifecycle()
+    val tiktokBlocked by vm.tiktok.collectAsStateWithLifecycle()
+    val youtubeMode by vm.youtubeMode.collectAsStateWithLifecycle()
+    val facebookMode by vm.facebookMode.collectAsStateWithLifecycle()
+    val blocksToday by vm.blocksToday.collectAsStateWithLifecycle()
+    val blocksPerApp by vm.blocksPerApp.collectAsStateWithLifecycle()
+    val youtubeServiceRunning by vm.youtubeServiceRunning.collectAsStateWithLifecycle()
+    val facebookServiceRunning by vm.facebookServiceRunning.collectAsStateWithLifecycle()
     var showYoutubeSheet by remember { mutableStateOf(false) }
     var showFacebookSheet by remember { mutableStateOf(false) }
+    var showAccessibilityDialog by remember { mutableStateOf(false) }
     val scrollState = rememberScrollState()
+
+    fun appCount(labelRes: Int): Int {
+        val label = context.getString(labelRes)
+        return blocksPerApp.find { it.appLabel == label }?.count ?: 0
+    }
 
     Scaffold(
         containerColor = background,
         topBar = {
             TopAppBar(
                 title = { Text(stringResource(R.string.screen_social_title), fontWeight = FontWeight.Bold) },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = background,
-                    titleContentColor = text
-                )
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = background, titleContentColor = text)
             )
         }
-    ) { paddingValues ->
+    ) { padding ->
         Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(paddingValues)
-                .padding(horizontal = 16.dp)
-                .verticalScroll(scrollState)
+            modifier = Modifier.fillMaxSize().padding(padding).padding(horizontal = 16.dp).verticalScroll(scrollState)
         ) {
-            // Direct Block Section
-            SectionHeader(icon = Icons.Default.Block, title = stringResource(R.string.section_direct_block), color = danger)
-            Spacer(modifier = Modifier.height(16.dp))
-            Card(
-                colors = CardDefaults.cardColors(containerColor = card),
-                shape = RoundedCornerShape(16.dp),
-                border = BorderStroke(1.dp, cardBorder)
-            ) {
-                Column {
-                    ToggleRow(
-                        name = stringResource(R.string.app_instagram),
-                        color = Color(0xFFE1306C),
-                        isBlocked = state.instagramBlocked,
-                        onToggle = { viewModel.toggleInstagram() }
-                    )
-                    HorizontalDivider(color = cardBorder)
-                    ToggleRow(
-                        name = stringResource(R.string.app_snapchat),
-                        color = Color(0xFFFFFC00),
-                        isBlocked = state.snapchatBlocked,
-                        onToggle = { viewModel.toggleSnapchat() }
-                    )
-                    HorizontalDivider(color = cardBorder)
-                    ToggleRow(
-                        name = stringResource(R.string.app_twitter),
-                        color = Color(0xFF1DA1F2),
-                        isBlocked = state.twitterBlocked,
-                        onToggle = { viewModel.toggleTwitter() }
-                    )
-                    HorizontalDivider(color = cardBorder)
-                    ToggleRow(
-                        name = stringResource(R.string.app_tiktok),
-                        color = Color(0xFF69C9D0),
-                        isBlocked = state.tiktokBlocked,
-                        onToggle = { viewModel.toggleTiktok() }
-                    )
-                }
-            }
+            SummaryCard(totalBlocks = blocksToday)
+            Spacer(Modifier.height(16.dp))
 
-            Spacer(modifier = Modifier.height(24.dp))
+            SectionHeader(Icons.Default.Block, stringResource(R.string.section_direct_block), danger)
+            Spacer(Modifier.height(4.dp))
+            ToggleRow(Icons.Default.CameraAlt, stringResource(R.string.app_instagram), instagramBlocked, { vm.setInstagram(it) }, count = appCount(R.string.app_instagram))
+            @Suppress("DEPRECATION") ToggleRow(Icons.Default.Chat, stringResource(R.string.app_snapchat), snapchatBlocked, { vm.setSnapchat(it) }, count = appCount(R.string.app_snapchat))
+            ToggleRow(Icons.Default.Tag, stringResource(R.string.app_twitter), twitterBlocked, { vm.setTwitter(it) }, count = appCount(R.string.app_twitter))
+            ToggleRow(Icons.Default.MusicNote, stringResource(R.string.app_tiktok), tiktokBlocked, { vm.setTiktok(it) }, count = appCount(R.string.app_tiktok))
 
-            // YouTube Section
-            SectionHeader(icon = Icons.Default.PlayArrow, title = stringResource(R.string.app_youtube), color = Color(0xFFFF0000))
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(Modifier.height(24.dp))
+            SectionHeader(Icons.Default.Videocam, stringResource(R.string.section_youtube), shieldRed)
+            Spacer(Modifier.height(4.dp))
             DropdownCard(
-                currentMode = state.youtubeMode,
-                onClick = { showYoutubeSheet = true }
+                title = stringResource(R.string.app_youtube),
+                mode = youtubeMode,
+                badgeMap = mapOf("off" to Triple(Icons.Default.CheckCircle, stringResource(R.string.badge_open), success), "full" to Triple(Icons.Default.Cancel, stringResource(R.string.badge_blocked_upper), danger), "shorts" to Triple(Icons.Default.Warning, stringResource(R.string.badge_partial), warning)),
+                serviceRunning = youtubeMode != "off" && youtubeServiceRunning,
+                onClick = { if (youtubeMode != "off" && !youtubeServiceRunning) showAccessibilityDialog = true else showYoutubeSheet = true }
             )
-            if (state.youtubeMode == "shorts") {
-                Spacer(modifier = Modifier.height(8.dp))
+            if (youtubeMode == "shorts") {
                 InfoBox(stringResource(R.string.info_youtube))
             }
 
-            Spacer(modifier = Modifier.height(24.dp))
-
-            // Facebook Section
-            SectionHeader(icon = Icons.Default.Facebook, title = stringResource(R.string.app_facebook), color = Color(0xFF1877F2))
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(Modifier.height(24.dp))
+            SectionHeader(Icons.Default.Facebook, stringResource(R.string.section_facebook), primary)
+            Spacer(Modifier.height(4.dp))
             DropdownCard(
-                currentMode = state.facebookMode,
-                onClick = { showFacebookSheet = true }
+                title = stringResource(R.string.app_facebook),
+                mode = facebookMode,
+                badgeMap = mapOf("off" to Triple(Icons.Default.CheckCircle, stringResource(R.string.badge_open), success), "full" to Triple(Icons.Default.Cancel, stringResource(R.string.badge_blocked_upper), danger), "reels" to Triple(Icons.Default.Warning, stringResource(R.string.badge_partial), warning)),
+                serviceRunning = facebookMode != "off" && facebookServiceRunning,
+                onClick = { if (facebookMode != "off" && !facebookServiceRunning) showAccessibilityDialog = true else showFacebookSheet = true }
             )
-            if (state.facebookMode == "reels") {
-                Spacer(modifier = Modifier.height(8.dp))
+            if (facebookMode == "reels") {
                 InfoBox(stringResource(R.string.info_facebook))
-                Spacer(modifier = Modifier.height(8.dp))
-                Button(
-                    onClick = onLaunchFacebookWrapper,
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = Color(0xFF1877F2),
-                        contentColor = Color.White
-                    ),
-                    shape = RoundedCornerShape(12.dp),
-                    modifier = Modifier.fillMaxWidth().height(48.dp)
-                ) {
-                    Icon(Icons.Default.OpenInNew, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(stringResource(R.string.btn_launch_facebook_wrapper), fontWeight = FontWeight.SemiBold)
-                }
             }
 
-            Spacer(modifier = Modifier.height(32.dp))
-
-            // How It Works
+            Spacer(Modifier.height(24.dp))
             HowItWorksCard()
-            Spacer(modifier = Modifier.height(24.dp))
-        }
-
-        if (showYoutubeSheet) {
-            ModalBottomSheet(
-                onDismissRequest = { showYoutubeSheet = false },
-                containerColor = surface,
-                dragHandle = { BottomSheetDefaults.DragHandle(color = textMuted) }
-            ) {
-                ModeSelectionSheet(
-                    title = stringResource(R.string.sheet_youtube_title),
-                    currentMode = state.youtubeMode,
-                    options = listOf(
-                        "off" to stringResource(R.string.option_no_block),
-                        "full" to stringResource(R.string.option_yt_full_block),
-                        "shorts" to stringResource(R.string.option_block_shorts)
-                    ),
-                    onSelect = { 
-                        viewModel.setYoutubeMode(it)
-                        showYoutubeSheet = false
-                    }
-                )
-            }
-        }
-
-        if (showFacebookSheet) {
-            ModalBottomSheet(
-                onDismissRequest = { showFacebookSheet = false },
-                containerColor = surface,
-                dragHandle = { BottomSheetDefaults.DragHandle(color = textMuted) }
-            ) {
-                ModeSelectionSheet(
-                    title = stringResource(R.string.sheet_facebook_title),
-                    currentMode = state.facebookMode,
-                    options = listOf(
-                        "off" to stringResource(R.string.option_no_block),
-                        "full" to stringResource(R.string.option_fb_full_block),
-                        "reels" to stringResource(R.string.option_block_reels)
-                    ),
-                    onSelect = { 
-                        viewModel.setFacebookMode(it)
-                        showFacebookSheet = false
-                    }
-                )
-            }
+            Spacer(Modifier.height(32.dp))
         }
     }
-}
 
-@Composable
-fun SectionHeader(icon: androidx.compose.ui.graphics.vector.ImageVector, title: String, color: Color) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        Box(
-            modifier = Modifier
-                .size(40.dp)
-                .clip(RoundedCornerShape(10.dp))
-                .background(color.copy(alpha = 0.15f))
-                .border(1.dp, color.copy(alpha = 0.3f), RoundedCornerShape(10.dp)),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(imageVector = icon, contentDescription = null, tint = color, modifier = Modifier.size(20.dp))
-        }
-        Spacer(modifier = Modifier.width(12.dp))
-        Text(text = title, fontSize = 18.sp, fontWeight = FontWeight.Bold, color = text)
-    }
-}
-
-@Composable
-fun ToggleRow(name: String, color: Color, isBlocked: Boolean, onToggle: () -> Unit) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable { onToggle() }
-            .padding(16.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(
-                modifier = Modifier
-                    .size(12.dp)
-                    .clip(CircleShape)
-                    .background(color)
+    if (showYoutubeSheet) {
+        ModalBottomSheet(onDismissRequest = { showYoutubeSheet = false }, containerColor = surface) {
+            ModeSelectionSheet(
+                title = stringResource(R.string.sheet_youtube_title),
+                currentMode = youtubeMode,
+                options = listOf(
+                    Triple("off", stringResource(R.string.option_no_block), stringResource(R.string.desc_youtube_off)),
+                    Triple("full", stringResource(R.string.option_yt_full_block), stringResource(R.string.desc_youtube_full)),
+                    Triple("shorts", stringResource(R.string.option_block_shorts), stringResource(R.string.desc_youtube_shorts))
+                ),
+                onSelect = { vm.setYoutubeMode(it); showYoutubeSheet = false }
             )
-            Spacer(modifier = Modifier.width(12.dp))
-            Text(text = name, fontSize = 16.sp, color = text)
         }
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            if (isBlocked) {
-                Surface(
-                    color = danger.copy(alpha = 0.1f),
-                    shape = RoundedCornerShape(4.dp),
-                    border = BorderStroke(1.dp, danger.copy(alpha = 0.3f))
-                ) {
-                    Text(
-                        text = stringResource(R.string.badge_blocked),
-                        color = danger,
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                    )
+    }
+
+    if (showFacebookSheet) {
+        ModalBottomSheet(onDismissRequest = { showFacebookSheet = false }, containerColor = surface) {
+            ModeSelectionSheet(
+                title = stringResource(R.string.sheet_facebook_title),
+                currentMode = facebookMode,
+                options = listOf(
+                    Triple("off", stringResource(R.string.option_no_block), stringResource(R.string.desc_facebook_off)),
+                    Triple("full", stringResource(R.string.option_fb_full_block), stringResource(R.string.desc_facebook_full)),
+                    Triple("reels", stringResource(R.string.option_block_reels), stringResource(R.string.desc_facebook_reels))
+                ),
+                onSelect = { vm.setFacebookMode(it); showFacebookSheet = false }
+            )
+        }
+    }
+
+    if (showAccessibilityDialog) {
+        AlertDialog(
+            onDismissRequest = { showAccessibilityDialog = false },
+            title = { Text(stringResource(R.string.dialog_accessibility_title)) },
+            text = { Text(stringResource(R.string.dialog_accessibility_text)) },
+            confirmButton = {
+                TextButton(onClick = { AccessibilityUtils.openAccessibilitySettings(context); showAccessibilityDialog = false }) {
+                    Text(stringResource(R.string.dialog_accessibility_btn))
                 }
-                Spacer(modifier = Modifier.width(12.dp))
+            },
+            dismissButton = {
+                TextButton(onClick = { showAccessibilityDialog = false }) { Text(stringResource(R.string.btn_later)) }
             }
-            Switch(
-                checked = isBlocked,
-                onCheckedChange = { onToggle() },
-                colors = SwitchDefaults.colors(
-                    checkedThumbColor = surface,
-                    checkedTrackColor = danger,
-                    uncheckedThumbColor = textSecondary,
-                    uncheckedTrackColor = surfaceLight
-                )
-            )
-        }
+        )
     }
 }
 
 @Composable
-fun DropdownCard(currentMode: String, onClick: () -> Unit) {
-    val (label, badgeText, badgeColor) = when (currentMode) {
-        "full" -> Triple(stringResource(R.string.label_full_block), stringResource(R.string.badge_blocked), danger)
-        "shorts", "reels" -> Triple(stringResource(R.string.label_partial_block), stringResource(R.string.badge_partial), warning)
-        else -> Triple(stringResource(R.string.option_no_block), stringResource(R.string.badge_open), success)
-    }
-
+private fun SummaryCard(totalBlocks: Int) {
     Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable { onClick() },
         colors = CardDefaults.cardColors(containerColor = card),
         shape = RoundedCornerShape(16.dp),
-        border = BorderStroke(1.dp, cardBorder)
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Text(text = label, fontSize = 16.sp, color = text)
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Surface(
-                    color = badgeColor.copy(alpha = 0.1f),
-                    shape = RoundedCornerShape(4.dp),
-                    border = BorderStroke(1.dp, badgeColor.copy(alpha = 0.3f))
-                ) {
-                    Text(
-                        text = badgeText,
-                        color = badgeColor,
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                    )
-                }
-                Spacer(modifier = Modifier.width(8.dp))
-                Icon(Icons.Default.ArrowDropDown, contentDescription = null, tint = textMuted)
-            }
-        }
-    }
-}
-
-@Composable
-fun InfoBox(message: String) {
-    Surface(
-        color = warning.copy(alpha = 0.1f),
-        shape = RoundedCornerShape(8.dp),
-        border = BorderStroke(1.dp, warning.copy(alpha = 0.3f)),
+        border = BorderStroke(1.dp, cardBorder),
         modifier = Modifier.fillMaxWidth()
     ) {
-        Row(
-            modifier = Modifier.padding(12.dp),
-            verticalAlignment = Alignment.Top
-        ) {
-            Icon(Icons.Default.Info, contentDescription = null, tint = warning, modifier = Modifier.size(20.dp))
-            Spacer(modifier = Modifier.width(8.dp))
-            Text(text = message, color = warning, fontSize = 13.sp)
+        Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.size(40.dp).clip(CircleShape).background(danger.copy(alpha = 0.12f)), contentAlignment = Alignment.Center) {
+                Icon(Icons.Default.Shield, null, tint = danger, modifier = Modifier.size(22.dp))
+            }
+            Spacer(Modifier.width(12.dp))
+            Column {
+                Text(stringResource(R.string.summary_blocks_today), fontSize = 12.sp, color = textSecondary)
+                Spacer(Modifier.height(2.dp))
+                Text("$totalBlocks", fontSize = 28.sp, fontWeight = FontWeight.Bold, color = text)
+            }
         }
     }
 }
 
 @Composable
-fun HowItWorksCard() {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = card),
-        shape = RoundedCornerShape(16.dp),
-        border = BorderStroke(1.dp, cardBorder)
-    ) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            Text(stringResource(R.string.card_how_it_works), fontWeight = FontWeight.Bold, color = textSecondary, fontSize = 14.sp)
-            Spacer(modifier = Modifier.height(12.dp))
-            HowItWorksRow(Icons.Default.Close, danger, stringResource(R.string.row_how_full_block))
-            Spacer(modifier = Modifier.height(8.dp))
-            HowItWorksRow(Icons.Default.SubdirectoryArrowLeft, warning, stringResource(R.string.row_how_partial_block))
-            Spacer(modifier = Modifier.height(8.dp))
-            HowItWorksRow(Icons.Default.Check, success, stringResource(R.string.row_how_no_block))
-        }
-    }
-}
-
-@Composable
-fun HowItWorksRow(icon: androidx.compose.ui.graphics.vector.ImageVector, color: Color, desc: String) {
+private fun SectionHeader(icon: androidx.compose.ui.graphics.vector.ImageVector, title: String, color: Color) {
     Row(verticalAlignment = Alignment.CenterVertically) {
-        Icon(imageVector = icon, contentDescription = null, tint = color, modifier = Modifier.size(16.dp))
-        Spacer(modifier = Modifier.width(8.dp))
-        Text(text = desc, color = textMuted, fontSize = 13.sp)
+        Box(Modifier.size(28.dp).clip(CircleShape).background(color.copy(alpha = 0.15f)), contentAlignment = Alignment.Center) {
+            Icon(icon, null, tint = color, modifier = Modifier.size(16.dp))
+        }
+        Spacer(Modifier.width(8.dp))
+        Text(title, fontWeight = FontWeight.Bold, color = text, fontSize = 16.sp)
     }
 }
 
 @Composable
-fun ModeSelectionSheet(
-    title: String,
-    currentMode: String,
-    options: List<Pair<String, String>>,
-    onSelect: (String) -> Unit
-) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(bottom = 32.dp, top = 16.dp)
-    ) {
-        Text(
-            text = title,
-            fontSize = 20.sp,
-            fontWeight = FontWeight.Bold,
-            color = text,
-            modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp)
-        )
-        
-        options.forEach { (value, label) ->
-            val badgeColor = when (value) {
-                "full" -> danger
-                "shorts", "reels" -> warning
-                else -> success
+private fun ToggleRow(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, checked: Boolean, onToggle: (Boolean) -> Unit, count: Int = 0) {
+    Card(colors = CardDefaults.cardColors(containerColor = card), shape = RoundedCornerShape(12.dp), border = BorderStroke(1.dp, cardBorder), modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+        Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(icon, null, tint = textMuted, modifier = Modifier.size(22.dp))
+            Spacer(Modifier.width(12.dp))
+            Text(label, color = text, modifier = Modifier.weight(1f))
+            if (count > 0 && checked) {
+                Surface(color = danger.copy(alpha = 0.1f), shape = RoundedCornerShape(6.dp), border = BorderStroke(1.dp, danger.copy(alpha = 0.25f))) {
+                    Text(" $count ", color = danger, fontSize = 12.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp))
+                }
+                Spacer(Modifier.width(8.dp))
             }
-            val badgeText = when (value) {
-                "full" -> stringResource(R.string.badge_blocked_upper)
-                "shorts", "reels" -> stringResource(R.string.badge_partial_upper)
-                else -> stringResource(R.string.badge_open_upper)
-            }
+            Switch(checked = checked, onCheckedChange = onToggle, colors = SwitchDefaults.colors(checkedTrackColor = danger, checkedThumbColor = surface))
+        }
+    }
+}
 
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { onSelect(value) }
-                    .padding(horizontal = 24.dp, vertical = 12.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
+@Composable
+private fun DropdownCard(title: String, mode: String, badgeMap: Map<String, Triple<androidx.compose.ui.graphics.vector.ImageVector, String, Color>>, onClick: () -> Unit, serviceRunning: Boolean = true) {
+    val badge = badgeMap[mode] ?: badgeMap["off"]!!
+    Card(colors = CardDefaults.cardColors(containerColor = card), shape = RoundedCornerShape(12.dp), border = BorderStroke(1.dp, if (mode != "off" && !serviceRunning) warning.copy(alpha = 0.5f) else cardBorder), modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp).clickable(onClick = onClick)) {
+        Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(text = label, fontSize = 16.sp, color = text)
-                    Spacer(modifier = Modifier.width(12.dp))
-                    Surface(
-                        color = badgeColor.copy(alpha = 0.1f),
-                        shape = RoundedCornerShape(4.dp),
-                        border = BorderStroke(1.dp, badgeColor.copy(alpha = 0.3f))
-                    ) {
-                        Text(
-                            text = badgeText,
-                            color = badgeColor,
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.Bold,
-                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                        )
+                    Text(title, fontWeight = FontWeight.Medium, color = text, fontSize = 15.sp)
+                    if (mode != "off") {
+                        Spacer(Modifier.width(6.dp))
+                        Box(Modifier.size(8.dp).clip(CircleShape).background(if (serviceRunning) success else warning))
                     }
                 }
-                RadioButton(
-                    selected = currentMode == value,
-                    onClick = { onSelect(value) },
-                    colors = RadioButtonDefaults.colors(
-                        selectedColor = accent,
-                        unselectedColor = textMuted
-                    )
-                )
+            }
+            Surface(color = badge.third.copy(alpha = 0.1f), shape = RoundedCornerShape(6.dp), border = BorderStroke(1.dp, badge.third.copy(alpha = 0.3f))) {
+                Row(Modifier.padding(horizontal = 8.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(badge.first, null, tint = badge.third, modifier = Modifier.size(14.dp))
+                    Spacer(Modifier.width(4.dp))
+                    Text(badge.second, color = badge.third, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                }
+            }
+            Spacer(Modifier.width(4.dp))
+            Icon(Icons.Default.KeyboardArrowDown, null, tint = textMuted, modifier = Modifier.size(20.dp))
+        }
+    }
+}
+
+@Composable
+private fun InfoBox(text: String) {
+    Card(colors = CardDefaults.cardColors(containerColor = warning.copy(alpha = 0.05f)), shape = RoundedCornerShape(8.dp), border = BorderStroke(1.dp, warning.copy(alpha = 0.2f)), modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+        Row(Modifier.padding(12.dp), verticalAlignment = Alignment.Top) {
+            Icon(Icons.Default.Info, null, tint = warning, modifier = Modifier.size(16.dp))
+            Spacer(Modifier.width(8.dp))
+            Text(text, color = textSecondary, fontSize = 13.sp)
+        }
+    }
+}
+
+@Composable
+private fun HowItWorksCard() {
+    Card(colors = CardDefaults.cardColors(containerColor = card), shape = RoundedCornerShape(16.dp), border = BorderStroke(1.dp, cardBorder), modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(16.dp)) {
+            Text(stringResource(R.string.card_how_it_works), fontWeight = FontWeight.Bold, color = text)
+            Spacer(Modifier.height(8.dp))
+            HowItWorksRow(Icons.Default.Cancel, stringResource(R.string.row_how_full_block), danger)
+            HowItWorksRow(Icons.Default.VisibilityOff, stringResource(R.string.row_how_partial_block), warning)
+            HowItWorksRow(Icons.Default.CheckCircle, stringResource(R.string.row_how_no_block), success)
+        }
+    }
+}
+
+@Composable
+private fun HowItWorksRow(icon: androidx.compose.ui.graphics.vector.ImageVector, text: String, color: Color) {
+    Row(Modifier.padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+        Icon(icon, null, tint = color, modifier = Modifier.size(18.dp))
+        Spacer(Modifier.width(8.dp))
+        Text(text, fontSize = 13.sp, color = textSecondary)
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ModeSelectionSheet(title: String, currentMode: String, options: List<Triple<String, String, String>>, onSelect: (String) -> Unit) {
+    Column(Modifier.fillMaxWidth().padding(24.dp)) {
+        Text(title, fontSize = 20.sp, fontWeight = FontWeight.Bold, color = text)
+        Spacer(Modifier.height(16.dp))
+        options.forEach { (key, label, desc) ->
+            Row(
+                Modifier.fillMaxWidth().clickable { onSelect(key) }.padding(vertical = 12.dp).then(if (key == currentMode) Modifier.background(primary.copy(alpha = 0.1f), RoundedCornerShape(8.dp)) else Modifier).padding(horizontal = 12.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                RadioButton(selected = key == currentMode, onClick = { onSelect(key) }, colors = RadioButtonDefaults.colors(selectedColor = primary))
+                Spacer(Modifier.width(8.dp))
+                Column {
+                    Text(label, fontWeight = FontWeight.Medium, color = text)
+                    Text(desc, fontSize = 12.sp, color = textSecondary)
+                }
             }
         }
+        Spacer(Modifier.height(16.dp))
     }
 }

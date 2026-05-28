@@ -1,15 +1,19 @@
 package com.agon.app
 
-import android.content.BroadcastReceiver
+import android.app.Activity
+import android.app.admin.DevicePolicyManager
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
-import android.content.IntentFilter
-import android.media.projection.MediaProjectionManager
+import android.net.Uri
+import android.net.VpnService
 import android.os.Build
 import android.os.Bundle
+import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -17,6 +21,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.*
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -24,49 +29,29 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
-import com.agon.app.data.BlockEvent
-import com.agon.app.facebook.FacebookWebViewScreen
-import com.agon.app.services.AIExplorerService
+import com.agon.app.ui.components.PinGate
 import com.agon.app.ui.screens.*
+import com.agon.app.utils.AccessibilityUtils
+import com.agon.app.utils.PermissionUtils
 import com.agon.app.ui.theme.*
-
-import com.agon.app.viewmodel.GuardianViewModel
+import com.agon.app.viewmodel.*
+import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
-    private val mediaProjectionLauncher = registerForActivityResult(
-        ActivityResultContracts.StartActivityForResult()
-    ) { result ->
-        if (result.resultCode == RESULT_OK && result.data != null) {
-            val intent = Intent(this, AIExplorerService::class.java).apply {
-                putExtra("resultCode", result.resultCode)
-                putExtra("data", result.data)
-            }
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                startForegroundService(intent)
-            } else {
-                startService(intent)
-            }
-        }
-    }
-
-    private val mediaProjectionReceiver = object : BroadcastReceiver() {
-        override fun onReceive(context: Context, intent: Intent) {
-            if (intent.action == "com.agon.app.REQUEST_MEDIA_PROJECTION") {
-                val mpm = getSystemService(MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
-                mediaProjectionLauncher.launch(mpm.createScreenCaptureIntent())
-            }
-        }
-    }
-
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
@@ -75,45 +60,41 @@ class MainActivity : ComponentActivity() {
                 MainApp()
             }
         }
-        registerReceiver(
-            mediaProjectionReceiver,
-            IntentFilter("com.agon.app.REQUEST_MEDIA_PROJECTION"),
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) Context.RECEIVER_NOT_EXPORTED else 0
-        )
     }
 
-    override fun onDestroy() {
-        super.onDestroy()
-        try { unregisterReceiver(mediaProjectionReceiver) } catch (_: Exception) {}
+    override fun attachBaseContext(base: Context) {
+        super.attachBaseContext(LanguageManager.apply(base))
     }
 }
 
 @Composable
 fun MainApp() {
     val navController = rememberNavController()
-    val viewModel: GuardianViewModel = viewModel()
-    val state by viewModel.state.collectAsState()
+    val context = LocalContext.current
+    val app = context.applicationContext as GuardianApp
+    val settings = app.repository.getAppSettings()
+    val scope = rememberCoroutineScope()
 
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
     val isBottomNavVisible = currentRoute in listOf("home", "social", "content", "lists", "statistics", "profile")
 
-    // Force onboarding if not completed
-    LaunchedEffect(state.onboardingCompleted) {
-        if (!state.onboardingCompleted) {
+    val onboardingComplete by settings.onboardingCompleteFlow.collectAsState(initial = false)
+    val pinHash by settings.pinHashFlow.collectAsState(initial = "")
+    val hasPinSet = pinHash.isNotBlank()
+
+    LaunchedEffect(Unit) {
+        if (!onboardingComplete) {
             navController.navigate("onboarding") {
                 popUpTo(0) { inclusive = true }
             }
         }
     }
 
-    // App unlock gate for settings
-    val needsUnlock = state.pinCode != null && !state.appUnlocked && !state.onboardingCompleted
-
     Scaffold(
         modifier = Modifier.fillMaxSize(),
         bottomBar = {
-            if (isBottomNavVisible && state.onboardingCompleted) {
+            if (isBottomNavVisible) {
                 BottomNav(navController)
             }
         },
@@ -121,131 +102,189 @@ fun MainApp() {
     ) { innerPadding ->
         NavHost(
             navController = navController,
-            startDestination = if (state.onboardingCompleted) "home" else "onboarding",
+            startDestination = if (onboardingComplete) "home" else "onboarding",
             modifier = Modifier.padding(innerPadding)
         ) {
             composable("onboarding") {
+                val lifecycleOwner = LocalLifecycleOwner.current
+                
+                val accessibilityGranted by settings.permAccessibilityFlow.collectAsState(initial = false)
+                val overlayGranted by settings.permOverlayFlow.collectAsState(initial = false)
+                val usageAccessGranted by settings.permUsageFlow.collectAsState(initial = false)
+                val deviceAdminGranted by settings.permAdminFlow.collectAsState(initial = false)
+                val vpnGranted by settings.permVpnFlow.collectAsState(initial = false)
+                val notificationGranted by settings.permNotificationsFlow.collectAsState(initial = false)
+
+                DisposableEffect(lifecycleOwner) {
+                    val observer = LifecycleEventObserver { _, event ->
+                        if (event == Lifecycle.Event.ON_RESUME) {
+                            PermissionUtils.syncPermissionsWithCache(context, settings)
+                        }
+                    }
+                    lifecycleOwner.lifecycle.addObserver(observer)
+                    onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+                }
+
+                val vpnLauncher = rememberLauncherForActivityResult(
+                    contract = ActivityResultContracts.StartActivityForResult()
+                ) { result ->
+                    if (result.resultCode == Activity.RESULT_OK) {
+                        PermissionUtils.syncPermissionsWithCache(context, settings)
+                    }
+                }
+
+                val adminLauncher = rememberLauncherForActivityResult(
+                    contract = ActivityResultContracts.StartActivityForResult()
+                ) { result ->
+                    PermissionUtils.syncPermissionsWithCache(context, settings)
+                }
+
                 OnboardingScreen(
-                    onComplete = { name ->
-                        viewModel.completeOnboarding(name)
+                    accessibilityGranted = accessibilityGranted,
+                    vpnGranted = vpnGranted,
+                    deviceAdminGranted = deviceAdminGranted,
+                    overlayGranted = overlayGranted,
+                    usageAccessGranted = usageAccessGranted,
+                    notificationGranted = notificationGranted,
+                    onComplete = {
+                        scope.launch { settings.setOnboardingComplete() }
                         navController.navigate("home") {
                             popUpTo("onboarding") { inclusive = true }
                         }
                     },
-                    onRequestPermission = { /* handled by system settings intents */ },
-                    accessibilityGranted = state.accessibilityGranted,
-                    vpnGranted = state.vpnGranted,
-                    deviceAdminGranted = state.deviceAdminGranted,
-                    overlayGranted = state.overlayGranted,
-                    usageAccessGranted = state.usageAccessGranted
+                    onRequestPermission = { key ->
+                        when (key) {
+                            "accessibility" -> {
+                                AccessibilityUtils.openAccessibilitySettings(context)
+                            }
+                            "vpn" -> {
+                                val intent = VpnService.prepare(context)
+                                if (intent != null) {
+                                    vpnLauncher.launch(intent)
+                                } else {
+                                    PermissionUtils.syncPermissionsWithCache(context, settings)
+                                }
+                            }
+                            "device_admin" -> {
+                                val intent = Intent(DevicePolicyManager.ACTION_ADD_DEVICE_ADMIN).apply {
+                                    putExtra(DevicePolicyManager.EXTRA_DEVICE_ADMIN, ComponentName(context, GuardianDeviceAdminReceiver::class.java))
+                                    putExtra(DevicePolicyManager.EXTRA_ADD_EXPLANATION, context.getString(R.string.device_admin_explanation))
+                                }
+                                adminLauncher.launch(intent)
+                            }
+                            "overlay" -> {
+                                val intent = Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION).apply {
+                                    data = Uri.parse("package:${context.packageName}")
+                                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                }
+                                context.startActivity(intent)
+                            }
+                            "usage_access" -> {
+                                val intent = Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS).apply {
+                                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                }
+                                try {
+                                    context.startActivity(intent)
+                                } catch (e: Exception) {
+                                    context.startActivity(Intent(Settings.ACTION_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                                }
+                            }
+                            "notifications" -> {
+                                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                                    Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).apply {
+                                        putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
+                                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                        context.startActivity(this)
+                                    }
+                                }
+                            }
+                        }
+                    },
                 )
             }
 
             composable("pin_setup") {
                 PinSetupScreen(
-                    existingPin = state.pinCode,
-                    onPinSet = { pin ->
-                        viewModel.setPinCode(pin)
-                        navController.popBackStack()
-                    },
-                    onSkip = {
-                        navController.popBackStack()
-                    }
+                    existingPin = null,
+                    onPinSet = { navController.popBackStack() },
+                    onSkip = { navController.popBackStack() }
                 )
             }
 
             composable("home") {
+                val vm: HomeViewModel = viewModel()
                 HomeScreen(
-                    viewModel = viewModel,
+                    vm = vm,
                     onNavigateToPermissions = { navController.navigate("permissions") },
                     onNavigateToSettings = { navController.navigate("settings") }
                 )
             }
 
             composable("social") {
-                SocialScreen(
-                    onLaunchFacebookWrapper = { navController.navigate("facebook_webview") },
-                    viewModel = viewModel
-                )
+                val vm: SocialViewModel = viewModel()
+                SocialScreen(vm = vm)
             }
 
-            composable("facebook_webview") {
-                FacebookWebViewScreen(onBack = { navController.popBackStack() })
+            composable("content") {
+                PinGate(hasPinSet = hasPinSet, storedHash = pinHash) {
+                    val vm: ContentViewModel = viewModel()
+                    ContentScreen(vm = vm)
+                }
             }
 
-            composable("content") { ContentScreen(viewModel = viewModel) }
-
-            composable("lists") { ListsScreen(viewModel = viewModel) }
+            composable("lists") {
+                PinGate(hasPinSet = hasPinSet, storedHash = pinHash) {
+                    val vm: ListsViewModel = viewModel()
+                    ListsScreen(vm = vm)
+                }
+            }
 
             composable("permissions") {
-                PermissionsScreen(
-                    onBack = { navController.popBackStack() },
-                    viewModel = viewModel
-                )
+                PermissionsScreen(onBack = { navController.popBackStack() })
             }
 
             composable("settings") {
-                SettingsScreen(
-                    onNavigateToSocial = { navController.navigate("social") },
-                    onNavigateToContent = { navController.navigate("content") },
-                    onNavigateToLists = { navController.navigate("lists") },
-                    onNavigateToPermissions = { navController.navigate("permissions") },
-                    onNavigateToProfile = { navController.navigate("profile") },
-                    onNavigateToPinSetup = { navController.navigate("pin_setup") },
-                    onNavigateToSchedule = { navController.navigate("schedule") },
-                    onNavigateToTimeLimits = { navController.navigate("time_limits") },
-                    onNavigateToStatistics = { navController.navigate("statistics") },
-                    onNavigateToExportImport = { navController.navigate("export_import") },
-                    onBack = { navController.popBackStack() },
-                    viewModel = viewModel
-                )
+                PinGate(hasPinSet = hasPinSet, storedHash = pinHash) {
+                    SettingsScreen(
+                        onNavigateToSocial = { navController.navigate("social") },
+                        onNavigateToContent = { navController.navigate("content") },
+                        onNavigateToLists = { navController.navigate("lists") },
+                        onNavigateToPermissions = { navController.navigate("permissions") },
+                        onNavigateToProfile = { navController.navigate("profile") },
+                        onNavigateToPinSetup = { navController.navigate("pin_setup") },
+                        onNavigateToSchedule = { navController.navigate("schedule") },
+                        onNavigateToTimeLimits = { navController.navigate("time_limits") },
+                        onNavigateToStatistics = { navController.navigate("statistics") },
+                        onNavigateToExportImport = { navController.navigate("export_import") },
+                        onBack = { navController.popBackStack() }
+                    )
+                }
             }
 
             composable("profile") {
-                ProfileScreen(
-                    state = state,
-                    onUpdateName = { viewModel.updateProfileName(it) },
-                    onBack = { navController.popBackStack() }
-                )
+                val vm: ProfileViewModel = viewModel()
+                ProfileScreen(vm = vm, onBack = { navController.popBackStack() })
             }
 
             composable("schedule") {
-                ScheduleScreen(
-                    rules = state.scheduleRules,
-                    onAddRule = { viewModel.addScheduleRule(it) },
-                    onUpdateRule = { viewModel.updateScheduleRule(it) },
-                    onDeleteRule = { viewModel.deleteScheduleRule(it) },
-                    onBack = { navController.popBackStack() }
-                )
+                PinGate(hasPinSet = hasPinSet, storedHash = pinHash) {
+                    val vm: ScheduleViewModel = viewModel()
+                    ScheduleScreen(vm = vm, onBack = { navController.popBackStack() })
+                }
             }
 
             composable("time_limits") {
-                TimeLimitsScreen(
-                    limits = state.dailyTimeLimits,
-                    onAddLimit = { viewModel.addTimeLimit(it) },
-                    onRemoveLimit = { viewModel.removeTimeLimit(it) },
-                    onBack = { navController.popBackStack() }
-                )
+                val vm: TimeLimitsViewModel = viewModel()
+                TimeLimitsScreen(vm = vm, onBack = { navController.popBackStack() })
             }
 
             composable("statistics") {
-                StatisticsScreen(
-                    blocksCount = state.blocksCount,
-                    shieldActivatedAt = state.shieldActivatedAt,
-                    blockEvents = state.blockEvents,
-                    onReset = { viewModel.resetStatistics() },
-                    onBack = { navController.popBackStack() }
-                )
+                val vm: StatisticsViewModel = viewModel()
+                StatisticsScreen(vm = vm, onBack = { navController.popBackStack() })
             }
 
             composable("export_import") {
-                ExportImportScreen(
-                    state = state,
-                    onImport = { websites, keywords, apps ->
-                        viewModel.importBlocklist(websites, keywords, apps)
-                    },
-                    onBack = { navController.popBackStack() }
-                )
+                ExportImportScreen(onBack = { navController.popBackStack() })
             }
         }
     }
@@ -255,16 +294,14 @@ fun MainApp() {
 fun BottomNav(navController: NavHostController) {
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
-
     val items = listOf(
-        BottomNavItem("home", Icons.Default.Shield, "Shield"),
-        BottomNavItem("social", Icons.Default.PhoneAndroid, "Social"),
-        BottomNavItem("content", Icons.Default.VisibilityOff, "Content"),
-        BottomNavItem("lists", Icons.Default.List, "Lists"),
-        BottomNavItem("statistics", Icons.Default.BarChart, "Stats"),
-        BottomNavItem("profile", Icons.Default.Person, "Profile")
+        BottomNavItem("home", Icons.Default.Shield, stringResource(R.string.nav_shield)),
+        BottomNavItem("social", Icons.Default.PhoneAndroid, stringResource(R.string.nav_social)),
+        BottomNavItem("content", Icons.Default.VisibilityOff, stringResource(R.string.nav_content)),
+        BottomNavItem("lists", Icons.AutoMirrored.Filled.List, stringResource(R.string.nav_lists)),
+        BottomNavItem("statistics", Icons.Default.BarChart, stringResource(R.string.nav_stats)),
+        BottomNavItem("profile", Icons.Default.Person, stringResource(R.string.nav_profile))
     )
-
     Surface(
         color = surface,
         border = BorderStroke(1.dp, cardBorder),

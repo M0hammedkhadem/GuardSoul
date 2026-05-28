@@ -1,10 +1,10 @@
 {
     "logs": [
         {
-            "outputFile": "com.agon.app-mergeDebugResources-45:/values-v21/values-v21.xml",
+            "outputFile": "com.agon.app-mergeDebugResources-49:/values-v21/values-v21.xml",
             "map": [
                 {
-                    "source": "C:\\Users\\moham\\.gradle\\caches\\8.14.3\\transforms\\1d72c8e8be5c6dc652e9c936fe85c5e0\\transformed\\core-1.16.0\\res\\values-v21\\values-v21.xml",
+                    "source": "C:\\Users\\moham\\.gradle\\caches\\8.14.3\\transforms\\b808ceded0f84047da3a290aa176b3fb\\transformed\\core-1.16.0\\res\\values-v21\\values-v21.xml",
                     "from": {
                         "startLines": "2,3,4,5,6,7,8,9,10,13",
                         "startColumns": "4,4,4,4,4,4,4,4,4,4",
