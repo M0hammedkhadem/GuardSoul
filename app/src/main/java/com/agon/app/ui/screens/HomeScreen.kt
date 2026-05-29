@@ -107,8 +107,8 @@ fun HomeScreen(
                 Spacer(modifier = Modifier.height(32.dp))
 
                 StatsRow(
-                    activatedAt = if (streakCount > 0) System.currentTimeMillis() - (streakCount * 86400000L) else null,
-                    blocksCount = totalBlocks
+                    blocksToday = blocksToday,
+                    totalBlocks = totalBlocks
                 )
 
                 Spacer(modifier = Modifier.height(12.dp))
@@ -414,12 +414,10 @@ fun ShieldOrb(isActive: Boolean, isCountingDown: Boolean, onClick: () -> Unit) {
 }
 
 @Composable
-fun StatsRow(activatedAt: Long?, blocksCount: Int) {
-    val daysActive = if (activatedAt != null) ((System.currentTimeMillis() - activatedAt) / 86400000).toInt() else 0
-
+fun StatsRow(blocksToday: Int, totalBlocks: Int) {
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        StatCard(title = stringResource(R.string.stat_days), value = "$daysActive", sub = stringResource(R.string.stat_streak), color = primary, modifier = Modifier.weight(1f))
-        StatCard(title = stringResource(R.string.stat_blocks), value = "$blocksCount", sub = stringResource(R.string.stat_total), color = accent, modifier = Modifier.weight(1f))
+        StatCard(title = stringResource(R.string.statistics_today), value = "$blocksToday", sub = stringResource(R.string.stat_blocks), color = primary, modifier = Modifier.weight(1f))
+        StatCard(title = stringResource(R.string.statistics_total), value = "$totalBlocks", sub = stringResource(R.string.stat_blocks), color = accent, modifier = Modifier.weight(1f))
     }
 }
 

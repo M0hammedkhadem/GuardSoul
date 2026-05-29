@@ -14,13 +14,14 @@ import kotlinx.coroutines.flow.map
 private val Context.settingsStore by preferencesDataStore(name = "app_settings")
 
 class AppSettings(private val context: Context) {
+    private val encryptedPrefs = EncryptedPrefs(context)
+
     private object Keys {
         val ONBOARDING_COMPLETE = booleanPreferencesKey("onboarding_complete")
         val SHIELD_ACTIVE = booleanPreferencesKey("shield_active")
         val TRIAL_MODE = booleanPreferencesKey("trial_mode")
         val DEACTIVATION_DELAY_MINUTES = intPreferencesKey("deactivation_delay_minutes")
         val PROFILE_NAME = stringPreferencesKey("profile_name")
-        val PIN_HASH = stringPreferencesKey("pin_hash")
         val STREAK_COUNT = intPreferencesKey("streak_count")
         val LAST_ACTIVE_DATE = longPreferencesKey("last_active_date")
 
@@ -72,7 +73,7 @@ class AppSettings(private val context: Context) {
     val trialModeFlow: Flow<Boolean> = context.settingsStore.data.map { it[Keys.TRIAL_MODE] ?: false }
     val deactivationDelayFlow: Flow<Int> = context.settingsStore.data.map { it[Keys.DEACTIVATION_DELAY_MINUTES] ?: 0 }
     val profileNameFlow: Flow<String> = context.settingsStore.data.map { it[Keys.PROFILE_NAME] ?: "" }
-    val pinHashFlow: Flow<String> = context.settingsStore.data.map { it[Keys.PIN_HASH] ?: "" }
+    val pinHashFlow: Flow<String> = encryptedPrefs.pinHashFlow
     val streakCountFlow: Flow<Int> = context.settingsStore.data.map { it[Keys.STREAK_COUNT] ?: 0 }
     val lastActiveDateFlow: Flow<Long> = context.settingsStore.data.map { it[Keys.LAST_ACTIVE_DATE] ?: 0L }
 
@@ -121,7 +122,7 @@ class AppSettings(private val context: Context) {
     suspend fun setTrialMode(v: Boolean) { context.settingsStore.edit { it[Keys.TRIAL_MODE] = v } }
     suspend fun setDeactivationDelay(v: Int) { context.settingsStore.edit { it[Keys.DEACTIVATION_DELAY_MINUTES] = v } }
     suspend fun setProfileName(v: String) { context.settingsStore.edit { it[Keys.PROFILE_NAME] = v } }
-    suspend fun setPinHash(v: String) { context.settingsStore.edit { it[Keys.PIN_HASH] = v } }
+    suspend fun setPinHash(v: String) { encryptedPrefs.savePinHash(v) }
     suspend fun setStreakCount(v: Int) { context.settingsStore.edit { it[Keys.STREAK_COUNT] = v } }
     suspend fun setLastActiveDate(v: Long) { context.settingsStore.edit { it[Keys.LAST_ACTIVE_DATE] = v } }
 
@@ -197,10 +198,10 @@ class AppSettings(private val context: Context) {
     suspend fun isOnboardingComplete(): Boolean = context.settingsStore.data.first()[Keys.ONBOARDING_COMPLETE] ?: false
     suspend fun isShieldActive(): Boolean = context.settingsStore.data.first()[Keys.SHIELD_ACTIVE] ?: false
     suspend fun isPornBlockerActive(): Boolean = context.settingsStore.data.first()[Keys.PORN_BLOCKER] ?: false
-    suspend fun hasPin(): Boolean = !(context.settingsStore.data.first()[Keys.PIN_HASH] ?: "").isNullOrBlank()
+    suspend fun hasPin(): Boolean = encryptedPrefs.hasPin()
     suspend fun getDeactivationDelay(): Int = context.settingsStore.data.first()[Keys.DEACTIVATION_DELAY_MINUTES] ?: 0
     suspend fun getProfileName(): String = context.settingsStore.data.first()[Keys.PROFILE_NAME] ?: ""
-    suspend fun getPinHash(): String = context.settingsStore.data.first()[Keys.PIN_HASH] ?: ""
+    suspend fun getPinHash(): String = encryptedPrefs.getPinHash()
     suspend fun getYoutubeMode(): String = context.settingsStore.data.first()[Keys.YOUTUBE_MODE] ?: "off"
     suspend fun getFacebookMode(): String = context.settingsStore.data.first()[Keys.FACEBOOK_MODE] ?: "off"
     suspend fun isStrictMode(): Boolean = context.settingsStore.data.first()[Keys.STRICT_MODE] ?: false

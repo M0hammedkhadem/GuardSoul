@@ -266,6 +266,8 @@ string notification_restart_title
 string notification_scanner_title
 string notification_video_blocked_text
 string notification_video_blocked_title
+string notification_youtube_shorts_text
+string notification_youtube_shorts_title
 string onboarding_btn_continue
 string onboarding_btn_grant
 string onboarding_btn_protect

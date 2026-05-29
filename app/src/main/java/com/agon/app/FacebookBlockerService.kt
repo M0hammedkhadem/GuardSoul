@@ -305,12 +305,13 @@ class FacebookBlockerService : AccessibilityService() {
         }
 
         // 3. Layout checks for targeted social media
-        val isYt = packageName == "com.google.android.youtube" || packageName == "com.google.android.apps.youtube.music"
+        // YouTube Shorts now handled by dedicated YouTubeBlockerService
+        val isYt = false
         val isFb = packageName == "com.facebook.katana" || packageName == "com.facebook.lite"
         val isIg = packageName == "com.instagram.android"
         
         if (isYt || isFb || isIg) {
-            val isShortsEnabled = if (isYt) getCachedShortsMode() else false
+            val isShortsEnabled = false
             val isReelsEnabled = if (isFb || isIg) getCachedReelsMode() else false
 
             if ((isYt && isShortsEnabled) || ((isFb || isIg) && isReelsEnabled)) {

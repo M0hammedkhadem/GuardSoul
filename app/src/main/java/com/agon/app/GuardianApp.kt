@@ -3,10 +3,13 @@ package com.agon.app
 import android.app.Application
 import android.content.Context
 import com.agon.app.data.repository.AppRepository
+import com.agon.app.di.appModules
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import org.koin.android.ext.koin.androidContext
+import org.koin.core.context.startKoin
 import timber.log.Timber
 
 class GuardianApp : Application() {
@@ -14,6 +17,10 @@ class GuardianApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        startKoin {
+            androidContext(this@GuardianApp)
+            modules(appModules)
+        }
         if (Timber.treeCount == 0) {
             Timber.plant(Timber.DebugTree())
         }

@@ -1,8 +1,12 @@
 package com.agon.app.data.settings
 
 import android.content.Context
+import android.content.SharedPreferences
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
+import kotlinx.coroutines.channels.awaitClose
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.callbackFlow
 
 class EncryptedPrefs(context: Context) {
 
@@ -22,12 +26,23 @@ class EncryptedPrefs(context: Context) {
         sharedPrefs.edit().putString(KEY_PIN_HASH, hash).apply()
     }
 
-    fun getPinHash(): String? {
-        return sharedPrefs.getString(KEY_PIN_HASH, null)
+    fun getPinHash(): String {
+        return sharedPrefs.getString(KEY_PIN_HASH, "") ?: ""
     }
 
     fun hasPin(): Boolean {
-        return !getPinHash().isNullOrBlank()
+        return getPinHash().isNotBlank()
+    }
+
+    val pinHashFlow: Flow<String> = callbackFlow {
+        val listener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+            if (key == KEY_PIN_HASH) {
+                trySend(getPinHash())
+            }
+        }
+        sharedPrefs.registerOnSharedPreferenceChangeListener(listener)
+        trySend(getPinHash())
+        awaitClose { sharedPrefs.unregisterOnSharedPreferenceChangeListener(listener) }
     }
 
     fun clear() {

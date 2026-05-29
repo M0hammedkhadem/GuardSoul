@@ -184,6 +184,23 @@ fun ContentScreen(vm: ContentViewModel) {
                         StepRow(5, stringResource(R.string.step_ai_ban))
                     }
                 }
+                Spacer(Modifier.height(12.dp))
+                val aiThreshold by vm.aiThreshold.collectAsStateWithLifecycle()
+                var thresholdSlider by remember(aiThreshold) { mutableStateOf(aiThreshold) }
+                Text(
+                    "Detection Threshold: ${(thresholdSlider * 100).toInt()}%",
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = text
+                )
+                Slider(
+                    value = thresholdSlider,
+                    onValueChange = { thresholdSlider = it },
+                    onValueChangeFinished = { vm.setAiThreshold(thresholdSlider) },
+                    valueRange = 0.5f..0.9f,
+                    steps = 3,
+                    modifier = Modifier.fillMaxWidth()
+                )
                 Spacer(Modifier.height(8.dp))
                 Surface(color = danger.copy(alpha = 0.1f), shape = RoundedCornerShape(6.dp), border = BorderStroke(1.dp, danger.copy(alpha = 0.2f))) {
                     Text(stringResource(R.string.warning_auto_ban), fontSize = 11.sp, color = danger, modifier = Modifier.padding(8.dp))

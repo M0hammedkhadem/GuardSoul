@@ -5,6 +5,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.agon.app.GuardianApp
 import com.agon.app.data.local.entity.ScheduleRuleEntity
+import com.agon.app.utils.ScheduleEnforcer
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 
@@ -29,14 +30,21 @@ class ScheduleViewModel(application: Application) : AndroidViewModel(application
                     enabled = true
                 )
             )
+            ScheduleEnforcer.rescheduleAll(getApplication(), repo)
         }
     }
 
     fun toggleRule(id: Long, enabled: Boolean) {
-        viewModelScope.launch { repo.toggleScheduleRule(id, enabled) }
+        viewModelScope.launch {
+            repo.toggleScheduleRule(id, enabled)
+            ScheduleEnforcer.rescheduleAll(getApplication(), repo)
+        }
     }
 
     fun deleteRule(rule: ScheduleRuleEntity) {
-        viewModelScope.launch { repo.deleteScheduleRule(rule) }
+        viewModelScope.launch {
+            repo.deleteScheduleRule(rule)
+            ScheduleEnforcer.rescheduleAll(getApplication(), repo)
+        }
     }
 }

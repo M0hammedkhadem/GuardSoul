@@ -2,6 +2,7 @@ package com.agon.app
 
 import android.app.Activity
 import android.app.Notification
+import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
@@ -17,6 +18,10 @@ import android.os.Build
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
+import android.view.View
+import android.view.WindowManager
+import android.widget.ImageView
+import android.widget.Toast
 import androidx.core.app.NotificationCompat
 import com.agon.app.data.repository.AppRepository
 import com.agon.app.ui.screens.BlockActivity
@@ -32,6 +37,9 @@ import kotlinx.coroutines.launch
 import timber.log.Timber
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 class AiScannerService : Service() {
 
@@ -40,32 +48,35 @@ class AiScannerService : Service() {
         const val EXTRA_PROJECTION_INTENT = "EXTRA_PROJECTION_INTENT"
         const val ACTION_START = "ACTION_START"
         const val ACTION_STOP = "ACTION_STOP"
-        
+
         private const val CAPTURE_WIDTH = 360
         private const val CAPTURE_HEIGHT = 640
-        private const val INFERENCE_INTERVAL_MS = 2_500L
-        private const val VIOLATIONS_FOR_BAN = 3
-        private const val VIOLATION_WINDOW_MS = 4 * 60 * 1000L
+        private const val INFERENCE_INTERVAL_MS = 2_000L
         private const val BAN_DURATION_MS = 15 * 60 * 1000L
+        private const val OVERLAY_DISMISS_MS = 3_000L
+        private const val OVERLAY_DISMISS_STRIKE2_MS = 5_000L
+        private const val PIXEL_BLOCK_SIZE = 24
     }
 
     private val serviceScope = CoroutineScope(Dispatchers.Default + SupervisorJob())
     private val mainHandler = Handler(Looper.getMainLooper())
     private var captureJob: Job? = null
-    
+
     private var mediaProjectionManager: MediaProjectionManager? = null
     private var mediaProjection: MediaProjection? = null
     private var virtualDisplay: VirtualDisplay? = null
     private var imageReader: ImageReader? = null
     private var tflite: org.tensorflow.lite.Interpreter? = null
 
+    private var currentDayStrikes = 0
+    private var lastStrikeDate = ""
+    private var bannedUntilTimestamp = 0L
+
+    private var pixelationOverlay: View? = null
+
     private val repo: AppRepository by lazy {
         (applicationContext as GuardianApp).repository
     }
-
-    private val violationTimestamps = mutableListOf<Long>()
-    private var bannedUntilTimestamp = 0L
-    private var lastViolationPkg = ""
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -115,6 +126,7 @@ class AiScannerService : Service() {
 
     override fun onDestroy() {
         super.onDestroy()
+        dismissPixelationOverlay()
         stopCapture()
         serviceScope.cancel()
         tflite?.close()
@@ -137,7 +149,7 @@ class AiScannerService : Service() {
                 tflite = org.tensorflow.lite.Interpreter(modelFile, options)
                 Timber.d("AiScannerService: TFLite model loaded successfully")
             } else {
-                Timber.w("AiScannerService: nsfw.tflite not found in assets, running in simulation fallback mode")
+                Timber.w("AiScannerService: nsfw_model.tflite not found in assets, running in simulation fallback mode")
             }
         } catch (e: Exception) {
             Timber.e(e, "AiScannerService: failed to initialize TFLite, running in fallback mode")
@@ -146,7 +158,7 @@ class AiScannerService : Service() {
 
     private fun loadModelFile(): java.nio.MappedByteBuffer? {
         return try {
-            val fileDescriptor = assets.openFd("nsfw.tflite")
+            val fileDescriptor = assets.openFd("nsfw_model.tflite")
             val inputStream = java.io.FileInputStream(fileDescriptor.fileDescriptor)
             val fileChannel = inputStream.channel
             val startOffset = fileDescriptor.startOffset
@@ -189,13 +201,13 @@ class AiScannerService : Service() {
                 try {
                     val reader = imageReader ?: continue
                     val image = reader.acquireLatestImage() ?: continue
-                    
+
                     val planes = image.planes
                     val buffer = planes[0].buffer
                     val pixelStride = planes[0].pixelStride
                     val rowStride = planes[0].rowStride
                     val rowPadding = rowStride - pixelStride * CAPTURE_WIDTH
-                    
+
                     val bitmap = Bitmap.createBitmap(
                         CAPTURE_WIDTH + rowPadding / pixelStride,
                         CAPTURE_HEIGHT,
@@ -208,16 +220,17 @@ class AiScannerService : Service() {
                     bitmap.recycle()
 
                     val nsfwScore = runInference(croppedBitmap)
-                    croppedBitmap.recycle()
-                    
+
                     val sensitivity = try {
                         repo.getAppSettings().aiSensitivityFlow.first() / 100f
                     } catch (_: Exception) { 0.75f }
-                    
+
                     Timber.d("AiScannerService: Score=$nsfwScore, threshold=$sensitivity")
-                    
+
                     if (nsfwScore > sensitivity) {
-                        handleNsfwViolation()
+                        handleNsfwViolation(croppedBitmap)
+                    } else {
+                        croppedBitmap.recycle()
                     }
                 } catch (e: Exception) {
                     Timber.w(e, "AiScannerService: frame capture error")
@@ -229,54 +242,57 @@ class AiScannerService : Service() {
     private fun runInference(bitmap: Bitmap): Float {
         val interpreter = tflite
         if (interpreter == null) {
-            // Safe simulation mode: default clean score
             return 0.01f
         }
 
-        // MobileNet input: 224 x 224 x 3 Float values
         val resized = Bitmap.createScaledBitmap(bitmap, 224, 224, true)
         val byteBuffer = ByteBuffer.allocateDirect(224 * 224 * 3 * 4).apply {
             order(ByteOrder.nativeOrder())
         }
-        
+
         val intValues = IntArray(224 * 224)
         resized.getPixels(intValues, 0, resized.width, 0, 0, resized.width, resized.height)
         resized.recycle()
-        
+
         byteBuffer.rewind()
         for (pixel in intValues) {
             val r = (pixel shr 16) and 0xff
             val g = (pixel shr 8) and 0xff
             val b = pixel and 0xff
-            
-            // Standard float normalization [0, 1]
+
             byteBuffer.putFloat(r / 255.0f)
             byteBuffer.putFloat(g / 255.0f)
             byteBuffer.putFloat(b / 255.0f)
         }
-        
-        // Output array (2 classes: Safe, NSFW)
+
         val outputVal = Array(1) { FloatArray(2) }
-        
+
         try {
             interpreter.run(byteBuffer, outputVal)
-            return outputVal[0][1] // Probability of explicit class
+            return outputVal[0][1]
         } catch (e: Exception) {
             Timber.e(e, "AiScannerService: TFLite run failed")
             return 0.0f
         }
     }
 
-    private fun handleNsfwViolation() {
+    private fun handleNsfwViolation(frame: Bitmap) {
         val now = System.currentTimeMillis()
 
         if (now < bannedUntilTimestamp) {
-            Timber.d("AiScannerService: User is banned until ${bannedUntilTimestamp - now}ms from now, skipping")
+            frame.recycle()
+            Timber.d("AiScannerService: User is banned until ${bannedUntilTimestamp - now}ms from now")
             return
         }
 
-        violationTimestamps.removeAll { now - it > VIOLATION_WINDOW_MS }
-        violationTimestamps.add(now)
+        val today = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date(now))
+        if (today != lastStrikeDate) {
+            currentDayStrikes = 0
+            lastStrikeDate = today
+        }
+
+        currentDayStrikes++
+        Timber.w("AiScannerService: Strike $currentDayStrikes/3 for $today")
 
         serviceScope.launch {
             try {
@@ -284,49 +300,128 @@ class AiScannerService : Service() {
             } catch (_: Exception) {}
         }
 
-        val homeIntent = Intent(Intent.ACTION_MAIN).apply {
+        startActivity(Intent(Intent.ACTION_MAIN).apply {
             addCategory(Intent.CATEGORY_HOME)
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        }
-        startActivity(homeIntent)
+        })
 
-        if (violationTimestamps.size >= VIOLATIONS_FOR_BAN) {
-            Timber.w("AiScannerService: ${VIOLATIONS_FOR_BAN} violations in window, banning for ${BAN_DURATION_MS / 1000}s")
-            bannedUntilTimestamp = now + BAN_DURATION_MS
-            violationTimestamps.clear()
-            mainHandler.post {
-                val intent = Intent(this, BlockActivity::class.java).apply {
-                    putExtra("APP_NAME", "AI Screen Monitor")
-                    putExtra("BLOCK_REASON", "ai_repeat_offender")
-                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
-                }
-                startActivity(intent)
+        when (currentDayStrikes) {
+            1 -> {
+                showPixelationOverlay(frame)
+                showWarningToast("Warning: Explicit content detected (Strike 1/3)")
             }
-        } else {
-            mainHandler.post {
-                val intent = Intent(this, BlockActivity::class.java).apply {
-                    putExtra("APP_NAME", "AI Screen Monitor")
-                    putExtra("BLOCK_REASON", "ai_nsfw_block")
-                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
-                }
-                startActivity(intent)
+            2 -> {
+                showPixelationOverlay(frame, strike2 = true)
+                showWarningToast("Final warning: Explicit content detected (Strike 2/3)")
+                showStrikeNotification()
             }
+            3 -> {
+                frame.recycle()
+                bannedUntilTimestamp = now + BAN_DURATION_MS
+                currentDayStrikes = 0
+                mainHandler.post {
+                    val intent = Intent(this, BlockActivity::class.java).apply {
+                        putExtra("APP_NAME", "AI Screen Monitor")
+                        putExtra("BLOCK_REASON", "ai_repeat_offender")
+                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                    }
+                    startActivity(intent)
+                }
+            }
+            else -> frame.recycle()
+        }
+    }
+
+    private fun showPixelationOverlay(bitmap: Bitmap, strike2: Boolean = false) {
+        dismissPixelationOverlay()
+
+        val pixelated = createPixelatedBitmap(bitmap)
+        bitmap.recycle()
+
+        mainHandler.post {
+            try {
+                val wm = getSystemService(Context.WINDOW_SERVICE) as WindowManager
+                val layoutParams = WindowManager.LayoutParams(
+                    WindowManager.LayoutParams.MATCH_PARENT,
+                    WindowManager.LayoutParams.MATCH_PARENT,
+                    WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+                    WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+                        WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                        WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE,
+                    PixelFormat.TRANSLUCENT
+                )
+
+                val imageView = ImageView(this).apply {
+                    setImageBitmap(pixelated)
+                    scaleType = ImageView.ScaleType.FIT_XY
+                }
+
+                wm.addView(imageView, layoutParams)
+                pixelationOverlay = imageView
+
+                val delay = if (strike2) OVERLAY_DISMISS_STRIKE2_MS else OVERLAY_DISMISS_MS
+                mainHandler.postDelayed({
+                    dismissPixelationOverlay()
+                }, delay)
+            } catch (e: Exception) {
+                Timber.w(e, "AiScannerService: failed to show pixelation overlay")
+            }
+        }
+    }
+
+    private fun createPixelatedBitmap(source: Bitmap): Bitmap {
+        val smallW = source.width / PIXEL_BLOCK_SIZE
+        val smallH = source.height / PIXEL_BLOCK_SIZE
+        val small = Bitmap.createScaledBitmap(source, smallW.coerceAtLeast(1), smallH.coerceAtLeast(1), true)
+        return Bitmap.createScaledBitmap(small, source.width, source.height, false)
+    }
+
+    private fun dismissPixelationOverlay() {
+        try {
+            val overlay = pixelationOverlay
+            if (overlay != null) {
+                val wm = getSystemService(Context.WINDOW_SERVICE) as WindowManager
+                wm.removeView(overlay)
+            }
+        } catch (_: Exception) {}
+        pixelationOverlay = null
+    }
+
+    private fun showWarningToast(message: String) {
+        mainHandler.post {
+            Toast.makeText(this, message, Toast.LENGTH_LONG).show()
+        }
+    }
+
+    private fun showStrikeNotification() {
+        try {
+            val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            val notification = NotificationCompat.Builder(this, AppNotificationChannels.AI_SCANNER)
+                .setContentTitle("AI Scanner — Final Warning")
+                .setContentText("Explicit content detected. Next strike will block all apps for 15 minutes.")
+                .setSmallIcon(android.R.drawable.ic_dialog_alert)
+                .setPriority(NotificationCompat.PRIORITY_HIGH)
+                .setAutoCancel(true)
+                .build()
+            notificationManager.notify(5002, notification)
+        } catch (e: Exception) {
+            Timber.w(e, "AiScannerService: failed to show strike notification")
         }
     }
 
     private fun stopCapture() {
         captureJob?.cancel()
         captureJob = null
-        
+
         try { virtualDisplay?.release() } catch (_: Exception) {}
         virtualDisplay = null
-        
+
         try { imageReader?.close() } catch (_: Exception) {}
         imageReader = null
-        
+
         try { mediaProjection?.stop() } catch (_: Exception) {}
         mediaProjection = null
-        
+
         Timber.d("AiScannerService: Media projection screen capture session terminated")
     }
 

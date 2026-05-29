@@ -67,33 +67,28 @@ class AppRepository(context: Context) {
     suspend fun deleteScheduleRule(rule: ScheduleRuleEntity) = scheduleRuleDao.delete(rule)
     suspend fun toggleScheduleRule(id: Long, enabled: Boolean) = scheduleRuleDao.setEnabled(id, enabled)
 
-    // Streak calculation
+    // Streak calculation — counts consecutive days with ≥1 block event
     suspend fun calculateStreak(): Int {
         val allEvents = blockEventDao.blocksSince(0L)
         val todayStart = getTodayStart()
-        
-        // If today already has a block event, the active streak is broken (0)
-        val todayHasEvent = allEvents.any { it.timestamp >= todayStart }
-        if (todayHasEvent) return 0
-
         var streak = 0
-        var checkTime = todayStart - 86400000L // Start checking from yesterday
-        
+        var checkTime = todayStart
+
         while (true) {
-            val dayStart = checkTime
             val dayEnd = checkTime + 86400000L
-            val hasEvent = allEvents.any { it.timestamp in dayStart until dayEnd }
-            if (hasEvent) {
-                break // Streak broken by a block event
-            }
+            val hasEvent = allEvents.any { it.timestamp in checkTime until dayEnd }
+            if (!hasEvent) break
             streak++
             checkTime -= 86400000L
-            
-            // Safety cap: stop searching if we go before the oldest event
-            val oldestTimestamp = allEvents.minOfOrNull { it.timestamp } ?: 0L
-            if (checkTime < oldestTimestamp - 86400000L) break
+            val oldest = allEvents.minOfOrNull { it.timestamp } ?: break
+            if (checkTime < oldest - 86400000L) break
         }
         return streak
+    }
+
+    suspend fun getDaysActive(): Int {
+        val allEvents = blockEventDao.blocksSince(0L)
+        return allEvents.map { it.timestamp / 86400000L }.distinct().count()
     }
 
     suspend fun resetAllSettings() {

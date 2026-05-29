@@ -26,6 +26,9 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
     val blocksToday: StateFlow<Int> = repo.blocksTodayFlow().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
     val mostBlockedApp: StateFlow<MostBlockedApp?> = repo.mostBlockedAppFlow().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
     val streakCount: StateFlow<Int> = settings.streakCountFlow.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
+    val daysActive: StateFlow<Int> = repo.getAllBlockEvents().map { events ->
+        events.map { it.timestamp / 86400000L }.distinct().count()
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
     val profileName: StateFlow<String> = settings.profileNameFlow.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "")
     val hasPin: StateFlow<Boolean> = settings.pinHashFlow.map { it.isNotBlank() }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
 

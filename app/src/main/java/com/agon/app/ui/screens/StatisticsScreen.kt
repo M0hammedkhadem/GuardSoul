@@ -19,10 +19,19 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.agon.app.R
 import com.agon.app.ui.theme.*
+import com.agon.app.viewmodel.DailyBlockCount
+import com.agon.app.viewmodel.AppBlockCount
 import com.agon.app.viewmodel.StatisticsViewModel
+import com.github.mikephil.charting.charts.BarChart
+import com.github.mikephil.charting.charts.LineChart
+import com.github.mikephil.charting.charts.PieChart
+import com.github.mikephil.charting.data.*
+import com.github.mikephil.charting.formatter.IndexAxisValueFormatter
+import com.github.mikephil.charting.formatter.PercentFormatter
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -37,7 +46,10 @@ fun StatisticsScreen(
     val streak by vm.streakCount.collectAsStateWithLifecycle()
     val mostBlocked by vm.mostBlockedApp.collectAsStateWithLifecycle()
     val recentEvents by vm.recentEvents.collectAsStateWithLifecycle()
-    val daysActive = 0
+    val daysActive by vm.daysActive.collectAsStateWithLifecycle()
+    val dailyBlocksData by vm.dailyBlocksData.collectAsStateWithLifecycle()
+    val blockDistribution by vm.blockDistribution.collectAsStateWithLifecycle()
+    val streakHistoryData by vm.streakHistoryData.collectAsStateWithLifecycle()
 
     LaunchedEffect(Unit) { vm.refreshStreak() }
 
@@ -154,8 +166,178 @@ fun StatisticsScreen(
                     }
                 }
             }
+
+            // ── BarChart: Daily Blocks (Last 7 Days) ──
+            item {
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = card),
+                    shape = RoundedCornerShape(16.dp),
+                    border = BorderStroke(1.dp, cardBorder)
+                ) {
+                    Column(Modifier.padding(16.dp)) {
+                        Text("Daily Blocks (7 Days)", fontWeight = FontWeight.Bold, color = text)
+                        Spacer(Modifier.height(8.dp))
+                        DailyBarChart(data = dailyBlocksData, modifier = Modifier.fillMaxWidth().height(200.dp))
+                    }
+                }
+            }
+
+            // ── PieChart: Block Distribution by App ──
+            item {
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = card),
+                    shape = RoundedCornerShape(16.dp),
+                    border = BorderStroke(1.dp, cardBorder)
+                ) {
+                    Column(Modifier.padding(16.dp)) {
+                        Text("Block Distribution", fontWeight = FontWeight.Bold, color = text)
+                        Spacer(Modifier.height(8.dp))
+                        if (blockDistribution.isEmpty()) {
+                            Text(stringResource(R.string.statistics_empty), fontSize = 13.sp, color = textMuted)
+                        } else {
+                            BlockPieChart(data = blockDistribution, modifier = Modifier.fillMaxWidth().height(220.dp))
+                        }
+                    }
+                }
+            }
+
+            // ── LineChart: Streak History ──
+            item {
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = card),
+                    shape = RoundedCornerShape(16.dp),
+                    border = BorderStroke(1.dp, cardBorder)
+                ) {
+                    Column(Modifier.padding(16.dp)) {
+                        Text("Streak History", fontWeight = FontWeight.Bold, color = text)
+                        Spacer(Modifier.height(8.dp))
+                        StreakLineChart(data = streakHistoryData, modifier = Modifier.fillMaxWidth().height(200.dp))
+                    }
+                }
+            }
         }
     }
+}
+
+// ── MPAndroidChart Composables ──
+
+private fun androidColor(c: Color): Int = android.graphics.Color.argb(
+    (c.alpha * 255).toInt(), (c.red * 255).toInt(), (c.green * 255).toInt(), (c.blue * 255).toInt()
+)
+
+@Composable
+private fun DailyBarChart(data: List<DailyBlockCount>, modifier: Modifier = Modifier) {
+    AndroidView(
+        factory = { ctx ->
+            BarChart(ctx).apply {
+                description.isEnabled = false
+                setFitBars(true)
+                setScaleEnabled(false)
+                legend.textColor = androidColor(textSecondary)
+                legend.textSize = 12f
+                axisLeft.textColor = androidColor(textMuted)
+                axisLeft.setDrawGridLines(false)
+                axisLeft.axisMinimum = 0f
+                axisRight.isEnabled = false
+                xAxis.textColor = androidColor(textMuted)
+                xAxis.setDrawGridLines(false)
+                xAxis.position = com.github.mikephil.charting.components.XAxis.XAxisPosition.BOTTOM
+                xAxis.granularity = 1f
+            }
+        },
+        update = { chart ->
+            val entries = data.mapIndexed { i, d -> BarEntry(i.toFloat(), d.count.toFloat()) }
+            val dataSet = BarDataSet(entries, "Blocks").apply {
+                color = androidColor(primary)
+                valueTextColor = androidColor(textMuted)
+                valueTextSize = 11f
+                setDrawValues(true)
+            }
+            chart.xAxis.valueFormatter = IndexAxisValueFormatter(data.map { it.label })
+            chart.data = BarData(dataSet).apply { barWidth = 0.6f }
+            chart.invalidate()
+        },
+        modifier = modifier
+    )
+}
+
+@Composable
+private fun BlockPieChart(data: List<AppBlockCount>, modifier: Modifier = Modifier) {
+    AndroidView(
+        factory = { ctx ->
+            PieChart(ctx).apply {
+                description.isEnabled = false
+                setUsePercentValues(true)
+                isDrawHoleEnabled = true
+                holeRadius = 40f
+                setHoleColor(android.graphics.Color.TRANSPARENT)
+                setEntryLabelColor(androidColor(text))
+                setEntryLabelTextSize(11f)
+                legend.textColor = androidColor(textSecondary)
+                legend.textSize = 12f
+                legend.orientation = com.github.mikephil.charting.components.Legend.LegendOrientation.VERTICAL
+                legend.horizontalAlignment = com.github.mikephil.charting.components.Legend.LegendHorizontalAlignment.RIGHT
+            }
+        },
+        update = { chart ->
+            val total = data.sumOf { it.count }
+            val entries = data.map { PieEntry(it.count.toFloat() / total, it.appLabel.ifBlank { it.packageName }) }
+            val colors = listOf(primary, accent, success, warning, danger, textMuted, surfaceLight).map { androidColor(it) }
+            val dataSet = PieDataSet(entries, "").apply {
+                this.colors = colors
+                sliceSpace = 2f
+                valueTextColor = androidColor(text)
+                valueTextSize = 12f
+                valueFormatter = PercentFormatter(chart)
+                setDrawValues(true)
+            }
+            chart.data = PieData(dataSet)
+            chart.invalidate()
+        },
+        modifier = modifier
+    )
+}
+
+@Composable
+private fun StreakLineChart(data: List<DailyBlockCount>, modifier: Modifier = Modifier) {
+    AndroidView(
+        factory = { ctx ->
+            LineChart(ctx).apply {
+                description.isEnabled = false
+                setScaleEnabled(false)
+                legend.textColor = androidColor(textSecondary)
+                legend.textSize = 12f
+                axisLeft.textColor = androidColor(textMuted)
+                axisLeft.setDrawGridLines(false)
+                axisLeft.axisMinimum = 0f
+                axisRight.isEnabled = false
+                xAxis.textColor = androidColor(textMuted)
+                xAxis.setDrawGridLines(false)
+                xAxis.position = com.github.mikephil.charting.components.XAxis.XAxisPosition.BOTTOM
+                xAxis.granularity = 1f
+            }
+        },
+        update = { chart ->
+            val entries = data.mapIndexed { i, d -> Entry(i.toFloat(), d.count.toFloat()) }
+            val dataSet = LineDataSet(entries, "Daily Blocks").apply {
+                color = androidColor(accent)
+                valueTextColor = androidColor(textMuted)
+                valueTextSize = 10f
+                setCircleColor(androidColor(accent))
+                circleRadius = 3f
+                setCircleHoleColor(androidColor(accent))
+                lineWidth = 2f
+                setDrawValues(false)
+                mode = LineDataSet.Mode.LINEAR
+            }
+            val labels = data.map { it.label }
+            chart.xAxis.valueFormatter = IndexAxisValueFormatter(labels)
+            chart.xAxis.labelCount = labels.size.coerceAtMost(7)
+            chart.data = LineData(dataSet)
+            chart.invalidate()
+        },
+        modifier = modifier
+    )
 }
 
 @Composable

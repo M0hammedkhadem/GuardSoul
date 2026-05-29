@@ -265,6 +265,8 @@
     <string name="notification_scanner_title">Guardian AI Explorer</string>
     <string name="notification_video_blocked_text">This Facebook video has been blocked by Guardian</string>
     <string name="notification_video_blocked_title">Video Blocked</string>
+    <string name="notification_youtube_shorts_text">تم حظر مقطع Shorts في يوتيوب</string>
+    <string name="notification_youtube_shorts_title">تم حظر Shorts</string>
     <string name="onboarding_btn_continue">Continue</string>
     <string name="onboarding_btn_grant">Grant Permission</string>
     <string name="onboarding_btn_protect">Start Protecting</string>

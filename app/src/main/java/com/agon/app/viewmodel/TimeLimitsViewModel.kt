@@ -5,6 +5,7 @@ import android.app.usage.UsageStatsManager
 import android.content.pm.PackageManager
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.agon.app.AppBlockerService
 import com.agon.app.GuardianApp
 import com.agon.app.data.local.entity.AppLimitEntity
 import kotlinx.coroutines.flow.*
@@ -25,11 +26,17 @@ class TimeLimitsViewModel(application: Application) : AndroidViewModel(applicati
     val appUsage: StateFlow<List<AppTimeUsage>> = _appUsage.asStateFlow()
 
     fun addLimit(packageName: String, appLabel: String, dailyMinutes: Int) {
-        viewModelScope.launch { repo.setAppLimit(packageName, appLabel, dailyMinutes) }
+        viewModelScope.launch {
+            repo.setAppLimit(packageName, appLabel, dailyMinutes)
+            AppBlockerService.scheduleTimeLimitCheck(getApplication())
+        }
     }
 
     fun removeLimit(limit: AppLimitEntity) {
-        viewModelScope.launch { repo.removeAppLimit(limit) }
+        viewModelScope.launch {
+            repo.removeAppLimit(limit)
+            AppBlockerService.scheduleTimeLimitCheck(getApplication())
+        }
     }
 
     fun refreshUsage() {

@@ -19,6 +19,9 @@ class ContentViewModel(application: Application) : AndroidViewModel(application)
     val nextDnsProfileId: StateFlow<String> = settings.nextDnsProfileIdFlow.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "")
     val aiScanner: StateFlow<Boolean> = settings.aiScannerFlow.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
     val uninstallProtection: StateFlow<Boolean> = settings.uninstallProtectionFlow.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+    val aiThreshold: StateFlow<Float> = settings.aiSensitivityFlow
+        .map { it / 100f }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0.75f)
 
     fun setPornBlocker(v: Boolean) = viewModelScope.launch {
         settings.setPornBlocker(v)
@@ -61,4 +64,8 @@ class ContentViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun setUninstallProtection(v: Boolean) = viewModelScope.launch { settings.setUninstallProtection(v) }
+
+    fun setAiThreshold(v: Float) = viewModelScope.launch {
+        settings.setAiSensitivity((v * 100).toInt().coerceIn(0, 100))
+    }
 }

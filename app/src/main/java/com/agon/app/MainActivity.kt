@@ -49,15 +49,23 @@ import com.agon.app.utils.AccessibilityUtils
 import com.agon.app.utils.PermissionUtils
 import com.agon.app.ui.theme.*
 import com.agon.app.viewmodel.*
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
+
+        val app = application as GuardianApp
+        val initialOnboardingComplete = runBlocking(Dispatchers.IO) {
+            app.repository.getAppSettings().isOnboardingComplete()
+        }
+
         setContent {
             AgonAppTheme {
-                MainApp()
+                MainApp(initialOnboardingComplete = initialOnboardingComplete)
             }
         }
     }
@@ -68,7 +76,7 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-fun MainApp() {
+fun MainApp(initialOnboardingComplete: Boolean = false) {
     val navController = rememberNavController()
     val context = LocalContext.current
     val app = context.applicationContext as GuardianApp
@@ -79,13 +87,13 @@ fun MainApp() {
     val currentRoute = navBackStackEntry?.destination?.route
     val isBottomNavVisible = currentRoute in listOf("home", "social", "content", "lists", "statistics", "profile")
 
-    val onboardingComplete by settings.onboardingCompleteFlow.collectAsState(initial = false)
+    val onboardingComplete by settings.onboardingCompleteFlow.collectAsState(initial = initialOnboardingComplete)
     val pinHash by settings.pinHashFlow.collectAsState(initial = "")
     val hasPinSet = pinHash.isNotBlank()
 
-    LaunchedEffect(Unit) {
-        if (!onboardingComplete) {
-            navController.navigate("onboarding") {
+    LaunchedEffect(onboardingComplete) {
+        if (onboardingComplete) {
+            navController.navigate("home") {
                 popUpTo(0) { inclusive = true }
             }
         }

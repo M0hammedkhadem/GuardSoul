@@ -6,7 +6,9 @@ import android.content.Context
 
 object AppNotificationChannels {
     const val FACEBOOK_VIDEO = "facebook_video_block"
+    const val YOUTUBE_SHORTS = "youtube_shorts_block"
     const val APP_BLOCKER = "app_blocker"
+    const val AI_SCANNER = "ai_scanner"
     const val TAMPER_ALERT = "tamper_alert"
 
     fun createAll(context: Context) {
@@ -21,6 +23,15 @@ object AppNotificationChannels {
         }
         manager.createNotificationChannel(fbVideo)
 
+        val ytShorts = NotificationChannel(
+            YOUTUBE_SHORTS,
+            "YouTube Shorts Block",
+            NotificationManager.IMPORTANCE_HIGH
+        ).apply {
+            description = "إشعارات عند حظر YouTube Shorts"
+        }
+        manager.createNotificationChannel(ytShorts)
+
         val appBlocker = NotificationChannel(
             APP_BLOCKER,
             context.getString(R.string.channel_app_blocker),
@@ -29,6 +40,17 @@ object AppNotificationChannels {
             description = context.getString(R.string.channel_app_blocker_desc)
         }
         manager.createNotificationChannel(appBlocker)
+
+        val aiScanner = NotificationChannel(
+            AI_SCANNER,
+            "AI Scanner",
+            NotificationManager.IMPORTANCE_HIGH
+        ).apply {
+            description = "تنبيهات ماسح الذكاء الاصطناعي عند اكتشاف محتوى غير لائق"
+            enableVibration(true)
+            vibrationPattern = longArrayOf(0, 400, 200, 400)
+        }
+        manager.createNotificationChannel(aiScanner)
 
         val tamperAlert = NotificationChannel(
             TAMPER_ALERT,

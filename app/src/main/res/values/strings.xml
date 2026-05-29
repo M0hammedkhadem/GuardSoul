@@ -530,6 +530,10 @@
     <string name="notification_app_blocked_title">App Blocked</string>
     <string name="notification_app_blocked_text">%1$s has been blocked by Guardian</string>
 
+    <!-- YouTube Shorts Notifications -->
+    <string name="notification_youtube_shorts_title">تم حظر Shorts</string>
+    <string name="notification_youtube_shorts_text">تم حظر مقطع Shorts في يوتيوب</string>
+
     <!-- Accessibility Dialog -->
     <string name="dialog_accessibility_title">Enable Accessibility Service</string>
     <string name="dialog_accessibility_text">Guardian needs the Accessibility Service to detect when a Facebook video is tapped and block it.\n\nGo to:\nSettings → Accessibility → Installed Services → Guardian</string>

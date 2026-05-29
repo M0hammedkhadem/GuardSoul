@@ -30,21 +30,13 @@ class BootReceiver : BroadcastReceiver() {
             return
         }
 
-        Timber.d("BootReceiver: shield was active, restarting services")
+        Timber.d("BootReceiver: shield was active, restarting all services")
 
-        startServiceSafe(context, Intent(context, AppBlockerService::class.java))
-
-        val pornBlockerActive = try {
-            runBlocking {
-                val app = context.applicationContext as GuardianApp
-                app.repository.getAppSettings().isPornBlockerActive()
-            }
-        } catch (e: Exception) {
-            false
-        }
-        if (pornBlockerActive) {
-            startServiceSafe(context, Intent(context, DnsVpnService::class.java))
-        }
+        AppBlockerService.start(context)
+        startServiceSafe(context, Intent(context, DnsVpnService::class.java))
+        startServiceSafe(context, Intent(context, AiScannerService::class.java))
+        startServiceSafe(context, Intent(context, FacebookBlockerService::class.java))
+        startServiceSafe(context, Intent(context, YouTubeBlockerService::class.java))
     }
 
     private fun startServiceSafe(context: Context, intent: Intent) {

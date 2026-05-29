@@ -25,6 +25,8 @@ import androidx.compose.ui.unit.sp
 import com.agon.app.R
 import com.agon.app.ui.theme.*
 import com.agon.app.GuardianApp
+import com.agon.app.data.local.entity.AppLimitEntity
+import com.agon.app.data.local.entity.BlocklistItemEntity
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -57,6 +59,9 @@ fun SettingsScreen(
     val tiktokBlocked by settings.socialTiktokFlow.collectAsState(initial = false)
     val youtubeMode by settings.youtubeModeFlow.collectAsState(initial = "off")
     val facebookMode by settings.facebookModeFlow.collectAsState(initial = "off")
+
+    val timeLimitedApps by app.repository.getAllAppLimits().collectAsState(initial = emptyList())
+    val blacklistedApps by app.repository.getBlocklistFlow("blacklist", "apps").collectAsState(initial = emptyList())
 
     Scaffold(
         containerColor = background,
@@ -170,6 +175,31 @@ fun SettingsScreen(
                     BlockedAppRow(stringResource(R.string.app_youtube), youtubeMode != "off", youtubeMode)
                     HorizontalDivider(color = cardBorder)
                     BlockedAppRow(stringResource(R.string.app_facebook), facebookMode != "off", facebookMode)
+                }
+            }
+
+            if (timeLimitedApps.isNotEmpty() || blacklistedApps.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(24.dp))
+                Text(stringResource(R.string.section_blocked_apps), fontWeight = FontWeight.Bold, color = textSecondary, modifier = Modifier.padding(bottom = 12.dp, start = 4.dp))
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = card),
+                    border = BorderStroke(1.dp, cardBorder)
+                ) {
+                    Column {
+                        timeLimitedApps.forEachIndexed { index, limit ->
+                            SettingsRow(icon = Icons.Default.Timer, title = limit.appLabel.ifBlank { limit.packageName.substringAfterLast('.') }) {}
+                            if (index < timeLimitedApps.lastIndex || blacklistedApps.isNotEmpty()) {
+                                HorizontalDivider(color = cardBorder)
+                            }
+                        }
+                        blacklistedApps.forEachIndexed { index, item ->
+                            SettingsRow(icon = Icons.Default.Block, title = item.value.substringAfterLast('.')) {}
+                            if (index < blacklistedApps.lastIndex) {
+                                HorizontalDivider(color = cardBorder)
+                            }
+                        }
+                    }
                 }
             }
 

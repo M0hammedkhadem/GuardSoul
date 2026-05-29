@@ -3,6 +3,8 @@ package com.agon.app.viewmodel
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.agon.app.AppBlockerService
+import com.agon.app.DnsVpnService
 import com.agon.app.GuardianApp
 import com.agon.app.data.local.entity.BlocklistItemEntity
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -49,18 +51,29 @@ class ListsViewModel(application: Application) : AndroidViewModel(application) {
     fun addItem(value: String) {
         viewModelScope.launch {
             repo.addBlocklistItem(_selectedListType.value, _selectedCategory.value, value)
+            notifyServices(_selectedListType.value, _selectedCategory.value)
         }
     }
 
     fun removeItem(item: BlocklistItemEntity) {
         viewModelScope.launch {
             repo.removeBlocklistItem(item.listType, item.category, item.value)
+            notifyServices(item.listType, item.category)
         }
     }
 
     fun addApp(value: String) {
         viewModelScope.launch {
             repo.addBlocklistItem(_selectedListType.value, "apps", value)
+            notifyServices(_selectedListType.value, "apps")
+        }
+    }
+
+    private fun notifyServices(listType: String, category: String) {
+        val ctx = getApplication<GuardianApp>()
+        AppBlockerService.reloadBlocklist(ctx)
+        if (category == "websites") {
+            DnsVpnService.reloadWebsites(ctx)
         }
     }
 }
