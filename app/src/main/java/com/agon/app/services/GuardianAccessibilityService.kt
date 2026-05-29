@@ -1,12 +1,16 @@
 package com.agon.app.services
 
 import android.accessibilityservice.AccessibilityService
+import android.app.NotificationManager
 import android.content.Context
 import android.content.Intent
 import android.view.accessibility.AccessibilityEvent
+import androidx.core.app.NotificationCompat
 import com.agon.app.AppBlockerService
+import com.agon.app.AppNotificationChannels
 import com.agon.app.FacebookBlockerService
 import com.agon.app.GuardianApp
+import com.agon.app.R
 import com.agon.app.YouTubeBlockerService
 import com.agon.app.data.repository.AppRepository
 import kotlinx.coroutines.CoroutineScope
@@ -23,6 +27,7 @@ class GuardianAccessibilityService : AccessibilityService() {
         private const val ANTI_SCROLL_WINDOW_MS = 3_000L
         private const val ANTI_SCROLL_THRESHOLD = 5
         private const val ANTI_SCROLL_COOLDOWN_MS = 10_000L
+        private const val SETTINGS_PACKAGE = "com.android.settings"
 
         private val FEED_PACKAGES = setOf(
             "com.google.android.youtube",
@@ -43,6 +48,8 @@ class GuardianAccessibilityService : AccessibilityService() {
 
     private val scrollTimestamps = mutableMapOf<String, MutableList<Long>>()
     private var lastAntiScrollBlock = 0L
+    private var lastSettingsBlockNotification = 0L
+    private var lastAppSwitchBlock = 0L
 
     override fun onServiceConnected() {
         super.onServiceConnected()
@@ -68,7 +75,43 @@ class GuardianAccessibilityService : AccessibilityService() {
             AccessibilityEvent.TYPE_VIEW_SCROLLED -> {
                 handleScrollEvent(packageName)
             }
+            AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED -> {
+                handleWindowChange(packageName)
+            }
         }
+    }
+
+    private fun handleWindowChange(packageName: String) {
+        if (packageName != SETTINGS_PACKAGE) return
+
+        ioScope.launch {
+            val shieldActive = try {
+                repo.getAppSettings().isShieldActive()
+            } catch (_: Exception) { false }
+            if (!shieldActive) return@launch
+
+            android.os.Handler(mainLooper).post {
+                performGlobalAction(GLOBAL_ACTION_BACK)
+            }
+
+            val now = System.currentTimeMillis()
+            if (now - lastSettingsBlockNotification > 10_000) {
+                lastSettingsBlockNotification = now
+                showSettingsBlockedNotification()
+            }
+        }
+    }
+
+    private fun showSettingsBlockedNotification() {
+        val manager = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
+        val notification = NotificationCompat.Builder(this, AppNotificationChannels.TAMPER_ALERT)
+            .setSmallIcon(android.R.drawable.ic_lock_lock)
+            .setContentTitle(getString(R.string.tamper_settings_blocked_title))
+            .setContentText(getString(R.string.tamper_settings_blocked_text))
+            .setAutoCancel(true)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .build()
+        manager.notify(9001, notification)
     }
 
     private fun handleScrollEvent(packageName: String) {

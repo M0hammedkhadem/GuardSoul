@@ -59,6 +59,11 @@ class AppSettings(private val context: Context) {
         val BEDTIME_END_MINUTE = intPreferencesKey("bedtime_end_minute")
         val AUTO_LOCK_ON_LIMIT = booleanPreferencesKey("auto_lock_on_limit")
 
+        // Remote Monitoring Keys
+        val PARENT_EMAIL = stringPreferencesKey("parent_email")
+        val CHILD_DEVICE_ID = stringPreferencesKey("child_device_id")
+        val REMOTE_MONITORING_ENABLED = booleanPreferencesKey("remote_monitoring_enabled")
+
         // Permission Cache Keys
         val PERM_ACCESSIBILITY = booleanPreferencesKey("perm_accessibility")
         val PERM_VPN = booleanPreferencesKey("perm_vpn")
@@ -109,6 +114,11 @@ class AppSettings(private val context: Context) {
     val bedtimeEndMinuteFlow: Flow<Int> = context.settingsStore.data.map { it[Keys.BEDTIME_END_MINUTE] ?: 0 }
     val autoLockOnLimitFlow: Flow<Boolean> = context.settingsStore.data.map { it[Keys.AUTO_LOCK_ON_LIMIT] ?: false }
 
+    // Remote Monitoring Flows
+    val parentEmailFlow: Flow<String> = context.settingsStore.data.map { it[Keys.PARENT_EMAIL] ?: "" }
+    val childDeviceIdFlow: Flow<String> = context.settingsStore.data.map { it[Keys.CHILD_DEVICE_ID] ?: "" }
+    val remoteMonitoringEnabledFlow: Flow<Boolean> = context.settingsStore.data.map { it[Keys.REMOTE_MONITORING_ENABLED] ?: false }
+
     // Permission Flows
     val permAccessibilityFlow: Flow<Boolean> = context.settingsStore.data.map { it[Keys.PERM_ACCESSIBILITY] ?: false }
     val permVpnFlow: Flow<Boolean> = context.settingsStore.data.map { it[Keys.PERM_VPN] ?: false }
@@ -155,6 +165,16 @@ class AppSettings(private val context: Context) {
     suspend fun setBedtimeStart(hour: Int, minute: Int) { context.settingsStore.edit { it[Keys.BEDTIME_START_HOUR] = hour; it[Keys.BEDTIME_START_MINUTE] = minute } }
     suspend fun setBedtimeEnd(hour: Int, minute: Int) { context.settingsStore.edit { it[Keys.BEDTIME_END_HOUR] = hour; it[Keys.BEDTIME_END_MINUTE] = minute } }
     suspend fun setAutoLockOnLimit(v: Boolean) { context.settingsStore.edit { it[Keys.AUTO_LOCK_ON_LIMIT] = v } }
+
+    // Remote Monitoring Setters
+    suspend fun setParentEmail(v: String) { context.settingsStore.edit { it[Keys.PARENT_EMAIL] = v } }
+    suspend fun setChildDeviceId(v: String) { context.settingsStore.edit { it[Keys.CHILD_DEVICE_ID] = v } }
+    suspend fun setRemoteMonitoringEnabled(v: Boolean) { context.settingsStore.edit { it[Keys.REMOTE_MONITORING_ENABLED] = v } }
+
+    // Getters
+    suspend fun getParentEmail(): String = context.settingsStore.data.first()[Keys.PARENT_EMAIL] ?: ""
+    suspend fun getChildDeviceId(): String = context.settingsStore.data.first()[Keys.CHILD_DEVICE_ID] ?: ""
+    suspend fun isRemoteMonitoringEnabled(): Boolean = context.settingsStore.data.first()[Keys.REMOTE_MONITORING_ENABLED] ?: false
 
     suspend fun isSchoolTimeActive(): Boolean {
         if (!schoolTimeEnabledFlow.first()) return false
@@ -207,4 +227,20 @@ class AppSettings(private val context: Context) {
     suspend fun isStrictMode(): Boolean = context.settingsStore.data.first()[Keys.STRICT_MODE] ?: false
     suspend fun isYoutubeShortsMode(): Boolean = getYoutubeMode() == "shorts"
     suspend fun isFacebookReelsMode(): Boolean = getFacebookMode() == "reels"
+
+    companion object {
+        fun calculateXp(blockCount: Int): Int = blockCount * 10
+
+        fun checkLevelUp(xp: Int): Int {
+            var level = 1
+            var xpNeeded = 100
+            var totalXp = 0
+            while (totalXp + xpNeeded <= xp) {
+                totalXp += xpNeeded
+                level++
+                xpNeeded = (xpNeeded * 1.5).toInt()
+            }
+            return level
+        }
+    }
 }

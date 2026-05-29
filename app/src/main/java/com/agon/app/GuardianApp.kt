@@ -2,6 +2,7 @@ package com.agon.app
 
 import android.app.Application
 import android.content.Context
+import com.agon.app.data.remote.FirebaseSyncWorker
 import com.agon.app.data.repository.AppRepository
 import com.agon.app.di.appModules
 import kotlinx.coroutines.CoroutineScope
@@ -29,6 +30,18 @@ class GuardianApp : Application() {
             val code = LanguageManager.languageFlow(this@GuardianApp).first()
             LanguageManager.currentLanguageCode = code
             seedDefaultBlocklists()
+        }
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                val settings = repository.getAppSettings()
+                if (settings.isRemoteMonitoringEnabled() && settings.isShieldActive()) {
+                    FirebaseSyncWorker.schedule(this@GuardianApp)
+                    repository.syncToFirebase()
+                    repository.processRemoteCommands()
+                }
+            } catch (e: Exception) {
+                Timber.e(e, "GuardianApp: Firebase init failed")
+            }
         }
     }
 

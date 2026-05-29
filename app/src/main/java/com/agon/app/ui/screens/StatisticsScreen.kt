@@ -50,6 +50,7 @@ fun StatisticsScreen(
     val dailyBlocksData by vm.dailyBlocksData.collectAsStateWithLifecycle()
     val blockDistribution by vm.blockDistribution.collectAsStateWithLifecycle()
     val streakHistoryData by vm.streakHistoryData.collectAsStateWithLifecycle()
+    val usageStats by vm.usageStats.collectAsStateWithLifecycle()
 
     LaunchedEffect(Unit) { vm.refreshStreak() }
 
@@ -212,6 +213,35 @@ fun StatisticsScreen(
                         Text("Streak History", fontWeight = FontWeight.Bold, color = text)
                         Spacer(Modifier.height(8.dp))
                         StreakLineChart(data = streakHistoryData, modifier = Modifier.fillMaxWidth().height(200.dp))
+                    }
+                }
+            }
+
+            // ── Usage Stats (Last 7 Days) ──
+            if (usageStats.isNotEmpty()) {
+                item {
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = card),
+                        shape = RoundedCornerShape(16.dp),
+                        border = BorderStroke(1.dp, cardBorder)
+                    ) {
+                        Column(Modifier.padding(16.dp)) {
+                            Text("App Usage (7 Days)", fontWeight = FontWeight.Bold, color = text)
+                            Spacer(Modifier.height(8.dp))
+                            usageStats.entries
+                                .sortedByDescending { it.value }
+                                .take(10)
+                                .forEach { (pkg, millis) ->
+                                    val label = pkg.substringAfterLast('.')
+                                    val hours = millis / 3_600_000
+                                    val minutes = (millis % 3_600_000) / 60_000
+                                    val timeStr = if (hours > 0) "${hours}h ${minutes}m" else "${minutes}m"
+                                    Row(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+                                        Text(label, color = text, fontSize = 13.sp, modifier = Modifier.weight(1f))
+                                        Text(timeStr, color = primary, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                                    }
+                                }
+                        }
                     }
                 }
             }

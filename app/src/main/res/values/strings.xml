@@ -22,6 +22,7 @@
     <string name="level_title">Level %1$d</string>
     <string name="level_badge">Lv.%1$d</string>
     <string name="xp_subtitle">%1$d / %2$d XP</string>
+    <string name="streak_format">🔥 %1$d-day streak</string>
     <string name="block_shorts_action_redirect">Redirect to Home</string>
     <string name="block_shorts_action_exit">Exit App</string>
     <string name="block_shorts_action_block_screen">Show Block Screen</string>
@@ -539,4 +540,41 @@
     <string name="dialog_accessibility_text">Guardian needs the Accessibility Service to detect when a Facebook video is tapped and block it.\n\nGo to:\nSettings → Accessibility → Installed Services → Guardian</string>
     <string name="dialog_accessibility_btn">Open Settings</string>
     <string name="btn_later">Later</string>
+
+    <!-- Anti-Tamper: Settings Lock -->
+    <string name="tamper_settings_blocked_title">Settings محظور</string>
+    <string name="tamper_settings_blocked_text">تم منع فتح الإعدادات لحماية التطبيق</string>
+
+    <!-- Anti-Tamper: ADB Warning -->
+    <string name="tamper_adb_title">تحذير ADB</string>
+    <string name="tamper_adb_text">تم اكتشاف اتصال ADB أثناء توصيل USB. قد يحاول أحد تعديل الحماية.</string>
+
+    <!-- Anti-Tamper: Safe Mode -->
+    <string name="tamper_safemode_title">تم اكتشاف الوضع الآمن</string>
+    <string name="tamper_safemode_text">تم إعادة تشغيل الجهاز لأن الوضع الآمن قد يسمح بإلغاء الحماية</string>
+
+    <!-- Anti-Tamper: Clone Detection -->
+    <string name="tamper_clone_title">تطبيق مشبوه</string>
+    <string name="tamper_clone_text">تم اكتشاف تطبيق قد يكون نسخة ضارة: %1$s</string>
+
+    <!-- Remote Monitoring / Parent Dashboard -->
+    <string name="remote_monitoring_title">Parent Dashboard</string>
+    <string name="remote_monitoring_desc">Monitor your child\'s device remotely via Firebase</string>
+    <string name="remote_monitoring_enable">Enable Remote Monitoring</string>
+    <string name="parent_email_label">Parent Email</string>
+    <string name="parent_email_hint">Enter your email to receive alerts</string>
+    <string name="btn_link_device">Link Device</string>
+    <string name="btn_unlink_device">Unlink Device</string>
+    <string name="remote_monitoring_connected">Connected to parent dashboard</string>
+    <string name="remote_monitoring_disconnected">Not connected to parent dashboard</string>
+    <string name="alert_block_spike">Block spike detected: %1$d blocks in the last hour</string>
+    <string name="alert_shield_deactivated">Shield was deactivated on child device</string>
+    <string name="alert_new_app_installed">New app installed: %1$s</string>
+    <string name="channel_remote_commands">Remote Commands</string>
+    <string name="channel_remote_commands_desc">Notifications for remote commands from parent dashboard</string>
+
+    <!-- Anti-Tamper: Device Admin -->
+    <string name="tamper_admin_disabled_title">إزالة مشرف الجهاز</string>
+    <string name="tamper_admin_disabled_text">تم إلغاء تفعيل صلاحية مشرف الجهاز. قد يتمكن أحد من إلغاء تثبيت التطبيق.</string>
+    <string name="device_admin_disable_pin_warning">لا يمكن إلغاء تفعيل مشرف الجهاز بدون إدخال رمز PIN أولاً. الرجاء إدخال PIN في التطبيق لإلغاء الحماية.</string>
 </resources>

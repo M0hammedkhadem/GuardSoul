@@ -7,6 +7,7 @@ import com.agon.app.data.local.entity.AppLimitEntity
 import com.agon.app.data.local.entity.BlockEventEntity
 import com.agon.app.data.local.entity.BlocklistItemEntity
 import com.agon.app.data.local.entity.ScheduleRuleEntity
+import com.agon.app.data.remote.FirebaseManager
 import com.agon.app.data.settings.AppSettings
 import kotlinx.coroutines.flow.Flow
 
@@ -100,6 +101,51 @@ class AppRepository(context: Context) {
         settings.setProfileName("")
         settings.setPinHash("")
         settings.setStreakCount(0)
+    }
+
+    // ── Firebase Remote Monitoring ─────────────────────────────
+
+    suspend fun syncToFirebase() {
+        if (!settings.isRemoteMonitoringEnabled()) return
+        try {
+            val firebase = FirebaseManager(context)
+            if (!firebase.initialize()) return
+            firebase.syncDeviceInfo()
+            firebase.syncAppLimits()
+            firebase.syncBlockEvents()
+            firebase.syncWeeklyReport()
+        } catch (e: Exception) {
+            android.util.Log.e("AppRepository", "syncToFirebase failed", e)
+        }
+    }
+
+    suspend fun sendAlert(type: String, message: String) {
+        if (!settings.isRemoteMonitoringEnabled()) return
+        try {
+            val firebase = FirebaseManager(context)
+            if (!firebase.initialize()) return
+            firebase.sendAlert(type, message)
+        } catch (e: Exception) {
+            android.util.Log.e("AppRepository", "sendAlert failed", e)
+        }
+    }
+
+    suspend fun processRemoteCommands() {
+        if (!settings.isRemoteMonitoringEnabled()) return
+        try {
+            val firebase = FirebaseManager(context)
+            if (!firebase.initialize()) return
+            firebase.processPendingCommands { command, data ->
+                when (command) {
+                    "lock" -> settings.setShieldActive(true)
+                    "unlock" -> settings.setShieldActive(false)
+                    "enable_shield" -> settings.setShieldActive(true)
+                    "disable_shield" -> settings.setShieldActive(false)
+                }
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("AppRepository", "processRemoteCommands failed", e)
+        }
     }
 
     private fun getTodayStart(): Long {

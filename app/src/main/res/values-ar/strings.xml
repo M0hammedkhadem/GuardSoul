@@ -22,6 +22,7 @@
     <string name="level_title">المستوى %1$d</string>
     <string name="level_badge">م.%1$d</string>
     <string name="xp_subtitle">%1$d / %2$d نقطة خبرة</string>
+    <string name="streak_format">🔥 %1$d يوم متتالي</string>
     <string name="block_shorts_action_redirect">العودة للرئيسية</string>
     <string name="block_shorts_action_exit">إغلاق التطبيق</string>
     <string name="block_shorts_action_block_screen">شاشة الحظر</string>

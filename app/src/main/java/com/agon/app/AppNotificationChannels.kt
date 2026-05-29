@@ -10,6 +10,7 @@ object AppNotificationChannels {
     const val APP_BLOCKER = "app_blocker"
     const val AI_SCANNER = "ai_scanner"
     const val TAMPER_ALERT = "tamper_alert"
+    const val REMOTE_COMMANDS = "remote_commands"
 
     fun createAll(context: Context) {
         val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
@@ -62,5 +63,15 @@ object AppNotificationChannels {
             vibrationPattern = longArrayOf(0, 500, 200, 500)
         }
         manager.createNotificationChannel(tamperAlert)
+
+        val remoteCommands = NotificationChannel(
+            REMOTE_COMMANDS,
+            "Remote Commands",
+            NotificationManager.IMPORTANCE_HIGH
+        ).apply {
+            description = "Notifications for remote commands from parent dashboard"
+            enableVibration(true)
+        }
+        manager.createNotificationChannel(remoteCommands)
     }
 }

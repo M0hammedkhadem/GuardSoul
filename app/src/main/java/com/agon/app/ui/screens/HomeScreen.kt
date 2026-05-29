@@ -113,6 +113,10 @@ fun HomeScreen(
 
                 Spacer(modifier = Modifier.height(12.dp))
 
+                StreakBadge(streakCount = streakCount)
+
+                Spacer(modifier = Modifier.height(12.dp))
+
                 GamificationCard(
                     level = level,
                     xpPoints = xpPoints,
@@ -418,6 +422,29 @@ fun StatsRow(blocksToday: Int, totalBlocks: Int) {
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         StatCard(title = stringResource(R.string.statistics_today), value = "$blocksToday", sub = stringResource(R.string.stat_blocks), color = primary, modifier = Modifier.weight(1f))
         StatCard(title = stringResource(R.string.statistics_total), value = "$totalBlocks", sub = stringResource(R.string.stat_blocks), color = accent, modifier = Modifier.weight(1f))
+    }
+}
+
+@Composable
+fun StreakBadge(streakCount: Int) {
+    Row(
+        Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(
+            Icons.Default.Whatshot,
+            null,
+            tint = if (streakCount > 0) warning else textMuted,
+            modifier = Modifier.size(20.dp)
+        )
+        Spacer(Modifier.width(6.dp))
+        Text(
+            stringResource(R.string.streak_format, streakCount),
+            fontSize = 13.sp,
+            fontWeight = FontWeight.Medium,
+            color = if (streakCount > 0) warning else textMuted
+        )
     }
 }
 
