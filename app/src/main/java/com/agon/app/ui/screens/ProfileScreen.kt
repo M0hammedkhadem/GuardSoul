@@ -19,6 +19,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
@@ -319,7 +320,7 @@ private fun BadgeItem(badgeWithState: BadgeWithState) {
             Text(
                 badgeWithState.badge.icon,
                 fontSize = 22.sp,
-                alpha = alpha
+                modifier = Modifier.alpha(alpha)
             )
         }
         Spacer(Modifier.height(4.dp))

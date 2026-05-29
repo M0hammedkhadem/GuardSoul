@@ -222,6 +222,11 @@
     <string name="label_how_to_grant">How to grant:</string>
     <string name="privacy_permissions_note">Privacy Note: Guardian operates entirely on-device.</string>
 
+    <string name="btn_grant_all">Grant All (%1$d/%2$d)</string>
+    <string name="grant_all_in_progress">Granting… %1$d/%2$d</string>
+    <string name="contentdesc_check">Check</string>
+    <string name="contentdesc_close">Close</string>
+
     <!-- BlockActivity -->
     <string name="block_app_name_default">This app</string>
     <string name="contentdesc_blocked">Blocked</string>
@@ -434,6 +439,14 @@
     <!-- Lists - additional -->
     <string name="lists_add_app_to">Add App to %1$s</string>
     <string name="lists_add_new">Add new %1$s…</string>
+    <string name="label_regex">Regex</string>
+    <string name="label_regex_on">Regex ON</string>
+    <string name="label_sensitivity">Sensitivity</string>
+    <string name="sensitivity_low">Low</string>
+    <string name="sensitivity_medium">Med</string>
+    <string name="sensitivity_high">High</string>
+    <string name="error_invalid_url">Invalid URL format</string>
+    <string name="contentdesc_clear">Clear</string>
 
     <!-- Onboarding step strings -->
     <string name="onboarding_step1_desc">Your digital wellness shield. Block distractions, filter explicit content, and build healthier digital habits.\n\nLet\'s set up your profile in 5 quick steps.</string>
@@ -509,6 +522,32 @@
     <string name="upgrade_btn_upgrade">Upgrade</string>
     <string name="upgrade_btn_continue">Continue for free</string>
 
+    <!-- Dashboard Service Cards -->
+    <string name="dashboard_services_section">Active Services</string>
+    <string name="dashboard_parental_section">Parental Dashboard</string>
+    <string name="service_web_blocker">Web Blocker</string>
+    <string name="service_web_blocker_desc">Blocks explicit websites via VPN DNS filtering</string>
+    <string name="service_facebook_blocker">Facebook Blocker</string>
+    <string name="service_facebook_blocker_desc">Restricts Facebook content and Reels</string>
+    <string name="service_ai_scanner">AI Content Scanner</string>
+    <string name="service_ai_scanner_desc">On-device AI scans screen for explicit content</string>
+    <string name="service_uninstall_protection">Uninstall Protection</string>
+    <string name="service_uninstall_protection_desc">Prevents Guardian from being removed</string>
+    <string name="service_status_active">Active</string>
+    <string name="service_status_inactive">Inactive</string>
+    <string name="stat_blocked_today">Blocked Today</string>
+    <string name="stat_total_blocks">Total Blocks</string>
+    <string name="stat_blocked_links">Links Blocked</string>
+    <string name="stat_blocked_apps">Apps Blocked</string>
+    <string name="stat_days_active">Days Active</string>
+    <string name="stat_current_streak">Current Streak</string>
+    <string name="stat_most_blocked">Most Blocked</string>
+    <string name="stat_none">None</string>
+    <string name="dashboard_no_services">No services active. Tap the shield to get started.</string>
+    <string name="dashboard_quick_actions">Quick Actions</string>
+    <string name="dashboard_view_all_stats">View All Stats</string>
+    <string name="dashboard_manage_services">Manage Services</string>
+
     <!-- GuardianDeviceAdminReceiver -->
     <string name="device_admin_disable_warning">Disabling Guardian Device Admin will remove Uninstall Protection and may leave your device unprotected.</string>
     <string name="device_admin_enabled_toast">Guardian Device Admin Enabled</string>
@@ -577,4 +616,52 @@
     <string name="tamper_admin_disabled_title">إزالة مشرف الجهاز</string>
     <string name="tamper_admin_disabled_text">تم إلغاء تفعيل صلاحية مشرف الجهاز. قد يتمكن أحد من إلغاء تثبيت التطبيق.</string>
     <string name="device_admin_disable_pin_warning">لا يمكن إلغاء تفعيل مشرف الجهاز بدون إدخال رمز PIN أولاً. الرجاء إدخال PIN في التطبيق لإلغاء الحماية.</string>
+    <string name="guardian_accessibility_desc">Guardian uses Accessibility Service to detect and block distracting or harmful content in real time across apps and websites. This includes monitoring screen content, scrolling behavior, and app interactions to enforce your digital wellness rules. No personal data is collected or stored.</string>
+
+    <!-- Device Admin - Tamper Alerts -->
+    <string name="tamper_disable_attempt_title">⚠️ محاولة تعطيل</string>
+    <string name="tamper_disable_attempt_text">تم اكتشاف محاولة لتعطيل صلاحية مشرف الجهاز. تم تسجيل الحدث.</string>
+    <string name="tamper_pin_failed_title">🔒 فشل التحقق من PIN</string>
+    <string name="tamper_pin_failed_text">تم إدخال PIN خاطئ أثناء محاولة تعطيل الحماية. تم تسجيل المحاولة.</string>
+    <string name="tamper_admin_re_enable_hint">تم تعطيل مشرف الجهاز. افتح التطبيق وأعد تفعيل الحماية بإدخال PIN.</string>
+
+    <!-- Strong Protection -->
+    <string name="card_strong_protection_title">🔒 Strong Protection</string>
+    <string name="card_strong_protection_subtitle">Maximum security — PIN required to disable, OS-level app suspension, tamper alerts sent to parent</string>
+    <string name="badge_strong">STRONG</string>
+    <string name="badge_off">OFF</string>
+    <string name="badge_knox_detected">Samsung Knox detected — enhanced protection available</string>
+    <string name="warning_strong_protection">Strong Protection cannot be disabled without your PIN. It enables OS-level app suspension and sends tamper alerts to your parent dashboard.</string>
+    <string name="strong_warning_title">Enable Strong Protection?</string>
+    <string name="strong_warning_text">This will enable maximum security protections:\n\n• PIN required to disable Device Admin\n• OS-level app suspension via Device Owner\n• Tamper detection with parent alerts\n• Safe Mode boot blocking\n• Samsung Knox integration if available\n\nEnter your PIN to confirm.</string>
+    <string name="strong_disable_title">Disable Strong Protection?</string>
+    <string name="strong_disable_text">Enter your PIN to disable Strong Protection. This will reduce the security level.</string>
+    <string name="btn_confirm">Confirm</string>
+    <string name="btn_disable">Disable</string>
+
+    <!-- Strong Protection Features -->
+    <string name="feature_pin_required_disable">PIN Required to Disable Admin</string>
+    <string name="feature_tamper_detection">Tamper Attempt Detection</string>
+    <string name="feature_remote_alert">Parent Dashboard Alerts</string>
+    <string name="feature_os_suspension">OS-Level App Suspension</string>
+    <string name="feature_safe_mode_block">Safe Mode Boot Blocked</string>
+
+    <!-- Device Owner Setup -->
+    <string name="device_owner_setup_title">Device Owner Setup</string>
+    <string name="device_owner_setup_instructions">To enable OS-level protections, Guardian needs to be set as a Device Owner.\n\nThis requires a factory reset of your device.\n\nADB command to set Device Owner:\n\nadb shell dpm set-device-owner com.agon.app/.GuardianDeviceAdminReceiver\n\nNote: This will wipe your device if no account is set up yet.</string>
+    <string name="device_owner_already_active">Device Owner is already active on this device.</string>
+
+    <!-- GuardianDeviceAdminReceiver - PIN re-verification -->
+    <string name="admin_disable_pin_required">To disable Device Admin, please enter your PIN in the app first.</string>
+
+    <!-- Notification channels description -->
+    <string name="channel_tamper_alert">Security Alerts</string>
+    <string name="channel_tamper_alert_desc">Alerts when tampering with app protections is detected</string>
+    <string name="adb_command_copied">ADB command copied to clipboard</string>
+
+    <!-- VPN Alert -->
+    <string name="vpn_alert_title">VPN Disconnected!</string>
+    <string name="vpn_alert_text">Your content filter VPN has stopped unexpectedly</string>
+    <string name="vpn_alert_big_text">Guardian\'s content filter VPN disconnected unexpectedly. Your browsing is no longer being filtered. Tap to open settings.</string>
+    <string name="vpn_alert_restart">Restart VPN</string>
 </resources>

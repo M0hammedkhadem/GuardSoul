@@ -14,6 +14,7 @@ val databaseModule = module {
     single { get<AppDatabase>().blocklistDao() }
     single { get<AppDatabase>().appLimitDao() }
     single { get<AppDatabase>().scheduleRuleDao() }
+    single { get<AppDatabase>().tamperAlertDao() }
 }
 
 val settingsModule = module {
@@ -22,7 +23,17 @@ val settingsModule = module {
 }
 
 val repositoryModule = module {
-    single { AppRepository(androidApplication()) }
+    single {
+        AppRepository(
+            application = androidApplication(),
+            blockEventDao = get(),
+            blocklistDao = get(),
+            appLimitDao = get(),
+            scheduleRuleDao = get(),
+            tamperAlertDao = get(),
+            settings = get()
+        )
+    }
 }
 
 val appModules = listOf(databaseModule, settingsModule, repositoryModule)

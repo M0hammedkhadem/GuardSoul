@@ -1,25 +1,30 @@
 package com.agon.app.data.repository
 
-import android.content.Context
-import com.agon.app.data.local.AppDatabase
+import android.app.Application
+import com.agon.app.data.local.dao.AppLimitDao
+import com.agon.app.data.local.dao.BlockEventDao
+import com.agon.app.data.local.dao.BlocklistDao
 import com.agon.app.data.local.dao.MostBlockedApp
+import com.agon.app.data.local.dao.ScheduleRuleDao
+import com.agon.app.data.local.dao.TamperAlertDao
 import com.agon.app.data.local.entity.AppLimitEntity
 import com.agon.app.data.local.entity.BlockEventEntity
 import com.agon.app.data.local.entity.BlocklistItemEntity
 import com.agon.app.data.local.entity.ScheduleRuleEntity
+import com.agon.app.data.local.entity.TamperAlertEntity
 import com.agon.app.data.remote.FirebaseManager
 import com.agon.app.data.settings.AppSettings
 import kotlinx.coroutines.flow.Flow
 
-class AppRepository(context: Context) {
-    private val db = AppDatabase.getInstance(context)
-    private val settings = AppSettings(context)
-
-    val blockEventDao = db.blockEventDao()
-    val blocklistDao = db.blocklistDao()
-    val appLimitDao = db.appLimitDao()
-    val scheduleRuleDao = db.scheduleRuleDao()
-
+class AppRepository(
+    private val application: Application,
+    val blockEventDao: BlockEventDao,
+    private val blocklistDao: BlocklistDao,
+    val appLimitDao: AppLimitDao,
+    private val scheduleRuleDao: ScheduleRuleDao,
+    private val tamperAlertDao: TamperAlertDao,
+    private val settings: AppSettings
+) {
     fun getAppSettings(): AppSettings = settings
 
     // Block Events
@@ -39,17 +44,34 @@ class AppRepository(context: Context) {
         blockEventDao.insert(BlockEventEntity(packageName = packageName, appLabel = appLabel, blockType = blockType))
     }
     suspend fun clearAllEvents() = blockEventDao.deleteAll()
+    fun getBlockEventsByDateRange(start: Long, end: Long): Flow<List<BlockEventEntity>> =
+        blockEventDao.getByDateRange(start, end)
+    suspend fun getTotalEventCount(): Int = blockEventDao.getCount()
+    suspend fun clearOldEvents(days: Int) {
+        val threshold = System.currentTimeMillis() - days * 86_400_000L
+        blockEventDao.clearOld(threshold)
+    }
 
     // Blocklist
     fun getBlocklistFlow(listType: String, category: String): Flow<List<BlocklistItemEntity>> =
         blocklistDao.getItemsFlow(listType, category)
     suspend fun getBlocklist(listType: String, category: String): List<BlocklistItemEntity> =
         blocklistDao.getItems(listType, category)
+    suspend fun getBlocklistItemById(id: Long): BlocklistItemEntity? =
+        blocklistDao.getById(id)
+    fun searchBlocklist(listType: String, category: String, query: String): Flow<List<BlocklistItemEntity>> =
+        blocklistDao.search(listType, category, query)
     suspend fun addBlocklistItem(listType: String, category: String, value: String) {
         blocklistDao.insert(BlocklistItemEntity(listType = listType, category = category, value = value))
     }
+    suspend fun addBlocklistItem(entity: BlocklistItemEntity) {
+        blocklistDao.insert(entity)
+    }
     suspend fun removeBlocklistItem(listType: String, category: String, value: String) {
         blocklistDao.deleteByValue(listType, category, value)
+    }
+    suspend fun removeBlocklistItemById(id: Long) {
+        blocklistDao.deleteById(id)
     }
     suspend fun getFullBlocklist(listType: String) = blocklistDao.getItems(listType, "apps")
 
@@ -60,6 +82,15 @@ class AppRepository(context: Context) {
         appLimitDao.insert(AppLimitEntity(packageName = packageName, appLabel = appLabel, dailyMinutes = dailyMinutes))
     }
     suspend fun removeAppLimit(limit: AppLimitEntity) = appLimitDao.delete(limit)
+
+    // Tamper Alerts
+    fun getTamperAlertsFlow(): Flow<List<TamperAlertEntity>> = tamperAlertDao.getAllFlow()
+
+    suspend fun recordTamperAlert(type: String, detail: String, packageName: String = "", userId: Int = 0) {
+        tamperAlertDao.insert(TamperAlertEntity(type = type, detail = detail, packageName = packageName, userId = userId))
+    }
+
+    suspend fun clearTamperAlerts() = tamperAlertDao.deleteAll()
 
     // Schedule Rules
     fun getAllScheduleRules(): Flow<List<ScheduleRuleEntity>> = scheduleRuleDao.getAllFlow()
@@ -101,6 +132,7 @@ class AppRepository(context: Context) {
         settings.setProfileName("")
         settings.setPinHash("")
         settings.setStreakCount(0)
+        settings.setLongestStreak(0)
     }
 
     // ── Firebase Remote Monitoring ─────────────────────────────
@@ -108,7 +140,7 @@ class AppRepository(context: Context) {
     suspend fun syncToFirebase() {
         if (!settings.isRemoteMonitoringEnabled()) return
         try {
-            val firebase = FirebaseManager(context)
+            val firebase = FirebaseManager(application, blockEventDao, appLimitDao)
             if (!firebase.initialize()) return
             firebase.syncDeviceInfo()
             firebase.syncAppLimits()
@@ -122,7 +154,7 @@ class AppRepository(context: Context) {
     suspend fun sendAlert(type: String, message: String) {
         if (!settings.isRemoteMonitoringEnabled()) return
         try {
-            val firebase = FirebaseManager(context)
+            val firebase = FirebaseManager(application, blockEventDao, appLimitDao)
             if (!firebase.initialize()) return
             firebase.sendAlert(type, message)
         } catch (e: Exception) {
@@ -133,7 +165,7 @@ class AppRepository(context: Context) {
     suspend fun processRemoteCommands() {
         if (!settings.isRemoteMonitoringEnabled()) return
         try {
-            val firebase = FirebaseManager(context)
+            val firebase = FirebaseManager(application, blockEventDao, appLimitDao)
             if (!firebase.initialize()) return
             firebase.processPendingCommands { command, data ->
                 when (command) {

@@ -8,7 +8,6 @@ import androidx.lifecycle.viewModelScope
 import com.agon.app.utils.AccessibilityUtils
 import com.agon.app.FacebookBlockerService
 import com.agon.app.GuardianApp
-import com.agon.app.YouTubeBlockerService
 import com.agon.app.data.local.dao.MostBlockedApp
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
@@ -28,10 +27,9 @@ class SocialViewModel(application: Application) : AndroidViewModel(application) 
     val blocksToday: StateFlow<Int> = repo.blocksTodayFlow().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
     val blocksPerApp: StateFlow<List<MostBlockedApp>> = repo.blocksTodayPerApp().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    // YouTube Shorts handled by dedicated YouTubeBlockerService
     val youtubeServiceRunning: StateFlow<Boolean> = flow {
         while (true) {
-            emit(AccessibilityUtils.isServiceEnabled(context, YouTubeBlockerService::class.java))
+            emit(AccessibilityUtils.isServiceEnabled(context, FacebookBlockerService::class.java))
             kotlinx.coroutines.delay(5000)
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)

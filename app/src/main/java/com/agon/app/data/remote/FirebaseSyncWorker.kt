@@ -8,7 +8,6 @@ import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.Worker
 import androidx.work.WorkerParameters
-import com.agon.app.data.repository.AppRepository
 import kotlinx.coroutines.runBlocking
 import timber.log.Timber
 import java.util.concurrent.TimeUnit
@@ -23,29 +22,23 @@ class FirebaseSyncWorker(
             try {
                 val app = applicationContext as com.agon.app.GuardianApp
                 val settings = app.repository.getAppSettings()
+                val repo = app.repository
 
                 if (!settings.isRemoteMonitoringEnabled() || !settings.isShieldActive()) {
                     Timber.d("FirebaseSyncWorker: remote monitoring disabled or shield inactive, skipping")
                     return@runBlocking Result.success()
                 }
 
-                val firebaseManager = FirebaseManager(applicationContext)
+                val firebaseManager = FirebaseManager(applicationContext, repo.blockEventDao, repo.appLimitDao)
                 val initialized = firebaseManager.initialize()
                 if (!initialized) {
                     Timber.w("FirebaseSyncWorker: Firebase init failed")
                     return@runBlocking Result.retry()
                 }
 
-                val repository = AppRepository(applicationContext)
-                val recentEvents = repository.blockEventDao.blocksSince(
-                    System.currentTimeMillis() - 3600000L
-                )
-
                 firebaseManager.syncDeviceInfo()
                 firebaseManager.syncAppLimits()
-                if (recentEvents.isNotEmpty()) {
-                    firebaseManager.syncBlockEvents(recentEvents)
-                }
+                firebaseManager.syncBlockEvents()
 
                 val now = System.currentTimeMillis()
                 val oneWeekMs = 604800000L

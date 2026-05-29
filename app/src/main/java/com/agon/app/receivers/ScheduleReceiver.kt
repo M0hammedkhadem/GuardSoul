@@ -8,6 +8,7 @@ import com.agon.app.utils.AppLogger
 import com.agon.app.utils.ScheduleEnforcer
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 
 class ScheduleReceiver : BroadcastReceiver() {
@@ -19,19 +20,18 @@ class ScheduleReceiver : BroadcastReceiver() {
         
         val app = context.applicationContext as GuardianApp
         val repository = app.repository
-        CoroutineScope(Dispatchers.Default).launch {
+        CoroutineScope(Dispatchers.Default + SupervisorJob()).launch {
             try {
                 ScheduleEnforcer.rescheduleAll(context, repository)
 
-                // Restart AppBlockerService to re-evaluate blocking state
+                // Reload blocklist without stopping the service
                 try {
                     val settings = repository.getAppSettings()
                     if (settings.isShieldActive()) {
-                        com.agon.app.AppBlockerService.stop(context)
-                        com.agon.app.AppBlockerService.start(context)
+                        com.agon.app.AppBlockerService.reloadBlocklist(context)
                     }
                 } catch (e: Exception) {
-                    AppLogger.w(e, "ScheduleReceiver: failed to restart AppBlockerService")
+                    AppLogger.w(e, "ScheduleReceiver: failed to reload AppBlockerService blocklist")
                 }
             } finally {
                 pendingResult.finish()

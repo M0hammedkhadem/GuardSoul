@@ -16,10 +16,6 @@ import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.*
 
-/**
- * ViewModel for Export/Import operations.
- * Handles background I/O for blocklists.
- */
 class ExportImportViewModel(application: Application) : AndroidViewModel(application) {
     private val repo = (application as GuardianApp).repository
 
@@ -33,24 +29,26 @@ class ExportImportViewModel(application: Application) : AndroidViewModel(applica
         viewModelScope.launch {
             val result = withContext(Dispatchers.IO) {
                 try {
-                    val websites = repo.getBlocklist("blacklist", "websites")
-                    val keywords = repo.getBlocklist("blacklist", "keywords")
-                    val apps = repo.getFullBlocklist("blocked_apps")
-
                     context.contentResolver.openOutputStream(uri)?.use { os ->
                         val writer = os.bufferedWriter()
                         writer.write("# GuardSoul Blocklist Export\n")
                         writer.write("# Exported: ${SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date())}\n\n")
-                        
-                        writer.write("# Websites\n")
-                        websites.forEach { writer.write("${it.value}\n") }
-                        
-                        writer.write("\n# Keywords\n")
-                        keywords.forEach { writer.write("kw:${it.value}\n") }
-                        
-                        writer.write("\n# Apps\n")
-                        apps.forEach { writer.write("app:${it.value}\n") }
-                        
+
+                        for (listType in listOf("blacklist", "whitelist")) {
+                            writer.write("# === $listType ===\n\n")
+
+                            val websites = repo.getBlocklist(listType, "websites")
+                            val keywords = repo.getBlocklist(listType, "keywords")
+                            val apps = repo.getBlocklist(listType, "apps")
+
+                            writer.write("# Websites\n")
+                            websites.forEach { writer.write("${it.value}\n") }
+                            writer.write("\n# Keywords\n")
+                            keywords.forEach { writer.write("kw:${it.value}\n") }
+                            writer.write("\n# Apps\n")
+                            apps.forEach { writer.write("app:${it.value}\n") }
+                            writer.write("\n")
+                        }
                         writer.flush()
                     }
                     true
@@ -75,24 +73,39 @@ class ExportImportViewModel(application: Application) : AndroidViewModel(applica
                     context.contentResolver.openInputStream(uri)?.use { inputStream ->
                         val lines = inputStream.bufferedReader().readLines()
                         var count = 0
+                        var currentListType = "blacklist"
+
                         lines.forEach { line ->
                             val trimmed = line.trim()
-                            if (trimmed.isBlank() || trimmed.startsWith("#")) return@forEach
-                            
+                            if (trimmed.isBlank() || trimmed.startsWith("#")) {
+                                if (trimmed.contains("whitelist", ignoreCase = true)) {
+                                    currentListType = "whitelist"
+                                } else if (trimmed.contains("blacklist", ignoreCase = true)) {
+                                    currentListType = "blacklist"
+                                }
+                                return@forEach
+                            }
+
                             when {
                                 trimmed.startsWith("kw:", ignoreCase = true) -> {
                                     val kw = trimmed.removePrefix("kw:").trim()
-                                    repo.addBlocklistItem("blacklist", "keywords", kw)
-                                    count++
+                                    if (kw.isNotBlank()) {
+                                        repo.addBlocklistItem(currentListType, "keywords", kw)
+                                        count++
+                                    }
                                 }
                                 trimmed.startsWith("app:", ignoreCase = true) -> {
                                     val app = trimmed.removePrefix("app:").trim()
-                                    repo.addBlocklistItem("blacklist", "apps", app)
-                                    count++
+                                    if (app.isNotBlank()) {
+                                        repo.addBlocklistItem(currentListType, "apps", app)
+                                        count++
+                                    }
                                 }
                                 else -> {
-                                    repo.addBlocklistItem("blacklist", "websites", trimmed)
-                                    count++
+                                    if (trimmed.isNotBlank()) {
+                                        repo.addBlocklistItem(currentListType, "websites", trimmed)
+                                        count++
+                                    }
                                 }
                             }
                         }
@@ -103,7 +116,7 @@ class ExportImportViewModel(application: Application) : AndroidViewModel(applica
                     -1
                 }
             }
-            
+
             if (importedCount >= 0) {
                 _isError.value = false
                 _statusMessage.value = getApplication<Application>().getString(R.string.import_success_count, importedCount)

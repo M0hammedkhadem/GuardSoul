@@ -1,7 +1,8 @@
 package com.agon.app.data.remote
 
 import android.content.Context
-import com.agon.app.data.repository.AppRepository
+import com.agon.app.data.local.dao.AppLimitDao
+import com.agon.app.data.local.dao.BlockEventDao
 import com.agon.app.data.settings.AppSettings
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.database.FirebaseDatabase
@@ -10,11 +11,14 @@ import com.google.firebase.messaging.FirebaseMessaging
 import kotlinx.coroutines.tasks.await
 import timber.log.Timber
 
-class FirebaseManager(private val context: Context) {
+class FirebaseManager(
+    private val context: Context,
+    private val blockEventDao: BlockEventDao,
+    private val appLimitDao: AppLimitDao
+) {
     private val auth: FirebaseAuth = FirebaseAuth.getInstance()
     private val database: FirebaseDatabase = FirebaseDatabase.getInstance()
     private val settings = AppSettings(context)
-    private val repository = AppRepository(context)
 
     private var userId: String = ""
     private var childDeviceId: String = ""
@@ -47,11 +51,10 @@ class FirebaseManager(private val context: Context) {
     suspend fun syncDeviceInfo() {
         val ref = deviceRef ?: return
         try {
-            val dao = repository.blockEventDao
             val todayStart = getTodayStart()
-            val blocksToday = dao.blocksSince(todayStart).size
-            val totalBlocks = dao.blocksSince(0L).size
-            val allEvents = dao.blocksSince(0L)
+            val blocksToday = blockEventDao.blocksSince(todayStart).size
+            val totalBlocks = blockEventDao.blocksSince(0L).size
+            val allEvents = blockEventDao.blocksSince(0L)
             val mostBlocked = allEvents.groupBy { it.appLabel }
                 .maxByOrNull { it.value.size }?.key ?: ""
 
@@ -59,7 +62,7 @@ class FirebaseManager(private val context: Context) {
                 "profileName" to settings.getProfileName(),
                 "shieldActive" to settings.isShieldActive(),
                 "lastSeen" to ServerValue.TIMESTAMP,
-                "streak" to repository.calculateStreak(),
+                "streak" to calculateStreak(),
                 "totalBlocks" to totalBlocks,
                 "blocksToday" to blocksToday,
                 "mostBlockedApp" to mostBlocked,
@@ -76,7 +79,7 @@ class FirebaseManager(private val context: Context) {
     suspend fun syncAppLimits() {
         val ref = deviceRef ?: return
         try {
-            val limits = repository.appLimitDao.getAll()
+            val limits = appLimitDao.getAll()
             val limitsMap = limits.associate { limit ->
                 limit.packageName to mapOf(
                     "label" to limit.appLabel,
@@ -92,7 +95,7 @@ class FirebaseManager(private val context: Context) {
     suspend fun syncBlockEvents() {
         val ref = deviceRef ?: return
         try {
-            val events = repository.blockEventDao.blocksSince(
+            val events = blockEventDao.blocksSince(
                 System.currentTimeMillis() - 3600000L
             )
             val eventsMap = events.associate { event ->
@@ -149,7 +152,7 @@ class FirebaseManager(private val context: Context) {
         try {
             val now = System.currentTimeMillis()
             val weekStart = now - (now % 604800000L)
-            val events = repository.blockEventDao.blocksSince(weekStart)
+            val events = blockEventDao.blocksSince(weekStart)
             val daysActive = events.map { it.timestamp / 86400000L }.distinct().count()
             val perApp = events.groupBy { it.packageName }
                 .mapValues { it.value.size }
@@ -169,6 +172,23 @@ class FirebaseManager(private val context: Context) {
         } catch (e: Exception) {
             Timber.e(e, "FirebaseManager: syncWeeklyReport failed")
         }
+    }
+
+    private suspend fun calculateStreak(): Int {
+        val allEvents = blockEventDao.blocksSince(0L)
+        val todayStart = getTodayStart()
+        var streak = 0
+        var checkTime = todayStart
+        while (true) {
+            val dayEnd = checkTime + 86400000L
+            val hasEvent = allEvents.any { it.timestamp in checkTime until dayEnd }
+            if (!hasEvent) break
+            streak++
+            checkTime -= 86400000L
+            val oldest = allEvents.minOfOrNull { it.timestamp } ?: break
+            if (checkTime < oldest - 86400000L) break
+        }
+        return streak
     }
 
     private fun getTodayStart(): Long {

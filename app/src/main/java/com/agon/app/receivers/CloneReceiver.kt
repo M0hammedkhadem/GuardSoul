@@ -11,6 +11,7 @@ import com.agon.app.GuardianApp
 import com.agon.app.R
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import timber.log.Timber
 
@@ -26,8 +27,13 @@ class CloneReceiver : BroadcastReceiver() {
                 }
             }
             Intent.ACTION_BOOT_COMPLETED -> {
-                CoroutineScope(Dispatchers.IO).launch {
-                    scanAllInstalled(context)
+                val pendingResult = goAsync()
+                CoroutineScope(Dispatchers.IO + SupervisorJob()).launch {
+                    try {
+                        scanAllInstalled(context)
+                    } finally {
+                        pendingResult.finish()
+                    }
                 }
             }
         }
@@ -36,7 +42,9 @@ class CloneReceiver : BroadcastReceiver() {
     private fun scanAllInstalled(context: Context) {
         val app = context.applicationContext as GuardianApp
         try {
-            val shieldActive = app.repository.getAppSettings().isShieldActive()
+            val shieldActive = kotlinx.coroutines.runBlocking {
+                app.repository.getAppSettings().isShieldActive()
+            }
             if (!shieldActive) return
         } catch (_: Exception) { return }
 

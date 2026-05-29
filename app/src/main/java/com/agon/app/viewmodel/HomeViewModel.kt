@@ -35,6 +35,29 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
     val xpPoints: StateFlow<Int> = settings.xpPointsFlow.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
     val level: StateFlow<Int> = settings.levelFlow.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 1)
 
+    val pornBlockerActive: StateFlow<Boolean> = settings.pornBlockerFlow.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+    val aiScannerActive: StateFlow<Boolean> = settings.aiScannerFlow.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+    val uninstallProtectionActive: StateFlow<Boolean> = settings.uninstallProtectionFlow.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+    val facebookMode: StateFlow<String> = settings.facebookModeFlow.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "off")
+    val youtubeMode: StateFlow<String> = settings.youtubeModeFlow.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "off")
+    val socialInstagram: StateFlow<Boolean> = settings.socialInstagramFlow.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+    val socialSnapchat: StateFlow<Boolean> = settings.socialSnapchatFlow.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+    val socialTwitter: StateFlow<Boolean> = settings.socialTwitterFlow.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+    val socialTiktok: StateFlow<Boolean> = settings.socialTiktokFlow.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+
+    val blockedLinksToday: StateFlow<Int> = repo.getAllBlockEvents().map { events ->
+        val todayStart = getTodayStart()
+        events.count { it.timestamp >= todayStart && it.blockType == "dns_filter" }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
+
+    val blockedAppsToday: StateFlow<Int> = repo.getAllBlockEvents().map { events ->
+        val todayStart = getTodayStart()
+        events.count { it.timestamp >= todayStart && it.blockType != "dns_filter" }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
+
+    val recentEvents: StateFlow<List<com.agon.app.data.local.entity.BlockEventEntity>> =
+        repo.getRecentBlockEvents(10).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
     val currentLevel: Int get() = calculateLevel(xpPoints.value)
     val xpForNextLevel: Int get() = calculateXpForLevel(currentLevel + 1)
     val xpForCurrentLevel: Int get() = calculateXpForLevel(currentLevel)
@@ -217,5 +240,52 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
 
     fun setDeactivationDelay(minutes: Int) {
         viewModelScope.launch { settings.setDeactivationDelay(minutes) }
+    }
+
+    fun setPornBlocker(v: Boolean) {
+        viewModelScope.launch {
+            val context = getApplication<GuardianApp>()
+            if (v) {
+                val intent = android.net.VpnService.prepare(context)
+                if (intent == null) {
+                    settings.setPornBlocker(true)
+                }
+            } else {
+                com.agon.app.DnsVpnService.stop(context)
+                settings.setPornBlocker(false)
+            }
+        }
+    }
+
+    fun setFacebookMode(mode: String) {
+        viewModelScope.launch { settings.setFacebookMode(mode) }
+    }
+
+    fun setAiScanner(v: Boolean) {
+        viewModelScope.launch {
+            val context = getApplication<GuardianApp>()
+            if (v) {
+                settings.setAiScanner(true)
+            } else {
+                val intent = android.content.Intent(context, com.agon.app.AiScannerService::class.java).apply {
+                    action = com.agon.app.AiScannerService.ACTION_STOP
+                }
+                context.startService(intent)
+                settings.setAiScanner(false)
+            }
+        }
+    }
+
+    fun setUninstallProtection(v: Boolean) {
+        viewModelScope.launch { settings.setUninstallProtection(v) }
+    }
+
+    private fun getTodayStart(): Long {
+        val cal = java.util.Calendar.getInstance()
+        cal.set(java.util.Calendar.HOUR_OF_DAY, 0)
+        cal.set(java.util.Calendar.MINUTE, 0)
+        cal.set(java.util.Calendar.SECOND, 0)
+        cal.set(java.util.Calendar.MILLISECOND, 0)
+        return cal.timeInMillis
     }
 }

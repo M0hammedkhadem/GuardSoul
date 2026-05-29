@@ -33,6 +33,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -40,6 +41,7 @@ import com.agon.app.GuardianDeviceAdminReceiver
 import com.agon.app.R
 import com.agon.app.ui.theme.*
 import com.agon.app.viewmodel.ContentViewModel
+import timber.log.Timber
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -49,12 +51,18 @@ fun ContentScreen(vm: ContentViewModel) {
     val nextDnsProfileId by vm.nextDnsProfileId.collectAsStateWithLifecycle()
     val aiExplorerActive by vm.aiScanner.collectAsStateWithLifecycle()
     val uninstallProtectionActive by vm.uninstallProtection.collectAsStateWithLifecycle()
+    val strongProtectionActive by vm.strongProtection.collectAsStateWithLifecycle()
     val dpm = context.getSystemService(android.content.Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
     val deviceAdminComponent = ComponentName(context, GuardianDeviceAdminReceiver::class.java)
     val deviceAdminGranted = dpm.isAdminActive(deviceAdminComponent)
     val scrollState = rememberScrollState()
     var editProfileId by remember { mutableStateOf(false) }
     var profileIdText by remember(nextDnsProfileId) { mutableStateOf(nextDnsProfileId) }
+
+    var showStrongProtectionDialog by remember { mutableStateOf(false) }
+    var strongPinInput by remember { mutableStateOf("") }
+    var strongPinError by remember { mutableStateOf(false) }
+    var showStrongWarningDialog by remember { mutableStateOf(false) }
 
     val vpnLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult()
@@ -67,8 +75,21 @@ fun ContentScreen(vm: ContentViewModel) {
     val mediaProjectionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult()
     ) { result ->
-        if (result.resultCode == Activity.RESULT_OK && result.data != null) {
-            vm.startAiScannerWithProjection(result.data!!)
+        if (result.resultCode == Activity.RESULT_OK) {
+            val data = result.data
+            if (data != null) {
+                vm.startAiScannerWithProjection(data)
+            } else {
+                Timber.w("MediaProjection permission denied by user")
+            }
+        }
+    }
+
+    val adminLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            vm.setUninstallProtection(true)
         }
     }
 
@@ -173,6 +194,21 @@ fun ContentScreen(vm: ContentViewModel) {
             ) {
                 Text(stringResource(R.string.privacy_ai_note), fontSize = 12.sp, color = textMuted)
                 Spacer(Modifier.height(8.dp))
+                val isDownloading by vm.isModelDownloading.collectAsStateWithLifecycle()
+                val downloadProgress by vm.modelDownloadProgress.collectAsStateWithLifecycle()
+                if (isDownloading) {
+                    Column(Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
+                        Text("Downloading NSFW model... $downloadProgress%",
+                            fontSize = 12.sp, color = accent)
+                        Spacer(Modifier.height(4.dp))
+                        LinearProgressIndicator(
+                            progress = { downloadProgress / 100f },
+                            modifier = Modifier.fillMaxWidth().height(6.dp),
+                            color = accent,
+                            trackColor = surfaceLight
+                        )
+                    }
+                }
                 Surface(color = surfaceLight, shape = RoundedCornerShape(8.dp)) {
                     Column(Modifier.padding(12.dp)) {
                         Text(stringResource(R.string.card_how_ai_title), fontWeight = FontWeight.Bold, fontSize = 13.sp, color = text)
@@ -184,7 +220,7 @@ fun ContentScreen(vm: ContentViewModel) {
                         StepRow(5, stringResource(R.string.step_ai_ban))
                     }
                 }
-                Spacer(Modifier.height(12.dp))
+                Spacer(Modifier.height(8.dp))
                 val aiThreshold by vm.aiThreshold.collectAsStateWithLifecycle()
                 var thresholdSlider by remember(aiThreshold) { mutableStateOf(aiThreshold) }
                 Text(
@@ -195,12 +231,21 @@ fun ContentScreen(vm: ContentViewModel) {
                 )
                 Slider(
                     value = thresholdSlider,
-                    onValueChange = { thresholdSlider = it },
+                    onValueChange = { vm.setAiThreshold(it); thresholdSlider = it },
                     onValueChangeFinished = { vm.setAiThreshold(thresholdSlider) },
-                    valueRange = 0.5f..0.9f,
-                    steps = 3,
+                    valueRange = 0.5f..0.95f,
+                    steps = 8,
                     modifier = Modifier.fillMaxWidth()
                 )
+                Spacer(Modifier.height(4.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Blur instead of block", fontSize = 13.sp, color = text, modifier = Modifier.weight(1f))
+                    Switch(
+                        checked = vm.aiOverlayMode.collectAsStateWithLifecycle().value,
+                        onCheckedChange = { vm.setAiOverlayMode(it) },
+                        colors = SwitchDefaults.colors(checkedTrackColor = accent, checkedThumbColor = surface)
+                    )
+                }
                 Spacer(Modifier.height(8.dp))
                 Surface(color = danger.copy(alpha = 0.1f), shape = RoundedCornerShape(6.dp), border = BorderStroke(1.dp, danger.copy(alpha = 0.2f))) {
                     Text(stringResource(R.string.warning_auto_ban), fontSize = 11.sp, color = danger, modifier = Modifier.padding(8.dp))
@@ -214,7 +259,17 @@ fun ContentScreen(vm: ContentViewModel) {
                 activeBadge = if (deviceAdminGranted) stringResource(R.string.badge_protected) else stringResource(R.string.badge_not_protected),
                 icon = Icons.Default.AdminPanelSettings,
                 color = if (deviceAdminGranted) success else danger,
-                onToggle = { vm.setUninstallProtection(it) }
+                onToggle = { active ->
+                    if (active && !deviceAdminGranted) {
+                        val intent = Intent(DevicePolicyManager.ACTION_ADD_DEVICE_ADMIN).apply {
+                            putExtra(DevicePolicyManager.EXTRA_DEVICE_ADMIN, deviceAdminComponent)
+                            putExtra(DevicePolicyManager.EXTRA_ADD_EXPLANATION, context.getString(R.string.device_admin_explanation))
+                        }
+                        adminLauncher.launch(intent)
+                    } else {
+                        vm.setUninstallProtection(active)
+                    }
+                }
             ) {
                 if (!deviceAdminGranted) {
                     Surface(color = danger.copy(alpha = 0.1f), shape = RoundedCornerShape(6.dp), border = BorderStroke(1.dp, danger.copy(alpha = 0.2f))) {
@@ -228,8 +283,153 @@ fun ContentScreen(vm: ContentViewModel) {
                 ChecklistItem(stringResource(R.string.feature_safe_mode_warning))
                 ChecklistItem(stringResource(R.string.feature_permission_removal_blocked))
             }
+
+            FeatureToggleCard(
+                title = stringResource(R.string.card_strong_protection_title),
+                subtitle = stringResource(R.string.card_strong_protection_subtitle),
+                isActive = strongProtectionActive,
+                activeBadge = if (strongProtectionActive) stringResource(R.string.badge_strong) else stringResource(R.string.badge_off),
+                icon = Icons.Default.Shield,
+                color = if (strongProtectionActive) warning else textMuted,
+                onToggle = { active ->
+                    if (active) {
+                        showStrongWarningDialog = true
+                    } else {
+                        strongPinInput = ""
+                        strongPinError = false
+                        showStrongProtectionDialog = true
+                    }
+                }
+            ) {
+                Surface(color = warning.copy(alpha = 0.08f), shape = RoundedCornerShape(6.dp), border = BorderStroke(1.dp, warning.copy(alpha = 0.2f))) {
+                    Text(stringResource(R.string.warning_strong_protection), fontSize = 11.sp, color = warning, modifier = Modifier.padding(8.dp))
+                }
+                Spacer(Modifier.height(8.dp))
+                if (vm.isKnoxDevice) {
+                    Surface(color = accent.copy(alpha = 0.1f), shape = RoundedCornerShape(6.dp)) {
+                        Text(stringResource(R.string.badge_knox_detected), fontSize = 11.sp, color = accent, modifier = Modifier.padding(8.dp))
+                    }
+                    Spacer(Modifier.height(8.dp))
+                }
+                ChecklistItem(stringResource(R.string.feature_pin_required_disable))
+                ChecklistItem(stringResource(R.string.feature_tamper_detection))
+                ChecklistItem(stringResource(R.string.feature_remote_alert))
+                ChecklistItem(stringResource(R.string.feature_os_suspension))
+                ChecklistItem(stringResource(R.string.feature_safe_mode_block))
+                Spacer(Modifier.height(12.dp))
+                Surface(
+                    color = primary.copy(alpha = 0.1f),
+                    shape = RoundedCornerShape(8.dp),
+                    modifier = Modifier.fillMaxWidth().clickable {
+                        val intent = Intent(context, DeviceOwnerSetupActivity::class.java)
+                        context.startActivity(intent)
+                    }
+                ) {
+                    Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.AdminPanelSettings, null, tint = primary, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            if (vm.isDeviceOwner()) "Device Owner: Active (tap for setup)"
+                            else "Set up Device Owner (ADB)",
+                            fontSize = 12.sp,
+                            color = primary
+                        )
+                    }
+                }
+            }
+
             Spacer(Modifier.height(16.dp))
         }
+    }
+
+    if (showStrongWarningDialog) {
+        AlertDialog(
+            onDismissRequest = { showStrongWarningDialog = false },
+            title = { Text(stringResource(R.string.strong_warning_title), fontWeight = FontWeight.Bold) },
+            text = {
+                Column {
+                    Text(stringResource(R.string.strong_warning_text), fontSize = 13.sp, color = textSecondary)
+                    Spacer(Modifier.height(16.dp))
+                    OutlinedTextField(
+                        value = strongPinInput,
+                        onValueChange = {
+                            strongPinInput = it
+                            strongPinError = false
+                        },
+                        label = { Text(stringResource(R.string.pin_enter)) },
+                        visualTransformation = PasswordVisualTransformation(),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+                        singleLine = true,
+                        isError = strongPinError,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    val valid = vm.isDeviceAdminGranted() && GuardianDeviceAdminReceiver().verifyPinBeforeDisable(context, strongPinInput)
+                    if (valid) {
+                        vm.setStrongProtection(true)
+                        showStrongWarningDialog = false
+                        strongPinInput = ""
+                    } else {
+                        strongPinError = true
+                    }
+                }) { Text(stringResource(R.string.btn_confirm)) }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    showStrongWarningDialog = false
+                    strongPinInput = ""
+                    strongPinError = false
+                }) { Text(stringResource(R.string.btn_cancel)) }
+            }
+        )
+    }
+
+    if (showStrongProtectionDialog) {
+        AlertDialog(
+            onDismissRequest = { showStrongProtectionDialog = false },
+            title = { Text(stringResource(R.string.strong_disable_title), fontWeight = FontWeight.Bold) },
+            text = {
+                Column {
+                    Text(stringResource(R.string.strong_disable_text), fontSize = 13.sp, color = textSecondary)
+                    Spacer(Modifier.height(16.dp))
+                    OutlinedTextField(
+                        value = strongPinInput,
+                        onValueChange = {
+                            strongPinInput = it
+                            strongPinError = false
+                        },
+                        label = { Text(stringResource(R.string.pin_enter)) },
+                        visualTransformation = PasswordVisualTransformation(),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+                        singleLine = true,
+                        isError = strongPinError,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    val valid = GuardianDeviceAdminReceiver().verifyPinBeforeDisable(context, strongPinInput)
+                    if (valid) {
+                        vm.setStrongProtection(false)
+                        showStrongProtectionDialog = false
+                        strongPinInput = ""
+                    } else {
+                        strongPinError = true
+                    }
+                }) { Text(stringResource(R.string.btn_disable)) }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    showStrongProtectionDialog = false
+                    strongPinInput = ""
+                    strongPinError = false
+                }) { Text(stringResource(R.string.btn_cancel)) }
+            }
+        )
     }
 
     if (editProfileId) {

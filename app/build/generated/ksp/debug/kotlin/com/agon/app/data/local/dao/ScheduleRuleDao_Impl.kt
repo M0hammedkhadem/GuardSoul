@@ -36,8 +36,7 @@ public class ScheduleRuleDao_Impl(
   init {
     this.__db = __db
     this.__insertAdapterOfScheduleRuleEntity = object : EntityInsertAdapter<ScheduleRuleEntity>() {
-      protected override fun createQuery(): String =
-          "INSERT OR REPLACE INTO `schedule_rules` (`id`,`daysOfWeek`,`startHour`,`startMinute`,`endHour`,`endMinute`,`enabled`) VALUES (nullif(?, 0),?,?,?,?,?,?)"
+      protected override fun createQuery(): String = "INSERT OR REPLACE INTO `schedule_rules` (`id`,`daysOfWeek`,`startHour`,`startMinute`,`endHour`,`endMinute`,`enabled`) VALUES (nullif(?, 0),?,?,?,?,?,?)"
 
       protected override fun bind(statement: SQLiteStatement, entity: ScheduleRuleEntity) {
         statement.bindLong(1, entity.id)
@@ -50,18 +49,15 @@ public class ScheduleRuleDao_Impl(
         statement.bindLong(7, _tmp.toLong())
       }
     }
-    this.__deleteAdapterOfScheduleRuleEntity = object :
-        EntityDeleteOrUpdateAdapter<ScheduleRuleEntity>() {
+    this.__deleteAdapterOfScheduleRuleEntity = object : EntityDeleteOrUpdateAdapter<ScheduleRuleEntity>() {
       protected override fun createQuery(): String = "DELETE FROM `schedule_rules` WHERE `id` = ?"
 
       protected override fun bind(statement: SQLiteStatement, entity: ScheduleRuleEntity) {
         statement.bindLong(1, entity.id)
       }
     }
-    this.__updateAdapterOfScheduleRuleEntity = object :
-        EntityDeleteOrUpdateAdapter<ScheduleRuleEntity>() {
-      protected override fun createQuery(): String =
-          "UPDATE OR ABORT `schedule_rules` SET `id` = ?,`daysOfWeek` = ?,`startHour` = ?,`startMinute` = ?,`endHour` = ?,`endMinute` = ?,`enabled` = ? WHERE `id` = ?"
+    this.__updateAdapterOfScheduleRuleEntity = object : EntityDeleteOrUpdateAdapter<ScheduleRuleEntity>() {
+      protected override fun createQuery(): String = "UPDATE OR ABORT `schedule_rules` SET `id` = ?,`daysOfWeek` = ?,`startHour` = ?,`startMinute` = ?,`endHour` = ?,`endMinute` = ?,`enabled` = ? WHERE `id` = ?"
 
       protected override fun bind(statement: SQLiteStatement, entity: ScheduleRuleEntity) {
         statement.bindLong(1, entity.id)
@@ -77,19 +73,16 @@ public class ScheduleRuleDao_Impl(
     }
   }
 
-  public override suspend fun insert(rule: ScheduleRuleEntity): Long = performSuspending(__db,
-      false, true) { _connection ->
+  public override suspend fun insert(rule: ScheduleRuleEntity): Long = performSuspending(__db, false, true) { _connection ->
     val _result: Long = __insertAdapterOfScheduleRuleEntity.insertAndReturnId(_connection, rule)
     _result
   }
 
-  public override suspend fun delete(rule: ScheduleRuleEntity): Unit = performSuspending(__db,
-      false, true) { _connection ->
+  public override suspend fun delete(rule: ScheduleRuleEntity): Unit = performSuspending(__db, false, true) { _connection ->
     __deleteAdapterOfScheduleRuleEntity.handle(_connection, rule)
   }
 
-  public override suspend fun update(rule: ScheduleRuleEntity): Unit = performSuspending(__db,
-      false, true) { _connection ->
+  public override suspend fun update(rule: ScheduleRuleEntity): Unit = performSuspending(__db, false, true) { _connection ->
     __updateAdapterOfScheduleRuleEntity.handle(_connection, rule)
   }
 
@@ -124,8 +117,7 @@ public class ScheduleRuleDao_Impl(
           val _tmp: Int
           _tmp = _stmt.getLong(_columnIndexOfEnabled).toInt()
           _tmpEnabled = _tmp != 0
-          _item =
-              ScheduleRuleEntity(_tmpId,_tmpDaysOfWeek,_tmpStartHour,_tmpStartMinute,_tmpEndHour,_tmpEndMinute,_tmpEnabled)
+          _item = ScheduleRuleEntity(_tmpId,_tmpDaysOfWeek,_tmpStartHour,_tmpStartMinute,_tmpEndHour,_tmpEndMinute,_tmpEnabled)
           _result.add(_item)
         }
         _result
@@ -166,8 +158,7 @@ public class ScheduleRuleDao_Impl(
           val _tmp: Int
           _tmp = _stmt.getLong(_columnIndexOfEnabled).toInt()
           _tmpEnabled = _tmp != 0
-          _item =
-              ScheduleRuleEntity(_tmpId,_tmpDaysOfWeek,_tmpStartHour,_tmpStartMinute,_tmpEndHour,_tmpEndMinute,_tmpEnabled)
+          _item = ScheduleRuleEntity(_tmpId,_tmpDaysOfWeek,_tmpStartHour,_tmpStartMinute,_tmpEndHour,_tmpEndMinute,_tmpEnabled)
           _result.add(_item)
         }
         _result

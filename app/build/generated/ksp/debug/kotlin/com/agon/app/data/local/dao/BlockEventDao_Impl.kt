@@ -31,8 +31,7 @@ public class BlockEventDao_Impl(
   init {
     this.__db = __db
     this.__insertAdapterOfBlockEventEntity = object : EntityInsertAdapter<BlockEventEntity>() {
-      protected override fun createQuery(): String =
-          "INSERT OR REPLACE INTO `block_events` (`id`,`packageName`,`appLabel`,`blockType`,`timestamp`) VALUES (nullif(?, 0),?,?,?,?)"
+      protected override fun createQuery(): String = "INSERT OR REPLACE INTO `block_events` (`id`,`packageName`,`appLabel`,`blockType`,`timestamp`) VALUES (nullif(?, 0),?,?,?,?)"
 
       protected override fun bind(statement: SQLiteStatement, entity: BlockEventEntity) {
         statement.bindLong(1, entity.id)
@@ -44,8 +43,7 @@ public class BlockEventDao_Impl(
     }
   }
 
-  public override suspend fun insert(event: BlockEventEntity): Unit = performSuspending(__db, false,
-      true) { _connection ->
+  public override suspend fun insert(event: BlockEventEntity): Unit = performSuspending(__db, false, true) { _connection ->
     __insertAdapterOfBlockEventEntity.insert(_connection, event)
   }
 
@@ -160,8 +158,7 @@ public class BlockEventDao_Impl(
   }
 
   public override fun mostBlockedAppFlow(): Flow<MostBlockedApp?> {
-    val _sql: String =
-        "SELECT packageName, appLabel, COUNT(*) as count FROM block_events GROUP BY packageName ORDER BY count DESC LIMIT 1"
+    val _sql: String = "SELECT packageName, appLabel, COUNT(*) as count FROM block_events GROUP BY packageName ORDER BY count DESC LIMIT 1"
     return createFlow(__db, false, arrayOf("block_events")) { _connection ->
       val _stmt: SQLiteStatement = _connection.prepare(_sql)
       try {
@@ -188,8 +185,7 @@ public class BlockEventDao_Impl(
   }
 
   public override fun blocksPerAppSince(since: Long): Flow<List<MostBlockedApp>> {
-    val _sql: String =
-        "SELECT packageName, appLabel, COUNT(*) as count FROM block_events WHERE timestamp >= ? GROUP BY packageName ORDER BY count DESC"
+    val _sql: String = "SELECT packageName, appLabel, COUNT(*) as count FROM block_events WHERE timestamp >= ? GROUP BY packageName ORDER BY count DESC"
     return createFlow(__db, false, arrayOf("block_events")) { _connection ->
       val _stmt: SQLiteStatement = _connection.prepare(_sql)
       try {
@@ -246,6 +242,77 @@ public class BlockEventDao_Impl(
           _result.add(_item)
         }
         _result
+      } finally {
+        _stmt.close()
+      }
+    }
+  }
+
+  public override fun getByDateRange(start: Long, end: Long): Flow<List<BlockEventEntity>> {
+    val _sql: String = "SELECT * FROM block_events WHERE timestamp >= ? AND timestamp <= ? ORDER BY timestamp DESC"
+    return createFlow(__db, false, arrayOf("block_events")) { _connection ->
+      val _stmt: SQLiteStatement = _connection.prepare(_sql)
+      try {
+        var _argIndex: Int = 1
+        _stmt.bindLong(_argIndex, start)
+        _argIndex = 2
+        _stmt.bindLong(_argIndex, end)
+        val _columnIndexOfId: Int = getColumnIndexOrThrow(_stmt, "id")
+        val _columnIndexOfPackageName: Int = getColumnIndexOrThrow(_stmt, "packageName")
+        val _columnIndexOfAppLabel: Int = getColumnIndexOrThrow(_stmt, "appLabel")
+        val _columnIndexOfBlockType: Int = getColumnIndexOrThrow(_stmt, "blockType")
+        val _columnIndexOfTimestamp: Int = getColumnIndexOrThrow(_stmt, "timestamp")
+        val _result: MutableList<BlockEventEntity> = mutableListOf()
+        while (_stmt.step()) {
+          val _item: BlockEventEntity
+          val _tmpId: Long
+          _tmpId = _stmt.getLong(_columnIndexOfId)
+          val _tmpPackageName: String
+          _tmpPackageName = _stmt.getText(_columnIndexOfPackageName)
+          val _tmpAppLabel: String
+          _tmpAppLabel = _stmt.getText(_columnIndexOfAppLabel)
+          val _tmpBlockType: String
+          _tmpBlockType = _stmt.getText(_columnIndexOfBlockType)
+          val _tmpTimestamp: Long
+          _tmpTimestamp = _stmt.getLong(_columnIndexOfTimestamp)
+          _item = BlockEventEntity(_tmpId,_tmpPackageName,_tmpAppLabel,_tmpBlockType,_tmpTimestamp)
+          _result.add(_item)
+        }
+        _result
+      } finally {
+        _stmt.close()
+      }
+    }
+  }
+
+  public override suspend fun getCount(): Int {
+    val _sql: String = "SELECT COUNT(*) FROM block_events"
+    return performSuspending(__db, true, false) { _connection ->
+      val _stmt: SQLiteStatement = _connection.prepare(_sql)
+      try {
+        val _result: Int
+        if (_stmt.step()) {
+          val _tmp: Int
+          _tmp = _stmt.getLong(0).toInt()
+          _result = _tmp
+        } else {
+          _result = 0
+        }
+        _result
+      } finally {
+        _stmt.close()
+      }
+    }
+  }
+
+  public override suspend fun clearOld(threshold: Long) {
+    val _sql: String = "DELETE FROM block_events WHERE timestamp < ?"
+    return performSuspending(__db, false, true) { _connection ->
+      val _stmt: SQLiteStatement = _connection.prepare(_sql)
+      try {
+        var _argIndex: Int = 1
+        _stmt.bindLong(_argIndex, threshold)
+        _stmt.step()
       } finally {
         _stmt.close()
       }

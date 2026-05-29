@@ -23,9 +23,10 @@ class GuardianFcmService : FirebaseMessagingService() {
         runBlocking {
             try {
                 val app = application as GuardianApp
-                val settings = app.repository.getAppSettings()
+                val repo = app.repository
+                val settings = repo.getAppSettings()
                 if (settings.isRemoteMonitoringEnabled()) {
-                    val firebaseManager = FirebaseManager(this@GuardianFcmService)
+                    val firebaseManager = FirebaseManager(this@GuardianFcmService, repo.blockEventDao, repo.appLimitDao)
                     if (firebaseManager.initialize()) {
                         firebaseManager.syncDeviceInfo()
                     }

@@ -1,7 +1,6 @@
 package com.agon.app
 
 import android.app.Notification
-import android.app.PendingIntent
 import android.app.Service
 import android.app.usage.UsageEvents
 import android.app.usage.UsageStatsManager
@@ -10,7 +9,6 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.IBinder
-import androidx.core.app.NotificationCompat
 import androidx.work.Constraints
 import androidx.work.CoroutineWorker
 import androidx.work.ExistingPeriodicWorkPolicy
@@ -62,12 +60,9 @@ class AppBlockerService : Service() {
         )
 
         fun start(context: Context) {
-            val intent = Intent(context, AppBlockerService::class.java)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                context.startForegroundService(intent)
-            } else {
-                context.startService(intent)
-            }
+            ForegroundServiceHelper.startServiceAsForeground(
+                context, AppBlockerService::class.java
+            )
             schedulePeriodicCheck(context)
         }
 
@@ -137,7 +132,9 @@ class AppBlockerService : Service() {
         if (intent?.action == ACTION_RELOAD_BLOCKLIST) {
             return START_NOT_STICKY
         }
-        startForeground(NOTIFICATION_ID, createNotification())
+        ForegroundServiceHelper.startForegroundCompat(
+            this, NOTIFICATION_ID, createNotification()
+        )
         startPolling()
         schedulePeriodicCheck(this)
         return START_STICKY
@@ -365,22 +362,11 @@ class AppBlockerService : Service() {
     }
 
     private fun createNotification(): Notification {
-        val openIntent = Intent(this, MainActivity::class.java).apply {
-            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP
-        }
-        val pendingIntent = PendingIntent.getActivity(
-            this, 0, openIntent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        return ForegroundServiceHelper.buildSilentNotification(
+            context = this,
+            title = getString(R.string.notification_blocker_title),
+            text = getString(R.string.notification_blocker_text)
         )
-
-        return NotificationCompat.Builder(this, AppNotificationChannels.APP_BLOCKER)
-            .setContentTitle(getString(R.string.notification_blocker_title))
-            .setContentText(getString(R.string.notification_blocker_text))
-            .setSmallIcon(android.R.drawable.ic_menu_close_clear_cancel)
-            .setContentIntent(pendingIntent)
-            .setOngoing(true)
-            .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
-            .build()
     }
 
     private fun getDayStart(nowMs: Long): Long {

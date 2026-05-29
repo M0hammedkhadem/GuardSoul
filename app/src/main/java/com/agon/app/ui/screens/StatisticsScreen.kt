@@ -23,9 +23,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.agon.app.R
 import com.agon.app.ui.theme.*
-import com.agon.app.viewmodel.DailyBlockCount
-import com.agon.app.viewmodel.AppBlockCount
-import com.agon.app.viewmodel.StatisticsViewModel
+import com.agon.app.viewmodel.*
 import com.github.mikephil.charting.charts.BarChart
 import com.github.mikephil.charting.charts.LineChart
 import com.github.mikephil.charting.charts.PieChart
@@ -43,7 +41,8 @@ fun StatisticsScreen(
 ) {
     val totalBlocks by vm.totalBlocks.collectAsStateWithLifecycle()
     val blocksToday by vm.blocksToday.collectAsStateWithLifecycle()
-    val streak by vm.streakCount.collectAsStateWithLifecycle()
+    val streak by vm.currentStreak.collectAsStateWithLifecycle()
+    val longestStreak by vm.longestStreak.collectAsStateWithLifecycle()
     val mostBlocked by vm.mostBlockedApp.collectAsStateWithLifecycle()
     val recentEvents by vm.recentEvents.collectAsStateWithLifecycle()
     val daysActive by vm.daysActive.collectAsStateWithLifecycle()
@@ -51,8 +50,8 @@ fun StatisticsScreen(
     val blockDistribution by vm.blockDistribution.collectAsStateWithLifecycle()
     val streakHistoryData by vm.streakHistoryData.collectAsStateWithLifecycle()
     val usageStats by vm.usageStats.collectAsStateWithLifecycle()
-
-    LaunchedEffect(Unit) { vm.refreshStreak() }
+    val blockedAppsToday by vm.blockedAppsToday.collectAsStateWithLifecycle()
+    val topBlockedCategories by vm.topBlockedCategories.collectAsStateWithLifecycle()
 
     Scaffold(
         containerColor = background,
@@ -61,6 +60,9 @@ fun StatisticsScreen(
                 title = { Text(stringResource(R.string.statistics_title), fontWeight = FontWeight.Bold) },
                 navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.contentdesc_back)) } },
                 actions = {
+                    IconButton(onClick = { vm.exportStatsAsCsv() }) {
+                        Icon(Icons.Default.Share, stringResource(R.string.contentdesc_back), tint = textMuted)
+                    }
                     IconButton(onClick = { vm.resetStatistics() }) {
                         Icon(Icons.Default.Delete, stringResource(R.string.contentdesc_reset), tint = textMuted)
                     }
@@ -82,7 +84,13 @@ fun StatisticsScreen(
             item {
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     StatCard(stringResource(R.string.statistics_streak), "$streak ${stringResource(R.string.statistics_days)}", Icons.Default.LocalFireDepartment, warning, Modifier.weight(1f))
+                    StatCard("Longest", "$longestStreak ${stringResource(R.string.statistics_days)}", Icons.Default.Star, success, Modifier.weight(1f))
+                }
+            }
+            item {
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     StatCard(stringResource(R.string.statistics_active), "$daysActive ${stringResource(R.string.statistics_days)}", Icons.Default.CalendarMonth, success, Modifier.weight(1f))
+                    StatCard("Today apps", "${blockedAppsToday.size}", Icons.Default.Apps, primary, Modifier.weight(1f))
                 }
             }
 
@@ -98,8 +106,10 @@ fun StatisticsScreen(
                             Spacer(Modifier.width(12.dp))
                             Column {
                                 Text(stringResource(R.string.statistics_most_blocked), fontSize = 12.sp, color = textMuted)
-                                Text(mostBlocked!!.appLabel.ifBlank { mostBlocked!!.packageName }, fontWeight = FontWeight.Bold, color = text)
-                                Text("${mostBlocked!!.count} ${stringResource(R.string.statistics_blocks)}", fontSize = 12.sp, color = primary)
+                                mostBlocked?.let { app ->
+                                    Text(app.appLabel.ifBlank { app.packageName }, fontWeight = FontWeight.Bold, color = text)
+                                    Text("${app.count} ${stringResource(R.string.statistics_blocks)}", fontSize = 12.sp, color = primary)
+                                }
                             }
                         }
                     }
@@ -115,16 +125,15 @@ fun StatisticsScreen(
                     Column(Modifier.padding(16.dp)) {
                         Text(stringResource(R.string.statistics_today_breakdown), fontWeight = FontWeight.Bold, color = text)
                         Spacer(Modifier.height(8.dp))
-                        val recentToday = recentEvents.filter { it.timestamp >= getTodayStart() }
-                        if (recentToday.isEmpty()) {
+                        if (blockedAppsToday.isEmpty()) {
                             Text(stringResource(R.string.statistics_empty), fontSize = 13.sp, color = textMuted)
                         } else {
-                            recentToday.groupBy { it.appLabel.ifBlank { it.packageName } }.forEach { (app, events) ->
-                                val pct = events.size.toFloat() / maxOf(1, recentToday.size)
+                            blockedAppsToday.take(10).forEach { app ->
+                                val pct = app.blockCount.toFloat() / maxOf(1, blockedAppsToday.sumOf { it.blockCount })
                                 Column {
                                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                        Text(app, fontSize = 13.sp, color = text, modifier = Modifier.weight(1f))
-                                        Text("${events.size}", fontSize = 13.sp, color = primary, fontWeight = FontWeight.Bold)
+                                        Text(app.appName, fontSize = 13.sp, color = text, modifier = Modifier.weight(1f))
+                                        Text("${app.blockCount}", fontSize = 13.sp, color = primary, fontWeight = FontWeight.Bold)
                                     }
                                     Spacer(Modifier.height(4.dp))
                                     LinearProgressIndicator(
@@ -134,6 +143,43 @@ fun StatisticsScreen(
                                     )
                                     Spacer(Modifier.height(8.dp))
                                 }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Top Blocked Categories
+            if (topBlockedCategories.isNotEmpty()) {
+                item {
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = card),
+                        shape = RoundedCornerShape(16.dp),
+                        border = BorderStroke(1.dp, cardBorder)
+                    ) {
+                        Column(Modifier.padding(16.dp)) {
+                            Text("Blocked Categories", fontWeight = FontWeight.Bold, color = text)
+                            Spacer(Modifier.height(8.dp))
+                            topBlockedCategories.forEach { cat ->
+                                val catLabel = when (cat.category) {
+                                    "ai" -> "AI Detection"
+                                    "time" -> "Time Limit"
+                                    "dns_filter" -> "DNS Filter"
+                                    "app_block" -> "App Block"
+                                    else -> cat.category.replaceFirstChar { it.uppercase() }
+                                }
+                                val pct = cat.count.toFloat() / maxOf(1, topBlockedCategories.sumOf { it.count })
+                                Row(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+                                    Text(catLabel, fontSize = 13.sp, color = text, modifier = Modifier.weight(1f))
+                                    Text("${cat.count}", fontSize = 13.sp, color = accent, fontWeight = FontWeight.Bold)
+                                }
+                                Spacer(Modifier.height(4.dp))
+                                LinearProgressIndicator(
+                                    progress = { pct },
+                                    modifier = Modifier.fillMaxWidth().height(4.dp).clip(RoundedCornerShape(2.dp)),
+                                    color = accent, trackColor = surfaceLight
+                                )
+                                Spacer(Modifier.height(4.dp))
                             }
                         }
                     }
@@ -168,7 +214,7 @@ fun StatisticsScreen(
                 }
             }
 
-            // ── BarChart: Daily Blocks (Last 7 Days) ──
+            // BarChart: Daily Blocks (Last 7 Days)
             item {
                 Card(
                     colors = CardDefaults.cardColors(containerColor = card),
@@ -183,7 +229,7 @@ fun StatisticsScreen(
                 }
             }
 
-            // ── PieChart: Block Distribution by App ──
+            // PieChart: Block Distribution by App
             item {
                 Card(
                     colors = CardDefaults.cardColors(containerColor = card),
@@ -202,7 +248,7 @@ fun StatisticsScreen(
                 }
             }
 
-            // ── LineChart: Streak History ──
+            // LineChart: Streak History
             item {
                 Card(
                     colors = CardDefaults.cardColors(containerColor = card),
@@ -217,7 +263,7 @@ fun StatisticsScreen(
                 }
             }
 
-            // ── Usage Stats (Last 7 Days) ──
+            // Usage Stats (Last 7 Days)
             if (usageStats.isNotEmpty()) {
                 item {
                     Card(

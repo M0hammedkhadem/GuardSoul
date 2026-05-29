@@ -43,6 +43,21 @@ class FacebookBlockerService : AccessibilityService() {
             "double tap to like"
         )
 
+        private const val ANTI_SCROLL_WINDOW_MS = 3_000L
+        private const val ANTI_SCROLL_THRESHOLD = 5
+        private const val ANTI_SCROLL_COOLDOWN_MS = 10_000L
+
+        private val FEED_PACKAGES = setOf(
+            "com.google.android.youtube",
+            "com.instagram.android",
+            "com.snapchat.android",
+            "com.twitter.android",
+            "com.zhiliaoapp.musically",
+            "com.facebook.katana",
+            "com.facebook.lite",
+            "com.tiktok.tiktok"
+        )
+
         private val SOCIAL_PACKAGES = mapOf(
             "social_instagram" to "com.instagram.android",
             "social_snapchat" to "com.snapchat.android",
@@ -134,6 +149,10 @@ class FacebookBlockerService : AccessibilityService() {
     }
     
     private var lastBlockTime = 0L
+    private val scrollTimestamps = mutableMapOf<String, MutableList<Long>>()
+    private var lastAntiScrollBlock = 0L
+    private var lastAppSwitchBlock = 0L
+    private var lastSettingsBlockNotification = 0L
     private var lastKeywordLoadTime = 0L
     private var lastUsageCheckTime = 0L
     private val appUsageCache = mutableMapOf<String, Long>()
@@ -254,6 +273,7 @@ class FacebookBlockerService : AccessibilityService() {
         super.onDestroy()
         ioScope.cancel()
         mainHandler.removeCallbacksAndMessages(null)
+        scrollTimestamps.clear()
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent) {
@@ -282,8 +302,9 @@ class FacebookBlockerService : AccessibilityService() {
         // All features below require shield to be active
         if (!getCachedShieldActive()) return
 
-        // 2. Settings Lockout (Uninstall Protection)
+        // 2. Settings Lockout (Uninstall Protection + Guardian settings block)
         if (packageName == "com.android.settings") {
+            handleWindowChange(packageName)
             val root = rootInActiveWindow ?: return
             try {
                 if (isUninstallAttempt(root)) {
@@ -304,17 +325,46 @@ class FacebookBlockerService : AccessibilityService() {
             return
         }
 
-        // 3. Layout checks for targeted social media
-        // YouTube Shorts now handled by dedicated YouTubeBlockerService
-        val isYt = false
+        // 3. Anti-scroll detection
+        if (event.eventType == AccessibilityEvent.TYPE_VIEW_SCROLLED) {
+            handleScrollEvent(packageName)
+        }
+
+        // 4. Layout checks for targeted social media
+        val isYt = packageName == "com.google.android.youtube" ||
+                packageName == "com.google.android.apps.youtube.music"
         val isFb = packageName == "com.facebook.katana" || packageName == "com.facebook.lite"
         val isIg = packageName == "com.instagram.android"
         
-        if (isYt || isFb || isIg) {
-            val isShortsEnabled = false
-            val isReelsEnabled = if (isFb || isIg) getCachedReelsMode() else false
+        if (isYt) {
+            if (cachedYoutubeMode == "shorts") {
+                when (event.eventType) {
+                    AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED,
+                    AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED -> {
+                        val root = rootInActiveWindow ?: return
+                        try {
+                            if (isShortsContent(root)) blockReels(packageName)
+                        } finally { root.recycle() }
+                    }
+                    AccessibilityEvent.TYPE_VIEW_CLICKED -> {
+                        val source = event.source ?: return
+                        try {
+                            val desc = source.contentDescription?.toString() ?: ""
+                            if (listOf("shorts","شورت").any { desc.contains(it, true) })
+                                blockReels(packageName)
+                        } finally { source.recycle() }
+                    }
+                }
+            } else if (cachedYoutubeMode == "full") {
+                triggerAppBlock(packageName, getAppLabel(packageName), "app_blocker")
+            }
+            return
+        }
 
-            if ((isYt && isShortsEnabled) || ((isFb || isIg) && isReelsEnabled)) {
+        if (isFb || isIg) {
+            val isReelsEnabled = getCachedReelsMode()
+
+            if (isReelsEnabled) {
                 when (event.eventType) {
                     AccessibilityEvent.TYPE_VIEW_CLICKED -> {
                         val source = event.source ?: return
@@ -341,7 +391,7 @@ class FacebookBlockerService : AccessibilityService() {
             }
         }
 
-        // 4. Browser URL & Keyword checks
+        // 5. Browser URL & Keyword checks
         val isBrowser = packageName.contains("browser", true) || packageName.contains("chrome", true) || packageName.contains("firefox", true)
         if (isBrowser) {
             val root = rootInActiveWindow ?: return
@@ -352,7 +402,7 @@ class FacebookBlockerService : AccessibilityService() {
             }
         }
 
-        // 5. Keyword screen text scan
+        // 6. Keyword screen text scan
         val root = rootInActiveWindow ?: return
         try {
             scanScreenText(root, packageName)
@@ -869,6 +919,83 @@ class FacebookBlockerService : AccessibilityService() {
             pm.getApplicationLabel(ai).toString()
         } catch (e: PackageManager.NameNotFoundException) {
             pkg
+        }
+    }
+
+    private fun handleScrollEvent(packageName: String) {
+        if (packageName !in FEED_PACKAGES) return
+
+        val now = System.currentTimeMillis()
+
+        ioScope.launch {
+            val shieldActive = try {
+                repo.getAppSettings().isShieldActive()
+            } catch (_: Exception) { false }
+            if (!shieldActive) return@launch
+        }
+
+        val timestamps = scrollTimestamps.getOrPut(packageName) { mutableListOf() }
+        timestamps.add(now)
+
+        timestamps.removeAll { now - it > ANTI_SCROLL_WINDOW_MS }
+
+        if (timestamps.size >= ANTI_SCROLL_THRESHOLD) {
+            if (now - lastAntiScrollBlock > ANTI_SCROLL_COOLDOWN_MS) {
+                lastAntiScrollBlock = now
+                Timber.d("Anti-scroll triggered for $packageName (${timestamps.size} scrolls in ${ANTI_SCROLL_WINDOW_MS}ms)")
+                performGlobalAction(GLOBAL_ACTION_BACK)
+            }
+            timestamps.clear()
+        }
+    }
+
+    private fun handleWindowChange(packageName: String) {
+        if (packageName != "com.android.settings") return
+
+        ioScope.launch {
+            val shieldActive = try {
+                repo.getAppSettings().isShieldActive()
+            } catch (_: Exception) { false }
+            if (!shieldActive) return@launch
+
+            android.os.Handler(mainLooper).post {
+                performGlobalAction(GLOBAL_ACTION_BACK)
+            }
+
+            val now = System.currentTimeMillis()
+            if (now - lastSettingsBlockNotification > 10_000) {
+                lastSettingsBlockNotification = now
+                showSettingsBlockedNotification()
+            }
+        }
+    }
+
+    private fun showSettingsBlockedNotification() {
+        val manager = getSystemService(NOTIFICATION_SERVICE) as android.app.NotificationManager
+        val notification = NotificationCompat.Builder(this, AppNotificationChannels.TAMPER_ALERT)
+            .setSmallIcon(android.R.drawable.ic_lock_lock)
+            .setContentTitle(getString(R.string.tamper_settings_blocked_title))
+            .setContentText(getString(R.string.tamper_settings_blocked_text))
+            .setAutoCancel(true)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .build()
+        manager.notify(9001, notification)
+    }
+
+    private fun isShortsContent(root: AccessibilityNodeInfo): Boolean {
+        return hasNodeInTree(root) { node ->
+            val cd = node.contentDescription?.toString()?.lowercase() ?: ""
+            val viewId = node.viewIdResourceName ?: ""
+            val className = node.className?.toString() ?: ""
+
+            val hasShortsDescription = listOf("shorts", "شورت").any { cd.contains(it) }
+            val hasReelPlayerId = viewId == "com.google.android.youtube:id/reel_player"
+            val hasShortsPlayerClass = className.contains("ShortsPlayer", true) ||
+                    className.contains("ReelPlayer", true) ||
+                    (className == "android.widget.FrameLayout" &&
+                            (cd.contains("shorts") || viewId.contains("reel")))
+
+            hasShortsDescription || hasReelPlayerId || hasShortsPlayerClass
         }
     }
 

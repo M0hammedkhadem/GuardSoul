@@ -5,16 +5,18 @@ import android.content.Context
 import com.agon.app.data.remote.FirebaseSyncWorker
 import com.agon.app.data.repository.AppRepository
 import com.agon.app.di.appModules
+import org.koin.android.ext.android.inject
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import org.koin.android.ext.koin.androidContext
 import org.koin.core.context.startKoin
+import com.agon.app.logging.ReleaseTree
 import timber.log.Timber
 
 class GuardianApp : Application() {
-    val repository: AppRepository by lazy { AppRepository(this) }
+    val repository: AppRepository by inject()
 
     override fun onCreate() {
         super.onCreate()
@@ -22,8 +24,10 @@ class GuardianApp : Application() {
             androidContext(this@GuardianApp)
             modules(appModules)
         }
-        if (Timber.treeCount == 0) {
+        if (BuildConfig.IS_DEBUG_BUILD) {
             Timber.plant(Timber.DebugTree())
+        } else {
+            Timber.plant(ReleaseTree())
         }
         AppNotificationChannels.createAll(this)
         CoroutineScope(Dispatchers.IO).launch {

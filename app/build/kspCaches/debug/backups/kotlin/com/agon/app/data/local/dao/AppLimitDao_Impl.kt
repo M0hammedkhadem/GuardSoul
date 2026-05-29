@@ -32,8 +32,7 @@ public class AppLimitDao_Impl(
   init {
     this.__db = __db
     this.__insertAdapterOfAppLimitEntity = object : EntityInsertAdapter<AppLimitEntity>() {
-      protected override fun createQuery(): String =
-          "INSERT OR REPLACE INTO `app_limits` (`packageName`,`appLabel`,`dailyMinutes`) VALUES (?,?,?)"
+      protected override fun createQuery(): String = "INSERT OR REPLACE INTO `app_limits` (`packageName`,`appLabel`,`dailyMinutes`) VALUES (?,?,?)"
 
       protected override fun bind(statement: SQLiteStatement, entity: AppLimitEntity) {
         statement.bindText(1, entity.packageName)
@@ -42,8 +41,7 @@ public class AppLimitDao_Impl(
       }
     }
     this.__deleteAdapterOfAppLimitEntity = object : EntityDeleteOrUpdateAdapter<AppLimitEntity>() {
-      protected override fun createQuery(): String =
-          "DELETE FROM `app_limits` WHERE `packageName` = ?"
+      protected override fun createQuery(): String = "DELETE FROM `app_limits` WHERE `packageName` = ?"
 
       protected override fun bind(statement: SQLiteStatement, entity: AppLimitEntity) {
         statement.bindText(1, entity.packageName)
@@ -51,13 +49,11 @@ public class AppLimitDao_Impl(
     }
   }
 
-  public override suspend fun insert(limit: AppLimitEntity): Unit = performSuspending(__db, false,
-      true) { _connection ->
+  public override suspend fun insert(limit: AppLimitEntity): Unit = performSuspending(__db, false, true) { _connection ->
     __insertAdapterOfAppLimitEntity.insert(_connection, limit)
   }
 
-  public override suspend fun delete(limit: AppLimitEntity): Unit = performSuspending(__db, false,
-      true) { _connection ->
+  public override suspend fun delete(limit: AppLimitEntity): Unit = performSuspending(__db, false, true) { _connection ->
     __deleteAdapterOfAppLimitEntity.handle(_connection, limit)
   }
 

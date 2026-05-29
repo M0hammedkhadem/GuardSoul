@@ -12,33 +12,39 @@ import com.agon.app.GuardianApp
 import com.agon.app.R
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import timber.log.Timber
 
 class AdbReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
-        if (intent.action != UsbManager.ACTION_USB_STATE) return
+        if (intent.action != "android.hardware.usb.action.USB_STATE") return
 
-        val connected = intent.getBooleanExtra(UsbManager.USB_CONNECTED, false)
+        val connected = intent.getBooleanExtra("connected", false)
         if (!connected) return
 
-        CoroutineScope(Dispatchers.IO).launch {
-            val app = context.applicationContext as GuardianApp
-            val shieldActive = try {
-                app.repository.getAppSettings().isShieldActive()
-            } catch (_: Exception) { false }
-            if (!shieldActive) return@launch
+        val pendingResult = goAsync()
+        CoroutineScope(Dispatchers.IO + SupervisorJob()).launch {
+            try {
+                val app = context.applicationContext as GuardianApp
+                val shieldActive = try {
+                    app.repository.getAppSettings().isShieldActive()
+                } catch (_: Exception) { false }
+                if (!shieldActive) return@launch
 
-            val adbEnabled = try {
-                Settings.Global.getInt(
-                    context.contentResolver,
-                    Settings.Global.ADB_ENABLED
-                ) == 1
-            } catch (_: Exception) { false }
+                val adbEnabled = try {
+                    Settings.Global.getInt(
+                        context.contentResolver,
+                        Settings.Global.ADB_ENABLED
+                    ) == 1
+                } catch (_: Exception) { false }
 
-            if (adbEnabled) {
-                Timber.w("AdbReceiver: ADB is enabled while USB connected")
-                showAdbWarningNotification(context)
+                if (adbEnabled) {
+                    Timber.w("AdbReceiver: ADB is enabled while USB connected")
+                    showAdbWarningNotification(context)
+                }
+            } finally {
+                pendingResult.finish()
             }
         }
     }

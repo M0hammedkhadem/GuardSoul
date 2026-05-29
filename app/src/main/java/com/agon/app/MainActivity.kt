@@ -18,6 +18,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -37,7 +38,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
-import org.koin.androidx.compose.viewModel
+import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -49,9 +50,7 @@ import com.agon.app.utils.AccessibilityUtils
 import com.agon.app.utils.PermissionUtils
 import com.agon.app.ui.theme.*
 import com.agon.app.viewmodel.*
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -59,13 +58,17 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
 
         val app = application as GuardianApp
-        val initialOnboardingComplete = runBlocking(Dispatchers.IO) {
-            app.repository.getAppSettings().isOnboardingComplete()
-        }
 
         setContent {
             AgonAppTheme {
-                MainApp(initialOnboardingComplete = initialOnboardingComplete)
+                val onboardingComplete by produceState<Boolean?>(initialValue = null) {
+                    value = app.repository.getAppSettings().isOnboardingComplete()
+                }
+                if (onboardingComplete != null) {
+                    MainApp(initialOnboardingComplete = onboardingComplete!!)
+                } else {
+                    Box(modifier = Modifier.fillMaxSize())
+                }
             }
         }
     }

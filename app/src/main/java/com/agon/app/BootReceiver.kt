@@ -47,7 +47,6 @@ class BootReceiver : BroadcastReceiver() {
         startServiceSafe(context, Intent(context, DnsVpnService::class.java))
         startServiceSafe(context, Intent(context, AiScannerService::class.java))
         startServiceSafe(context, Intent(context, FacebookBlockerService::class.java))
-        startServiceSafe(context, Intent(context, YouTubeBlockerService::class.java))
 
         try {
             FirebaseSyncWorker.schedule(context)

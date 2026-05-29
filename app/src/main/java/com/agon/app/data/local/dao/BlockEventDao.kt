@@ -27,6 +27,15 @@ interface BlockEventDao {
     @Query("SELECT * FROM block_events WHERE timestamp >= :since ORDER BY timestamp DESC")
     fun blocksSince(since: Long): List<BlockEventEntity>
 
+    @Query("SELECT * FROM block_events WHERE timestamp >= :start AND timestamp <= :end ORDER BY timestamp DESC")
+    fun getByDateRange(start: Long, end: Long): Flow<List<BlockEventEntity>>
+
+    @Query("SELECT COUNT(*) FROM block_events")
+    suspend fun getCount(): Int
+
+    @Query("DELETE FROM block_events WHERE timestamp < :threshold")
+    suspend fun clearOld(threshold: Long)
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(event: BlockEventEntity)
 

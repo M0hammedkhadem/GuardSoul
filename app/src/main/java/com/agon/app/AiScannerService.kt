@@ -9,6 +9,7 @@ import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.PixelFormat
+import android.graphics.BlurMaskFilter
 import android.hardware.display.DisplayManager
 import android.hardware.display.VirtualDisplay
 import android.media.ImageReader
@@ -21,9 +22,9 @@ import android.os.Looper
 import android.view.View
 import android.view.WindowManager
 import android.widget.ImageView
-import android.widget.Toast
 import androidx.core.app.NotificationCompat
 import com.agon.app.data.repository.AppRepository
+import com.agon.app.nn.NsfwDetector
 import com.agon.app.ui.screens.BlockActivity
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -35,8 +36,6 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import timber.log.Timber
-import java.nio.ByteBuffer
-import java.nio.ByteOrder
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -55,7 +54,6 @@ class AiScannerService : Service() {
         private const val BAN_DURATION_MS = 15 * 60 * 1000L
         private const val OVERLAY_DISMISS_MS = 3_000L
         private const val OVERLAY_DISMISS_STRIKE2_MS = 5_000L
-        private const val PIXEL_BLOCK_SIZE = 24
     }
 
     private val serviceScope = CoroutineScope(Dispatchers.Default + SupervisorJob())
@@ -66,13 +64,13 @@ class AiScannerService : Service() {
     private var mediaProjection: MediaProjection? = null
     private var virtualDisplay: VirtualDisplay? = null
     private var imageReader: ImageReader? = null
-    private var tflite: org.tensorflow.lite.Interpreter? = null
+    private var nsfwDetector: NsfwDetector? = null
 
     private var currentDayStrikes = 0
     private var lastStrikeDate = ""
     private var bannedUntilTimestamp = 0L
 
-    private var pixelationOverlay: View? = null
+    private var overlayView: View? = null
 
     private val repo: AppRepository by lazy {
         (applicationContext as GuardianApp).repository
@@ -83,7 +81,7 @@ class AiScannerService : Service() {
     override fun onCreate() {
         super.onCreate()
         mediaProjectionManager = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
-        initTfLite()
+        nsfwDetector = NsfwDetector(this).also { it.initialize() }
         Timber.d("AiScannerService created")
     }
 
@@ -104,7 +102,9 @@ class AiScannerService : Service() {
             return START_NOT_STICKY
         }
 
-        startForeground(NOTIFICATION_ID, createNotification())
+        ForegroundServiceHelper.startForegroundCompat(
+            this, NOTIFICATION_ID, createNotification()
+        )
 
         val projectionIntent = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             intent?.getParcelableExtra(EXTRA_PROJECTION_INTENT, Intent::class.java)
@@ -126,47 +126,11 @@ class AiScannerService : Service() {
 
     override fun onDestroy() {
         super.onDestroy()
-        dismissPixelationOverlay()
+        dismissOverlay()
         stopCapture()
         serviceScope.cancel()
-        tflite?.close()
+        nsfwDetector?.close()
         Timber.d("AiScannerService destroyed")
-    }
-
-    private fun initTfLite() {
-        try {
-            val modelFile = loadModelFile()
-            if (modelFile != null) {
-                val options = org.tensorflow.lite.Interpreter.Options().apply {
-                    try {
-                        addDelegate(org.tensorflow.lite.nnapi.NnApiDelegate())
-                        Timber.d("AiScannerService: NNAPI Delegate added successfully")
-                    } catch (e: Exception) {
-                        Timber.w("AiScannerService: NNAPI Delegate failed, falling back to CPU")
-                    }
-                    setNumThreads(4)
-                }
-                tflite = org.tensorflow.lite.Interpreter(modelFile, options)
-                Timber.d("AiScannerService: TFLite model loaded successfully")
-            } else {
-                Timber.w("AiScannerService: nsfw_model.tflite not found in assets, running in simulation fallback mode")
-            }
-        } catch (e: Exception) {
-            Timber.e(e, "AiScannerService: failed to initialize TFLite, running in fallback mode")
-        }
-    }
-
-    private fun loadModelFile(): java.nio.MappedByteBuffer? {
-        return try {
-            val fileDescriptor = assets.openFd("nsfw_model.tflite")
-            val inputStream = java.io.FileInputStream(fileDescriptor.fileDescriptor)
-            val fileChannel = inputStream.channel
-            val startOffset = fileDescriptor.startOffset
-            val declaredLength = fileDescriptor.declaredLength
-            fileChannel.map(java.nio.channels.FileChannel.MapMode.READ_ONLY, startOffset, declaredLength)
-        } catch (e: Exception) {
-            null
-        }
     }
 
     private fun startCapture(projectionIntent: Intent) {
@@ -228,7 +192,7 @@ class AiScannerService : Service() {
                     Timber.d("AiScannerService: Score=$nsfwScore, threshold=$sensitivity")
 
                     if (nsfwScore > sensitivity) {
-                        handleNsfwViolation(croppedBitmap)
+                        handleNsfwViolation(croppedBitmap, nsfwScore)
                     } else {
                         croppedBitmap.recycle()
                     }
@@ -240,43 +204,15 @@ class AiScannerService : Service() {
     }
 
     private fun runInference(bitmap: Bitmap): Float {
-        val interpreter = tflite
-        if (interpreter == null) {
-            return 0.01f
-        }
-
-        val resized = Bitmap.createScaledBitmap(bitmap, 224, 224, true)
-        val byteBuffer = ByteBuffer.allocateDirect(224 * 224 * 3 * 4).apply {
-            order(ByteOrder.nativeOrder())
-        }
-
-        val intValues = IntArray(224 * 224)
-        resized.getPixels(intValues, 0, resized.width, 0, 0, resized.width, resized.height)
-        resized.recycle()
-
-        byteBuffer.rewind()
-        for (pixel in intValues) {
-            val r = (pixel shr 16) and 0xff
-            val g = (pixel shr 8) and 0xff
-            val b = pixel and 0xff
-
-            byteBuffer.putFloat(r / 255.0f)
-            byteBuffer.putFloat(g / 255.0f)
-            byteBuffer.putFloat(b / 255.0f)
-        }
-
-        val outputVal = Array(1) { FloatArray(2) }
-
-        try {
-            interpreter.run(byteBuffer, outputVal)
-            return outputVal[0][1]
-        } catch (e: Exception) {
-            Timber.e(e, "AiScannerService: TFLite run failed")
+        val detector = nsfwDetector
+        if (detector == null) {
+            bitmap.recycle()
             return 0.0f
         }
+        return detector.detect(bitmap)
     }
 
-    private fun handleNsfwViolation(frame: Bitmap) {
+    private fun handleNsfwViolation(frame: Bitmap, score: Float) {
         val now = System.currentTimeMillis()
 
         if (now < bannedUntilTimestamp) {
@@ -292,12 +228,25 @@ class AiScannerService : Service() {
         }
 
         currentDayStrikes++
-        Timber.w("AiScannerService: Strike $currentDayStrikes/3 for $today")
+        Timber.w("AiScannerService: Strike $currentDayStrikes/3 for $today (score=$score)")
 
         serviceScope.launch {
             try {
                 repo.recordBlock("NSFW_Screen", "AI Screen Filter", "ai_nsfw_block")
             } catch (_: Exception) {}
+        }
+
+        val useBlur = try {
+            kotlinx.coroutines.runBlocking {
+                repo.getAppSettings().aiOverlayModeFlow.first()
+            }
+        } catch (_: Exception) { false }
+
+        if (useBlur) {
+            val delay = if (currentDayStrikes >= 2) OVERLAY_DISMISS_STRIKE2_MS else OVERLAY_DISMISS_MS
+            showBlurOverlay(frame, score, delay)
+            showWarningToast("Content blurred (${(score * 100).toInt()}% confidence)")
+            return
         }
 
         startActivity(Intent(Intent.ACTION_MAIN).apply {
@@ -332,8 +281,56 @@ class AiScannerService : Service() {
         }
     }
 
+    private fun showBlurOverlay(bitmap: Bitmap, score: Float, dismissMs: Long) {
+        dismissOverlay()
+
+        val blurRadius = ((score - 0.5f) * 80f).coerceIn(10f, 50f).toInt()
+        val blurred = applyGaussianBlur(bitmap, blurRadius)
+        bitmap.recycle()
+
+        mainHandler.post {
+            try {
+                val wm = getSystemService(Context.WINDOW_SERVICE) as WindowManager
+                val layoutParams = WindowManager.LayoutParams(
+                    WindowManager.LayoutParams.MATCH_PARENT,
+                    WindowManager.LayoutParams.MATCH_PARENT,
+                    WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+                    WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+                        WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                        WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE,
+                    PixelFormat.TRANSLUCENT
+                )
+
+                val imageView = ImageView(this).apply {
+                    setImageBitmap(blurred)
+                    scaleType = ImageView.ScaleType.FIT_XY
+                }
+
+                wm.addView(imageView, layoutParams)
+                overlayView = imageView
+
+                mainHandler.postDelayed({
+                    dismissOverlay()
+                }, dismissMs)
+            } catch (e: Exception) {
+                Timber.w(e, "AiScannerService: failed to show blur overlay")
+            }
+        }
+    }
+
+    private fun applyGaussianBlur(source: Bitmap, radius: Int): Bitmap {
+        val output = Bitmap.createBitmap(source.width, source.height, Bitmap.Config.ARGB_8888)
+        val canvas = android.graphics.Canvas(output)
+        val paint = android.graphics.Paint().apply {
+            isFilterBitmap = true
+            maskFilter = BlurMaskFilter(radius.toFloat(), BlurMaskFilter.Blur.NORMAL)
+        }
+        canvas.drawBitmap(source, 0f, 0f, paint)
+        return output
+    }
+
     private fun showPixelationOverlay(bitmap: Bitmap, strike2: Boolean = false) {
-        dismissPixelationOverlay()
+        dismissOverlay()
 
         val pixelated = createPixelatedBitmap(bitmap)
         bitmap.recycle()
@@ -357,11 +354,11 @@ class AiScannerService : Service() {
                 }
 
                 wm.addView(imageView, layoutParams)
-                pixelationOverlay = imageView
+                overlayView = imageView
 
                 val delay = if (strike2) OVERLAY_DISMISS_STRIKE2_MS else OVERLAY_DISMISS_MS
                 mainHandler.postDelayed({
-                    dismissPixelationOverlay()
+                    dismissOverlay()
                 }, delay)
             } catch (e: Exception) {
                 Timber.w(e, "AiScannerService: failed to show pixelation overlay")
@@ -370,26 +367,38 @@ class AiScannerService : Service() {
     }
 
     private fun createPixelatedBitmap(source: Bitmap): Bitmap {
-        val smallW = source.width / PIXEL_BLOCK_SIZE
-        val smallH = source.height / PIXEL_BLOCK_SIZE
+        val blockSize = 24
+        val smallW = source.width / blockSize
+        val smallH = source.height / blockSize
         val small = Bitmap.createScaledBitmap(source, smallW.coerceAtLeast(1), smallH.coerceAtLeast(1), true)
         return Bitmap.createScaledBitmap(small, source.width, source.height, false)
     }
 
-    private fun dismissPixelationOverlay() {
+    private fun dismissOverlay() {
         try {
-            val overlay = pixelationOverlay
+            val overlay = overlayView
             if (overlay != null) {
                 val wm = getSystemService(Context.WINDOW_SERVICE) as WindowManager
                 wm.removeView(overlay)
             }
         } catch (_: Exception) {}
-        pixelationOverlay = null
+        overlayView = null
     }
 
     private fun showWarningToast(message: String) {
-        mainHandler.post {
-            Toast.makeText(this, message, Toast.LENGTH_LONG).show()
+        try {
+            val notification = NotificationCompat.Builder(this, AppNotificationChannels.APP_BLOCKER)
+                .setSmallIcon(android.R.drawable.ic_dialog_info)
+                .setContentTitle(getString(R.string.app_name))
+                .setContentText(message)
+                .setAutoCancel(true)
+                .setTimeoutAfter(4000L)
+                .setPriority(NotificationCompat.PRIORITY_LOW)
+                .build()
+            val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            manager.notify(5002, notification)
+        } catch (e: Exception) {
+            Timber.w(e, "AiScannerService: failed to show message notification")
         }
     }
 
@@ -426,21 +435,10 @@ class AiScannerService : Service() {
     }
 
     private fun createNotification(): Notification {
-        val openIntent = Intent(this, MainActivity::class.java).apply {
-            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP
-        }
-        val pendingIntent = PendingIntent.getActivity(
-            this, 0, openIntent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        return ForegroundServiceHelper.buildSilentNotification(
+            context = this,
+            title = "Guardian AI Screen Monitor",
+            text = "Actively scanning screen for explicit content"
         )
-
-        return NotificationCompat.Builder(this, AppNotificationChannels.APP_BLOCKER)
-            .setContentTitle("Guardian AI Screen Monitor")
-            .setContentText("Actively scanning screen for explicit content")
-            .setSmallIcon(android.R.drawable.ic_menu_close_clear_cancel)
-            .setContentIntent(pendingIntent)
-            .setOngoing(true)
-            .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
-            .build()
     }
 }

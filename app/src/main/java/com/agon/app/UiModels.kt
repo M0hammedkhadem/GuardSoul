@@ -1,5 +1,6 @@
 package com.agon.app
 
+import com.agon.app.data.local.entity.BlocklistItemEntity
 import java.util.UUID
 
 data class ScheduleRule(
@@ -24,4 +25,43 @@ data class BlockEvent(
     val blockType: String = "manual",
 )
 
+data class BlocklistItem(
+    val id: Long = 0,
+    val listType: String,
+    val category: String,
+    val value: String,
+    val enabled: Boolean = true,
+    val createdAt: Long = System.currentTimeMillis(),
+    val label: String? = null,
+    val regexEnabled: Boolean = false,
+    val sensitivityLevel: String = "medium",
+    val urlCategory: String? = null
+) {
+    val displayLabel: String get() = label ?: value
+}
 
+fun BlocklistItemEntity.toUiModel() = BlocklistItem(
+    id = id,
+    listType = listType,
+    category = category,
+    value = value,
+    enabled = enabled,
+    createdAt = createdAt,
+    label = label,
+    regexEnabled = regexEnabled,
+    sensitivityLevel = sensitivityLevel,
+    urlCategory = urlCategory
+)
+
+fun BlocklistItem.toEntity() = BlocklistItemEntity(
+    id = id,
+    listType = listType,
+    category = category,
+    value = value,
+    enabled = enabled,
+    createdAt = createdAt,
+    label = label,
+    regexEnabled = regexEnabled,
+    sensitivityLevel = sensitivityLevel,
+    urlCategory = urlCategory
+)

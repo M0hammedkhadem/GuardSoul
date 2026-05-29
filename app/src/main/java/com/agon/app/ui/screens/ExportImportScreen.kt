@@ -1,7 +1,5 @@
 package com.agon.app.ui.screens
 
-import android.content.Context
-import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
@@ -21,37 +19,39 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.agon.app.R
 import com.agon.app.ui.theme.*
+import com.agon.app.viewmodel.ExportImportViewModel
 
 @Composable
 fun ExportImportScreen(
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    vm: ExportImportViewModel? = null
 ) {
     val context = LocalContext.current
-    var statusMessage by remember { mutableStateOf<String?>(null) }
-    var isError by remember { mutableStateOf(false) }
+    val effectiveVm = vm ?: viewModel<ExportImportViewModel>()
+
+    val statusMessage by effectiveVm.statusMessage.collectAsStateWithLifecycle()
+    val isError by effectiveVm.isError.collectAsStateWithLifecycle()
 
     val exportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/plain")) { uri ->
         if (uri != null) {
-            val success = exportBlocklist(context, uri)
-            statusMessage = if (success) context.getString(R.string.export_success) else context.getString(R.string.export_failed)
-            isError = !success
+            effectiveVm.exportData(context, uri)
         }
     }
 
     val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) {
-            val result = importBlocklist(context, uri)
-            if (result != null) {
-                val (newWebsites, newKeywords, newApps) = result
-                val totalNew = newWebsites.size + newKeywords.size + newApps.size
-                statusMessage = context.getString(R.string.import_success_summary, totalNew, 0)
-                isError = false
-            } else {
-                statusMessage = context.getString(R.string.import_failed)
-                isError = true
-            }
+            effectiveVm.importData(context, uri)
+        }
+    }
+
+    LaunchedEffect(statusMessage) {
+        if (statusMessage != null) {
+            kotlinx.coroutines.delay(3000)
+            effectiveVm.clearStatus()
         }
     }
 
@@ -150,7 +150,7 @@ fun ExportImportScreen(
             }
         }
 
-        statusMessage?.let {
+        if (statusMessage != null) {
             Spacer(Modifier.height(12.dp))
             Card(
                 colors = CardDefaults.cardColors(
@@ -166,50 +166,9 @@ fun ExportImportScreen(
                         modifier = Modifier.size(20.dp)
                     )
                     Spacer(Modifier.width(8.dp))
-                    Text(it, color = text, fontSize = 14.sp)
+                    Text(statusMessage!!, color = text, fontSize = 14.sp)
                 }
             }
         }
     }
-}
-
-private fun exportBlocklist(context: Context, uri: Uri): Boolean {
-    return try {
-        context.contentResolver.openOutputStream(uri)?.use { os ->
-            val lines = mutableListOf<String>()
-            lines.add("# Guardian Blocklist Export")
-            lines.add("# Exported: ${java.text.SimpleDateFormat("yyyy-MM-dd HH:mm", java.util.Locale.getDefault()).format(java.util.Date())}")
-            lines.add("")
-            lines.add("# Websites")
-            lines.add("")
-            lines.add("# Keywords")
-            lines.add("")
-            lines.add("# Apps")
-            os.write(lines.joinToString("\n").toByteArray())
-        }
-        true
-    } catch (_: Exception) { false }
-}
-
-private fun importBlocklist(context: Context, uri: Uri): Triple<List<String>, List<String>, List<String>>? {
-    return try {
-        context.contentResolver.openInputStream(uri)?.use { stream ->
-            val text = stream.bufferedReader().readText()
-            val websites = mutableListOf<String>()
-            val keywords = mutableListOf<String>()
-            val apps = mutableListOf<String>()
-
-            text.lines().forEach { line ->
-                val trimmed = line.trim()
-                if (trimmed.isBlank() || trimmed.startsWith("#")) return@forEach
-                when {
-                    trimmed.startsWith("kw:", ignoreCase = true) -> keywords.add(trimmed.removePrefix("kw:").removePrefix("KW:").trim())
-                    trimmed.startsWith("app:", ignoreCase = true) -> apps.add(trimmed.removePrefix("app:").removePrefix("APP:").trim())
-                    else -> websites.add(trimmed)
-                }
-            }
-
-            Triple(websites, keywords, apps)
-        }
-    } catch (_: Exception) { null }
 }

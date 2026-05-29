@@ -221,6 +221,10 @@
     <string name="btn_grant_permission">منح الإذن</string>
     <string name="label_how_to_grant">كيفية المنح:</string>
     <string name="privacy_permissions_note">ملاحظة الخصوصية: جارديان يعمل بالكامل على الجهاز.</string>
+    <string name="btn_grant_all">منح الكل (%1$d/%2$d)</string>
+    <string name="grant_all_in_progress">جارٍ المنح… %1$d/%2$d</string>
+    <string name="contentdesc_check">تم</string>
+    <string name="contentdesc_close">إغلاق</string>
 
     <!-- شاشة الحظر -->
     <string name="block_app_name_default">هذا التطبيق</string>
@@ -433,6 +437,14 @@
     <!-- القوائم - إضافي -->
     <string name="lists_add_app_to">إضافة تطبيق إلى %1$s</string>
     <string name="lists_add_new">إضافة %1$s جديد…</string>
+    <string name="label_regex">تعبير منتظم</string>
+    <string name="label_regex_on">تفعيل التعبير المنتظم</string>
+    <string name="label_sensitivity">الحساسية</string>
+    <string name="sensitivity_low">منخفض</string>
+    <string name="sensitivity_medium">متوسط</string>
+    <string name="sensitivity_high">عالٍ</string>
+    <string name="error_invalid_url">تنسيق رابط غير صالح</string>
+    <string name="contentdesc_clear">مسح</string>
 
     <!-- الإعدادات - نصوص الخطوات -->
     <string name="onboarding_step1_desc">درع العافية الرقمية الخاص بك. احجب المشتتات، وصنف المحتوى الصريح، وابنِ عادات رقمية صحية.\n\nدعنا نعد ملفك الشخصي في 5 خطوات سريعة.</string>
@@ -535,5 +547,23 @@
     <string name="upgrade_subtitle">المتابعة مجاناً مع الميزات الأساسية أو الترقية</string>
     <string name="upgrade_btn_upgrade">ترقية</string>
     <string name="upgrade_btn_continue">المتابعة مجاناً</string>
+
+    <!-- Remote Monitoring -->
+    <string name="remote_monitoring_title">لوحة تحكم الوالدين</string>
+    <string name="remote_monitoring_desc">راقب جهاز طفلك عن بُعد عبر Firebase</string>
+    <string name="remote_monitoring_enable">تفعيل المراقبة عن بُعد</string>
+    <string name="parent_email_label">بريد الوالدين</string>
+    <string name="parent_email_hint">أدخل بريدك لاستقبال التنبيهات</string>
+    <string name="btn_link_device">ربط الجهاز</string>
+    <string name="btn_unlink_device">إلغاء ربط الجهاز</string>
+    <string name="remote_monitoring_connected">متصل بلوحة تحكم الوالدين</string>
+    <string name="remote_monitoring_disconnected">غير متصل بلوحة تحكم الوالدين</string>
+    <!-- Alerts -->
+    <string name="alert_block_spike">تم رصد %1$d حجباً في الساعة الماضية</string>
+    <string name="alert_shield_deactivated">تم إيقاف الحماية على جهاز الطفل</string>
+    <string name="alert_new_app_installed">تم تثبيت تطبيق جديد: %1$s</string>
+    <string name="channel_remote_commands">الأوامر عن بُعد</string>
+    <string name="channel_remote_commands_desc">إشعارات الأوامر الواردة من لوحة تحكم الوالدين</string>
+    <string name="guardian_accessibility_desc">يستخدم تطبيق Guardian خدمة إمكانية الوصول لكشف وحظر المحتوى المشتت أو الضار في الوقت الفعلي عبر التطبيقات ومواقع الويب. لا يتم جمع أو تخزين أي بيانات شخصية.</string>
 
 </resources>

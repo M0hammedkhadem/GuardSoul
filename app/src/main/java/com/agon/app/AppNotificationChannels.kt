@@ -11,6 +11,7 @@ object AppNotificationChannels {
     const val AI_SCANNER = "ai_scanner"
     const val TAMPER_ALERT = "tamper_alert"
     const val REMOTE_COMMANDS = "remote_commands"
+    const val VPN_SECURITY_ALERT = "vpn_security_alert"
 
     fun createAll(context: Context) {
         val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
@@ -73,5 +74,16 @@ object AppNotificationChannels {
             enableVibration(true)
         }
         manager.createNotificationChannel(remoteCommands)
+
+        val vpnAlert = NotificationChannel(
+            VPN_SECURITY_ALERT,
+            "VPN Security Alert",
+            NotificationManager.IMPORTANCE_MAX
+        ).apply {
+            description = "Alert when VPN connection drops unexpectedly"
+            enableVibration(true)
+            vibrationPattern = longArrayOf(0, 500, 200, 500, 200, 500)
+        }
+        manager.createNotificationChannel(vpnAlert)
     }
 }

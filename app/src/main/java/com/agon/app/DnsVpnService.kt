@@ -1,7 +1,6 @@
 package com.agon.app
 
 import android.app.Notification
-import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.net.ConnectivityManager
@@ -10,8 +9,8 @@ import android.net.VpnService
 import android.os.Build
 import android.os.ParcelFileDescriptor
 import android.provider.Settings
-import androidx.core.app.NotificationCompat
 import com.agon.app.data.repository.AppRepository
+import androidx.localbroadcastmanager.content.LocalBroadcastManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -28,12 +27,9 @@ import java.net.DatagramSocket
 import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.nio.ByteBuffer
-import java.security.SecureRandom
-import java.security.cert.X509Certificate
+import javax.net.ssl.HttpsURLConnection
 import javax.net.ssl.SSLSocket
 import javax.net.ssl.SSLSocketFactory
-import javax.net.ssl.TrustManager
-import javax.net.ssl.X509TrustManager
 
 class DnsVpnService : VpnService() {
 
@@ -47,6 +43,8 @@ class DnsVpnService : VpnService() {
         private const val ACTION_RELOAD_WEBSITES = "com.agon.app.action.RELOAD_WEBSITES"
         private const val CLEAN_DNS_1 = "185.228.168.9"
         private const val CLEAN_DNS_2 = "185.228.169.9"
+        private const val CLEAN_DNS_IPV6_1 = "2a0d:2a00:1::"
+        private const val CLEAN_DNS_IPV6_2 = "2a0d:2a00:2::"
         private const val CLEAN_DOT_HOST = "family-filter-dns.cleanbrowsing.org"
         private const val SAFESEARCH_IP = "185.228.168.168"
 
@@ -84,22 +82,42 @@ class DnsVpnService : VpnService() {
             "208.67.222.123", "208.67.220.123"
         )
 
+        private val BLOCKED_DOH_IPS_V6 = setOf(
+            "2001:4860:4860::8888", "2001:4860:4860::8844",
+            "2606:4700:4700::1111", "2606:4700:4700::1001",
+            "2620:fe::fe", "2620:fe::9"
+        )
+
         private val BLOCKED_DOT_IPS = setOf(
             "8.8.8.8", "8.8.4.4",
             "1.1.1.1", "1.0.0.1",
             "9.9.9.9", "149.112.112.112"
         )
 
+        private val BLOCKED_DOT_IPS_V6 = setOf(
+            "2001:4860:4860::8888", "2001:4860:4860::8844",
+            "2606:4700:4700::1111", "2606:4700:4700::1001",
+            "2620:fe::fe", "2620:fe::9"
+        )
+
+        @Volatile
+        private var intentionalStop = false
+
+        fun wasStoppedIntentionally(): Boolean = intentionalStop
+
+        fun clearIntentionalStopFlag() {
+            intentionalStop = false
+        }
+
         fun start(context: Context) {
-            val intent = Intent(context, DnsVpnService::class.java)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                context.startForegroundService(intent)
-            } else {
-                context.startService(intent)
-            }
+            intentionalStop = false
+            ForegroundServiceHelper.startServiceAsForeground(
+                context, DnsVpnService::class.java
+            )
         }
 
         fun stop(context: Context) {
+            intentionalStop = true
             context.stopService(Intent(context, DnsVpnService::class.java))
         }
 
@@ -144,7 +162,9 @@ class DnsVpnService : VpnService() {
                 stopSelf()
                 return@launch
             }
-            startForeground(NOTIFICATION_ID, createNotification())
+            ForegroundServiceHelper.startForegroundCompat(
+                this@DnsVpnService, NOTIFICATION_ID, createNotification()
+            )
 
             trySetPrivateDns()
             physicalNetwork = connectivityManager.activeNetwork
@@ -162,6 +182,11 @@ class DnsVpnService : VpnService() {
             try { repo.getAppSettings().setPornBlocker(false) } catch (_: Exception) {}
         }
         Timber.d("DnsVpnService revoked")
+        if (!intentionalStop) {
+            sendRevocationBroadcast()
+        } else {
+            clearIntentionalStopFlag()
+        }
     }
 
     override fun onDestroy() {
@@ -171,6 +196,20 @@ class DnsVpnService : VpnService() {
         vpnInterface = null
         serviceScope.cancel()
         Timber.d("DnsVpnService destroyed")
+        if (!intentionalStop) {
+            sendRevocationBroadcast()
+        } else {
+            clearIntentionalStopFlag()
+        }
+    }
+
+    private fun sendRevocationBroadcast() {
+        Timber.w("VPN stopped unintentionally — scheduling security alert")
+        val intent = Intent(VpnStateMonitor.ACTION_VPN_REVOKED).apply {
+            setPackage(packageName)
+        }
+        sendBroadcast(intent)
+        VpnStateMonitor.scheduleRevocationWork(this)
     }
 
     private fun trySetPrivateDns(): Boolean {
@@ -194,6 +233,10 @@ class DnsVpnService : VpnService() {
             .addRoute("0.0.0.0", 0)
             .addDnsServer(CLEAN_DNS_1)
             .addDnsServer(CLEAN_DNS_2)
+            .addAddress("fd00::2", 128)
+            .addRoute("::", 0)
+            .addDnsServer(CLEAN_DNS_IPV6_1)
+            .addDnsServer(CLEAN_DNS_IPV6_2)
 
         try {
             vpnInterface = builder.establish()
@@ -209,10 +252,14 @@ class DnsVpnService : VpnService() {
     }
 
     private fun startTrafficForwarding() {
+        val iface = vpnInterface ?: run {
+            Timber.w("startTrafficForwarding: vpnInterface is null, aborting")
+            return
+        }
         vpnJob?.cancel()
         vpnJob = serviceScope.launch {
-            val input = FileInputStream(vpnInterface!!.fileDescriptor)
-            val output = FileOutputStream(vpnInterface!!.fileDescriptor)
+            val input = FileInputStream(iface.fileDescriptor)
+            val output = FileOutputStream(iface.fileDescriptor)
             val buffer = ByteBuffer.allocate(VPN_MTU)
             val outBuffer = ByteBuffer.allocate(VPN_MTU)
 
@@ -234,7 +281,15 @@ class DnsVpnService : VpnService() {
                         continue
                     }
 
-                    val protocol = packet[9].toInt() and 0xff
+                    val version = (packet[0].toInt() shr 4) and 0x0f
+                    val protocol = when (version) {
+                        4 -> packet[9].toInt() and 0xff
+                        6 -> packet[6].toInt() and 0xff
+                        else -> {
+                            output.channel.write(ByteBuffer.wrap(packet))
+                            continue
+                        }
+                    }
 
                     when (protocol) {
                         6 -> { // TCP
@@ -297,19 +352,43 @@ class DnsVpnService : VpnService() {
     private fun isDnsQuery(packet: ByteArray): Boolean {
         if (packet.size < 20) return false
         val version = (packet[0].toInt() shr 4) and 0x0f
-        if (version != 4) return false
+        return when (version) {
+            4 -> isDnsQueryIPv4(packet)
+            6 -> isDnsQueryIPv6(packet)
+            else -> false
+        }
+    }
+
+    private fun isDnsQueryIPv4(packet: ByteArray): Boolean {
         val headerLength = (packet[0].toInt() and 0x0f) * 4
-        if (packet.size < headerLength + 2) return false
+        if (packet.size < headerLength + 4) return false
         val srcPort = ((packet[headerLength].toInt() and 0xff) shl 8) or (packet[headerLength + 1].toInt() and 0xff)
         val dstPort = ((packet[headerLength + 2].toInt() and 0xff) shl 8) or (packet[headerLength + 3].toInt() and 0xff)
         return srcPort == DNS_PORT || dstPort == DNS_PORT
     }
 
+    private fun isDnsQueryIPv6(packet: ByteArray): Boolean {
+        if (packet.size < 48) return false
+        val nextHeader = packet[6].toInt() and 0xff
+        if (nextHeader != 17) return false
+        val dstPort = ((packet[42].toInt() and 0xff) shl 8) or (packet[43].toInt() and 0xff)
+        return dstPort == DNS_PORT
+    }
+
     private fun isBlockedTcpConnection(packet: ByteArray): Boolean {
+        val version = (packet[0].toInt() shr 4) and 0x0f
+        return when (version) {
+            4 -> isBlockedTcpConnectionIPv4(packet)
+            6 -> isBlockedTcpConnectionIPv6(packet)
+            else -> false
+        }
+    }
+
+    private fun isBlockedTcpConnectionIPv4(packet: ByteArray): Boolean {
         val headerLength = (packet[0].toInt() and 0x0f) * 4
         if (packet.size < headerLength + 14) return false
 
-        val dstIp = buildIpString(packet, 16)
+        val dstIp = buildIpv4String(packet, 16)
         val dstPort = ((packet[headerLength + 2].toInt() and 0xff) shl 8) or (packet[headerLength + 3].toInt() and 0xff)
 
         if (dstPort == DOH_PORT && dstIp in BLOCKED_DOH_IPS) {
@@ -327,15 +406,48 @@ class DnsVpnService : VpnService() {
         return false
     }
 
+    private fun isBlockedTcpConnectionIPv6(packet: ByteArray): Boolean {
+        if (packet.size < 60) return false
+        val nextHeader = packet[6].toInt() and 0xff
+        if (nextHeader != 6) return false
+
+        val dstIp = buildIpv6String(packet, 24)
+        val dstPort = ((packet[42].toInt() and 0xff) shl 8) or (packet[43].toInt() and 0xff)
+
+        if (dstPort == DOH_PORT && dstIp in BLOCKED_DOH_IPS_V6) {
+            Timber.d("Blocked DoH TCP connection to $dstIp:$dstPort")
+            injectTcpRst(packet)
+            return true
+        }
+
+        if (dstPort == DOT_PORT && dstIp in BLOCKED_DOT_IPS_V6) {
+            Timber.d("Blocked DoT TCP connection to $dstIp:$dstPort")
+            injectTcpRst(packet)
+            return true
+        }
+
+        return false
+    }
+
     private fun injectTcpRst(packet: ByteArray) {
+        val iface = vpnInterface ?: return
         try {
-            val output = FileOutputStream(vpnInterface!!.fileDescriptor)
+            val output = FileOutputStream(iface.fileDescriptor)
             val resetPacket = buildTcpRst(packet)
             output.channel.write(ByteBuffer.wrap(resetPacket))
         } catch (_: Exception) {}
     }
 
     private fun buildTcpRst(packet: ByteArray): ByteArray {
+        val version = (packet[0].toInt() shr 4) and 0x0f
+        return when (version) {
+            4 -> buildTcpRstIPv4(packet)
+            6 -> buildTcpRstIPv6(packet)
+            else -> packet
+        }
+    }
+
+    private fun buildTcpRstIPv4(packet: ByteArray): ByteArray {
         val headerLength = (packet[0].toInt() and 0x0f) * 4
         val tcpHeaderOffset = headerLength
         val tcpHeaderLen = ((packet[tcpHeaderOffset + 12].toInt() and 0xf0) shr 2)
@@ -426,6 +538,83 @@ class DnsVpnService : VpnService() {
         return ipPacket
     }
 
+    private fun buildTcpRstIPv6(packet: ByteArray): ByteArray {
+        if (packet.size < 60) return packet
+        val tcpHeaderOffset = 40
+        val tcpHeaderLen = ((packet[tcpHeaderOffset + 12].toInt() and 0xf0) shr 2)
+
+        val srcIp = packet.copyOfRange(8, 24)
+        val dstIp = packet.copyOfRange(24, 40)
+        val srcPort = ((packet[tcpHeaderOffset].toInt() and 0xff) shl 8) or (packet[tcpHeaderOffset + 1].toInt() and 0xff)
+        val dstPort = ((packet[tcpHeaderOffset + 2].toInt() and 0xff) shl 8) or (packet[tcpHeaderOffset + 3].toInt() and 0xff)
+
+        val seqNum = ((packet[tcpHeaderOffset + 4].toInt() and 0xff) shl 24) or
+                ((packet[tcpHeaderOffset + 5].toInt() and 0xff) shl 16) or
+                ((packet[tcpHeaderOffset + 6].toInt() and 0xff) shl 8) or
+                (packet[tcpHeaderOffset + 7].toInt() and 0xff)
+
+        val ackNum = ((packet[tcpHeaderOffset + 8].toInt() and 0xff) shl 24) or
+                ((packet[tcpHeaderOffset + 9].toInt() and 0xff) shl 16) or
+                ((packet[tcpHeaderOffset + 10].toInt() and 0xff) shl 8) or
+                (packet[tcpHeaderOffset + 11].toInt() and 0xff)
+
+        val dataOffset = tcpHeaderOffset + tcpHeaderLen
+        val payloadLen = if (dataOffset < packet.size) packet.size - dataOffset else 0
+
+        val tcpRstLen = 20
+        val ipv6PayloadLen = tcpRstLen
+
+        val buf = ByteBuffer.allocate(40 + tcpRstLen)
+        buf.put(0x60.toByte())
+        buf.put(0x00)
+        buf.putShort(ipv6PayloadLen.toShort())
+        buf.put(6.toByte()) // TCP
+        buf.put(0x00)
+        buf.put(dstIp)
+        buf.put(srcIp)
+        buf.putShort(dstPort.toShort())
+        buf.putShort(srcPort.toShort())
+        buf.putInt(ackNum)
+        buf.putInt(seqNum + payloadLen)
+        buf.putShort(0x5014.toShort()) // data offset=5, reserved=0, flags=RST+ACK
+        buf.putShort(0.toShort()) // window
+        buf.putShort(0.toShort()) // checksum placeholder
+        buf.putShort(0.toShort()) // urgent pointer
+
+        val rstPacket = buf.array()
+
+        val tcpChecksumOffset = 40 + 16
+        rstPacket[tcpChecksumOffset] = 0
+        rstPacket[tcpChecksumOffset + 1] = 0
+
+        val pseudoLen = 40 + 12 + tcpRstLen
+        val pseudoBuf = ByteBuffer.allocate(pseudoLen)
+        pseudoBuf.put(dstIp)
+        pseudoBuf.put(srcIp)
+        pseudoBuf.putInt(ipv6PayloadLen)
+        pseudoBuf.put(0x00)
+        pseudoBuf.put(0x00)
+        pseudoBuf.put(0x00)
+        pseudoBuf.put(6.toByte())
+        pseudoBuf.putShort(tcpRstLen.toShort())
+        pseudoBuf.put(rstPacket, 40, tcpRstLen)
+        val pseudoData = pseudoBuf.array()
+
+        var tcpChecksum = 0L
+        val wordCount = pseudoLen + (pseudoLen % 2)
+        for (i in 0 until wordCount step 2) {
+            val b1 = if (i < pseudoLen) pseudoData[i].toInt() and 0xff else 0
+            val b2 = if (i + 1 < pseudoLen) pseudoData[i + 1].toInt() and 0xff else 0
+            tcpChecksum += ((b1 shl 8) or b2)
+        }
+        while (tcpChecksum > 0xffff) tcpChecksum = (tcpChecksum and 0xffff) + (tcpChecksum shr 16)
+        val tcpCsum = ((tcpChecksum.toInt() xor 0xffff) and 0xffff)
+        rstPacket[tcpChecksumOffset] = (tcpCsum shr 8).toByte()
+        rstPacket[tcpChecksumOffset + 1] = (tcpCsum and 0xff).toByte()
+
+        return rstPacket
+    }
+
     private fun parseDnsQueryDomain(dnsPayload: ByteArray): String? {
         if (dnsPayload.size < 12) return null
         val qdCount = ((dnsPayload[4].toInt() and 0xff) shl 8) or (dnsPayload[5].toInt() and 0xff)
@@ -470,8 +659,17 @@ class DnsVpnService : VpnService() {
         return BLOCKED_DOH_DOMAINS.contains(domain.lowercase().trim())
     }
 
-    private fun buildIpString(packet: ByteArray, offset: Int): String {
+    private fun buildIpv4String(packet: ByteArray, offset: Int): String {
         return "${packet[offset].toInt() and 0xff}.${packet[offset + 1].toInt() and 0xff}.${packet[offset + 2].toInt() and 0xff}.${packet[offset + 3].toInt() and 0xff}"
+    }
+
+    private fun buildIpv6String(packet: ByteArray, offset: Int): String {
+        val sb = StringBuilder()
+        for (i in 0 until 16 step 2) {
+            if (i > 0) sb.append(":")
+            sb.append(String.format("%04x", ((packet[offset + i].toInt() and 0xff) shl 8) or (packet[offset + i + 1].toInt() and 0xff)))
+        }
+        return sb.toString()
     }
 
     private fun forwardDnsQuery(dnsQuery: ByteArray?): ByteArray? {
@@ -491,18 +689,17 @@ class DnsVpnService : VpnService() {
     private fun forwardViaDoT(dnsQuery: ByteArray): ByteArray? {
         val network = physicalNetwork ?: return null
         return try {
-            val trustAllCerts = arrayOf<TrustManager>(object : X509TrustManager {
-                override fun checkClientTrusted(certs: Array<X509Certificate>, authType: String) {}
-                override fun checkServerTrusted(certs: Array<X509Certificate>, authType: String) {}
-                override fun getAcceptedIssuers(): Array<X509Certificate> = arrayOf()
-            })
-            val sslContext = javax.net.ssl.SSLContext.getInstance("TLS")
-            sslContext.init(null, trustAllCerts, SecureRandom())
-            val socket = sslContext.socketFactory.createSocket() as SSLSocket
+            val socket = SSLSocketFactory.getDefault().createSocket() as SSLSocket
             network.bindSocket(socket)
             socket.connect(InetSocketAddress(InetAddress.getByName(CLEAN_DOT_HOST), DOT_PORT), 5000)
             socket.soTimeout = 5000
             socket.startHandshake()
+
+            val hv = HttpsURLConnection.getDefaultHostnameVerifier()
+            if (!hv.verify(CLEAN_DOT_HOST, socket.session)) {
+                socket.close()
+                return null
+            }
 
             val lengthPrefixed = ByteBuffer.allocate(2 + dnsQuery.size)
                 .putShort(dnsQuery.size.toShort())
@@ -602,6 +799,15 @@ class DnsVpnService : VpnService() {
     }
 
     private fun extractUdpPayload(packet: ByteArray): ByteArray? {
+        val version = (packet[0].toInt() shr 4) and 0x0f
+        return when (version) {
+            4 -> extractUdpPayloadIPv4(packet)
+            6 -> extractUdpPayloadIPv6(packet)
+            else -> null
+        }
+    }
+
+    private fun extractUdpPayloadIPv4(packet: ByteArray): ByteArray? {
         if (packet.size < 20) return null
         val headerLength = (packet[0].toInt() and 0x0f) * 4
         val udpHeaderOffset = headerLength
@@ -613,7 +819,28 @@ class DnsVpnService : VpnService() {
         return packet.copyOfRange(payloadOffset, payloadOffset + payloadLength)
     }
 
+    private fun extractUdpPayloadIPv6(packet: ByteArray): ByteArray? {
+        if (packet.size < 48) return null
+        val nextHeader = packet[6].toInt() and 0xff
+        if (nextHeader != 17) return null
+        val udpHeaderOffset = 40
+        val udpLength = ((packet[udpHeaderOffset + 4].toInt() and 0xff) shl 8) or (packet[udpHeaderOffset + 5].toInt() and 0xff)
+        val payloadOffset = udpHeaderOffset + 8
+        val payloadLength = minOf(udpLength - 8, packet.size - payloadOffset)
+        if (payloadLength <= 0) return null
+        return packet.copyOfRange(payloadOffset, payloadOffset + payloadLength)
+    }
+
     private fun rewriteUdpResponse(originalPacket: ByteArray, dnsResponse: ByteArray): ByteArray {
+        val version = (originalPacket[0].toInt() shr 4) and 0x0f
+        return when (version) {
+            4 -> rewriteUdpResponseIPv4(originalPacket, dnsResponse)
+            6 -> rewriteUdpResponseIPv6(originalPacket, dnsResponse)
+            else -> originalPacket
+        }
+    }
+
+    private fun rewriteUdpResponseIPv4(originalPacket: ByteArray, dnsResponse: ByteArray): ByteArray {
         val headerLength = (originalPacket[0].toInt() and 0x0f) * 4
         val udpOffset = headerLength
         val srcIp = originalPacket.copyOfRange(12, 16)
@@ -657,6 +884,34 @@ class DnsVpnService : VpnService() {
         return ipPacket
     }
 
+    private fun rewriteUdpResponseIPv6(originalPacket: ByteArray, dnsResponse: ByteArray): ByteArray {
+        if (originalPacket.size < 40) return originalPacket
+
+        val srcIp = originalPacket.copyOfRange(8, 24)
+        val dstIp = originalPacket.copyOfRange(24, 40)
+        val srcPort = ((originalPacket[40].toInt() and 0xff) shl 8) or (originalPacket[41].toInt() and 0xff)
+        val dstPort = ((originalPacket[42].toInt() and 0xff) shl 8) or (originalPacket[43].toInt() and 0xff)
+
+        val udpLen = 8 + dnsResponse.size
+        val ipv6PayloadLen = udpLen
+
+        val buf = ByteBuffer.allocate(40 + udpLen)
+        buf.put(0x60.toByte())
+        buf.put(0x00)
+        buf.putShort(ipv6PayloadLen.toShort())
+        buf.put(17.toByte())
+        buf.put(0x00)
+        buf.put(dstIp)
+        buf.put(srcIp)
+        buf.putShort(dstPort.toShort())
+        buf.putShort(srcPort.toShort())
+        buf.putShort(udpLen.toShort())
+        buf.putShort(0)
+        buf.put(dnsResponse)
+
+        return buf.array()
+    }
+
     private fun loadBlockedWebsites() {
         serviceScope.launch {
             try {
@@ -686,20 +941,10 @@ class DnsVpnService : VpnService() {
     }
 
     private fun createNotification(): Notification {
-        val openIntent = Intent(this, MainActivity::class.java).apply {
-            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP
-        }
-        val pendingIntent = PendingIntent.getActivity(
-            this, 0, openIntent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        return ForegroundServiceHelper.buildSilentNotification(
+            context = this,
+            title = "Guardian DNS Filter",
+            text = "Active — filtering via CleanBrowsing Family Filter"
         )
-        return NotificationCompat.Builder(this, AppNotificationChannels.APP_BLOCKER)
-            .setContentTitle("Guardian DNS Filter")
-            .setContentText("Filtering via CleanBrowsing Family Filter")
-            .setSmallIcon(android.R.drawable.ic_menu_close_clear_cancel)
-            .setContentIntent(pendingIntent)
-            .setOngoing(true)
-            .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
-            .build()
     }
 }

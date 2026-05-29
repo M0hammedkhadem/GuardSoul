@@ -23,6 +23,7 @@ class AppSettings(private val context: Context) {
         val DEACTIVATION_DELAY_MINUTES = intPreferencesKey("deactivation_delay_minutes")
         val PROFILE_NAME = stringPreferencesKey("profile_name")
         val STREAK_COUNT = intPreferencesKey("streak_count")
+        val LONGEST_STREAK = intPreferencesKey("longest_streak")
         val LAST_ACTIVE_DATE = longPreferencesKey("last_active_date")
 
         val SOCIAL_INSTAGRAM = booleanPreferencesKey("social_instagram")
@@ -38,7 +39,9 @@ class AppSettings(private val context: Context) {
         val AI_SCANNER = booleanPreferencesKey("ai_scanner")
         val AI_SENSITIVITY = intPreferencesKey("ai_sensitivity")
         val UNINSTALL_PROTECTION = booleanPreferencesKey("uninstall_protection")
+        val STRONG_PROTECTION = booleanPreferencesKey("strong_protection")
         val NEXTDNS_PROFILE_ID = stringPreferencesKey("nextdns_profile_id")
+        val AI_OVERLAY_MODE = booleanPreferencesKey("ai_overlay_mode")
 
         // Gamification Keys
         val XP_POINTS = intPreferencesKey("xp_points")
@@ -80,6 +83,7 @@ class AppSettings(private val context: Context) {
     val profileNameFlow: Flow<String> = context.settingsStore.data.map { it[Keys.PROFILE_NAME] ?: "" }
     val pinHashFlow: Flow<String> = encryptedPrefs.pinHashFlow
     val streakCountFlow: Flow<Int> = context.settingsStore.data.map { it[Keys.STREAK_COUNT] ?: 0 }
+    val longestStreakFlow: Flow<Int> = context.settingsStore.data.map { it[Keys.LONGEST_STREAK] ?: 0 }
     val lastActiveDateFlow: Flow<Long> = context.settingsStore.data.map { it[Keys.LAST_ACTIVE_DATE] ?: 0L }
 
     val socialInstagramFlow: Flow<Boolean> = context.settingsStore.data.map { it[Keys.SOCIAL_INSTAGRAM] ?: false }
@@ -95,7 +99,9 @@ class AppSettings(private val context: Context) {
     val aiScannerFlow: Flow<Boolean> = context.settingsStore.data.map { it[Keys.AI_SCANNER] ?: false }
     val aiSensitivityFlow: Flow<Int> = context.settingsStore.data.map { it[Keys.AI_SENSITIVITY] ?: 75 }
     val uninstallProtectionFlow: Flow<Boolean> = context.settingsStore.data.map { it[Keys.UNINSTALL_PROTECTION] ?: false }
+    val strongProtectionFlow: Flow<Boolean> = context.settingsStore.data.map { it[Keys.STRONG_PROTECTION] ?: false }
     val nextDnsProfileIdFlow: Flow<String> = context.settingsStore.data.map { it[Keys.NEXTDNS_PROFILE_ID] ?: "" }
+    val aiOverlayModeFlow: Flow<Boolean> = context.settingsStore.data.map { it[Keys.AI_OVERLAY_MODE] ?: false }
 
     val xpPointsFlow: Flow<Int> = context.settingsStore.data.map { it[Keys.XP_POINTS] ?: 0 }
     val levelFlow: Flow<Int> = context.settingsStore.data.map { it[Keys.LEVEL] ?: 1 }
@@ -134,6 +140,7 @@ class AppSettings(private val context: Context) {
     suspend fun setProfileName(v: String) { context.settingsStore.edit { it[Keys.PROFILE_NAME] = v } }
     suspend fun setPinHash(v: String) { encryptedPrefs.savePinHash(v) }
     suspend fun setStreakCount(v: Int) { context.settingsStore.edit { it[Keys.STREAK_COUNT] = v } }
+    suspend fun setLongestStreak(v: Int) { context.settingsStore.edit { it[Keys.LONGEST_STREAK] = v } }
     suspend fun setLastActiveDate(v: Long) { context.settingsStore.edit { it[Keys.LAST_ACTIVE_DATE] = v } }
 
     suspend fun setSocialInstagram(v: Boolean) { context.settingsStore.edit { it[Keys.SOCIAL_INSTAGRAM] = v } }
@@ -150,8 +157,10 @@ class AppSettings(private val context: Context) {
     suspend fun setAiScanner(v: Boolean) { context.settingsStore.edit { it[Keys.AI_SCANNER] = v } }
     suspend fun setAiSensitivity(v: Int) { context.settingsStore.edit { it[Keys.AI_SENSITIVITY] = v } }
     suspend fun setUninstallProtection(v: Boolean) { context.settingsStore.edit { it[Keys.UNINSTALL_PROTECTION] = v } }
+    suspend fun setStrongProtection(v: Boolean) { context.settingsStore.edit { it[Keys.STRONG_PROTECTION] = v } }
     suspend fun setNextDnsProfileId(v: String) { context.settingsStore.edit { it[Keys.NEXTDNS_PROFILE_ID] = v } }
     suspend fun getNextDnsProfileId(): String = context.settingsStore.data.first()[Keys.NEXTDNS_PROFILE_ID] ?: ""
+    suspend fun setAiOverlayMode(v: Boolean) { context.settingsStore.edit { it[Keys.AI_OVERLAY_MODE] = v } }
 
     suspend fun setXpPoints(v: Int) { context.settingsStore.edit { it[Keys.XP_POINTS] = v } }
     suspend fun setLevel(v: Int) { context.settingsStore.edit { it[Keys.LEVEL] = v } }
