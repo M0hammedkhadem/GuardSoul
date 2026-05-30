@@ -18,7 +18,6 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -157,10 +156,23 @@ fun MainApp(initialOnboardingComplete: Boolean = false) {
                     overlayGranted = overlayGranted,
                     usageAccessGranted = usageAccessGranted,
                     notificationGranted = notificationGranted,
+                    initialLanguage = LanguageManager.currentLanguageCode,
+                    onSetName = { name ->
+                        scope.launch {
+                            if (name.isNotBlank()) settings.setProfileName(name)
+                        }
+                    },
+                    onSetLanguage = { lang ->
+                        LanguageManager.setLanguage(context, lang)
+                    },
+                    onRequestLanguageChange = { _, lang ->
+                        LanguageManager.setLanguage(context, lang)
+                        (context as Activity).recreate()
+                    },
                     onComplete = {
-                        scope.launch { settings.setOnboardingComplete() }
-                        navController.navigate("home") {
-                            popUpTo("onboarding") { inclusive = true }
+                        scope.launch {
+                            settings.setOnboardingComplete()
+                            (context as Activity).recreate()
                         }
                     },
                     onRequestPermission = { key ->
@@ -255,8 +267,9 @@ fun MainApp(initialOnboardingComplete: Boolean = false) {
             }
 
             composable("settings") {
+                val vm: SettingsViewModel = viewModel()
                 PinGate(hasPinSet = hasPinSet, storedHash = pinHash) {
-                    SettingsScreen(
+                    SettingsScreen(vm = vm,
                         onNavigateToSocial = { navController.navigate("social") },
                         onNavigateToContent = { navController.navigate("content") },
                         onNavigateToLists = { navController.navigate("lists") },
@@ -321,6 +334,7 @@ fun BottomNav(navController: NavHostController) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
+                .navigationBarsPadding()
                 .padding(horizontal = 4.dp, vertical = 4.dp),
             horizontalArrangement = Arrangement.SpaceEvenly,
             verticalAlignment = Alignment.CenterVertically

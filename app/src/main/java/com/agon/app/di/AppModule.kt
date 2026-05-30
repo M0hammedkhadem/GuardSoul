@@ -4,6 +4,7 @@ import com.agon.app.data.local.AppDatabase
 import com.agon.app.data.repository.AppRepository
 import com.agon.app.data.settings.AppSettings
 import com.agon.app.data.settings.EncryptedPrefs
+import com.agon.app.utils.SmartDetectionEngine
 import org.koin.android.ext.koin.androidApplication
 import org.koin.dsl.module
 
@@ -36,4 +37,8 @@ val repositoryModule = module {
     }
 }
 
-val appModules = listOf(databaseModule, settingsModule, repositoryModule)
+val utilsModule = module {
+    single { SmartDetectionEngine() }
+}
+
+val appModules = listOf(databaseModule, settingsModule, repositoryModule, utilsModule)

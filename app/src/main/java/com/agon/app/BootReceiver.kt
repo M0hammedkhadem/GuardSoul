@@ -43,10 +43,19 @@ class BootReceiver : BroadcastReceiver() {
 
         Timber.d("BootReceiver: shield was active, restarting all services")
 
+        // Services that need to be started as Foreground Services
         AppBlockerService.start(context)
-        startServiceSafe(context, Intent(context, DnsVpnService::class.java))
-        startServiceSafe(context, Intent(context, AiScannerService::class.java))
-        startServiceSafe(context, Intent(context, FacebookBlockerService::class.java))
+        DnsVpnService.start(context)
+        
+        // Note: AiScannerService needs a MediaProjection token which is usually obtained from activity.
+        // If it's started here without EXTRA_PROJECTION_INTENT, it should call startForeground 
+        // immediately and then stop itself or wait. 
+        // We'll call startServiceAsForeground via helper.
+        ForegroundServiceHelper.startServiceAsForeground(context, AiScannerService::class.java)
+
+        // FacebookBlockerService is an AccessibilityService. 
+        // It should NOT be started manually via startService/startForegroundService.
+        // The system handles starting it if enabled.
 
         try {
             FirebaseSyncWorker.schedule(context)
@@ -85,17 +94,5 @@ class BootReceiver : BroadcastReceiver() {
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .build()
         manager.notify(9003, notification)
-    }
-
-    private fun startServiceSafe(context: Context, intent: Intent) {
-        try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                context.startForegroundService(intent)
-            } else {
-                context.startService(intent)
-            }
-        } catch (e: Exception) {
-            Timber.w(e, "BootReceiver: failed to start ${intent.component}")
-        }
     }
 }

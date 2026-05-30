@@ -36,6 +36,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.agon.app.R
+import com.agon.app.LanguageManager
 import com.agon.app.services.DeviceOwnerService
 import com.agon.app.ui.theme.background
 import com.agon.app.ui.theme.cardBorder
@@ -58,6 +59,10 @@ class DeviceOwnerSetupActivity : ComponentActivity() {
                 onFinish = { finish() }
             )
         }
+    }
+
+    override fun attachBaseContext(base: Context) {
+        super.attachBaseContext(LanguageManager.apply(base))
     }
 
     private fun copyToClipboard(text: String) {

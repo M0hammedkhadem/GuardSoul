@@ -17,15 +17,31 @@ class SocialViewModel(application: Application) : AndroidViewModel(application) 
     private val settings = repo.getAppSettings()
     private val context = application
 
-    val instagram: StateFlow<Boolean> = settings.socialInstagramFlow.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
-    val snapchat: StateFlow<Boolean> = settings.socialSnapchatFlow.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
-    val twitter: StateFlow<Boolean> = settings.socialTwitterFlow.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
-    val tiktok: StateFlow<Boolean> = settings.socialTiktokFlow.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
-    val youtubeMode: StateFlow<String> = settings.youtubeModeFlow.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "off")
-    val facebookMode: StateFlow<String> = settings.facebookModeFlow.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "off")
+    val instagram: StateFlow<Boolean> = settings.socialInstagramFlow
+        .distinctUntilChanged()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+    val snapchat: StateFlow<Boolean> = settings.socialSnapchatFlow
+        .distinctUntilChanged()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+    val twitter: StateFlow<Boolean> = settings.socialTwitterFlow
+        .distinctUntilChanged()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+    val tiktok: StateFlow<Boolean> = settings.socialTiktokFlow
+        .distinctUntilChanged()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+    val youtubeMode: StateFlow<String> = settings.youtubeModeFlow
+        .distinctUntilChanged()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "off")
+    val facebookMode: StateFlow<String> = settings.facebookModeFlow
+        .distinctUntilChanged()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "off")
 
-    val blocksToday: StateFlow<Int> = repo.blocksTodayFlow().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
-    val blocksPerApp: StateFlow<List<MostBlockedApp>> = repo.blocksTodayPerApp().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    val blocksToday: StateFlow<Int> = repo.blocksTodayFlow()
+        .distinctUntilChanged()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
+    val blocksPerApp: StateFlow<List<MostBlockedApp>> = repo.blocksTodayPerApp()
+        .distinctUntilChanged()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val youtubeServiceRunning: StateFlow<Boolean> = flow {
         while (true) {

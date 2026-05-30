@@ -24,9 +24,9 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.first
 import timber.log.Timber
 import java.util.Calendar
 import java.util.concurrent.TimeUnit
@@ -129,12 +129,15 @@ class AppBlockerService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        if (intent?.action == ACTION_RELOAD_BLOCKLIST) {
-            return START_NOT_STICKY
-        }
+        // ALWAYS call startForeground immediately to avoid ForegroundServiceDidNotStartInTimeException
         ForegroundServiceHelper.startForegroundCompat(
             this, NOTIFICATION_ID, createNotification()
         )
+
+        if (intent?.action == ACTION_RELOAD_BLOCKLIST) {
+            return START_NOT_STICKY
+        }
+
         startPolling()
         schedulePeriodicCheck(this)
         return START_STICKY

@@ -1,5 +1,6 @@
 package com.agon.app.ui.screens
 
+import android.content.Context
 import android.content.Intent
 import android.os.Build
 import android.os.Bundle
@@ -25,6 +26,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.platform.LocalContext
 import com.agon.app.R
+import com.agon.app.LanguageManager
 
 class BlockActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -51,6 +53,10 @@ class BlockActivity : ComponentActivity() {
                 onGoBack = { goToHome() }
             )
         }
+    }
+
+    override fun attachBaseContext(base: Context) {
+        super.attachBaseContext(LanguageManager.apply(base))
     }
 
     private fun goToHome() {

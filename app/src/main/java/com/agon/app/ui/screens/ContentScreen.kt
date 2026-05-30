@@ -34,6 +34,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -172,6 +173,44 @@ fun ContentScreen(vm: ContentViewModel) {
                         Text(if (nextDnsProfileId.isNotBlank()) stringResource(R.string.btn_change) else stringResource(R.string.btn_set))
                     }
                 }
+                Spacer(Modifier.height(12.dp))
+                val currentMode by vm.safeSearchMode.collectAsStateWithLifecycle()
+                Text(stringResource(R.string.label_safe_search_mode), fontSize = 13.sp, fontWeight = FontWeight.Medium, color = text)
+                Spacer(Modifier.height(6.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Surface(
+                        color = if (currentMode == "basic") success.copy(alpha = 0.12f) else surfaceLight,
+                        shape = RoundedCornerShape(8.dp),
+                        border = BorderStroke(1.dp, if (currentMode == "basic") success.copy(alpha = 0.3f) else cardBorder),
+                        modifier = Modifier.weight(1f).clickable(enabled = pornBlockerActive) { vm.setSafeSearchMode("basic") }
+                    ) {
+                        Column(Modifier.padding(10.dp)) {
+                            Text(stringResource(R.string.mode_basic), fontSize = 13.sp, fontWeight = FontWeight.Bold, color = if (currentMode == "basic") success else text)
+                            Text(stringResource(R.string.mode_basic_desc), fontSize = 10.sp, color = textMuted)
+                        }
+                    }
+                    Spacer(Modifier.width(8.dp))
+                    Surface(
+                        color = if (currentMode == "strict") warning.copy(alpha = 0.12f) else surfaceLight,
+                        shape = RoundedCornerShape(8.dp),
+                        border = BorderStroke(1.dp, if (currentMode == "strict") warning.copy(alpha = 0.3f) else cardBorder),
+                        modifier = Modifier.weight(1f).clickable(enabled = pornBlockerActive) { vm.setSafeSearchMode("strict") }
+                    ) {
+                        Column(Modifier.padding(10.dp)) {
+                            Text(stringResource(R.string.mode_strict), fontSize = 13.sp, fontWeight = FontWeight.Bold, color = if (currentMode == "strict") warning else text)
+                            Text(stringResource(R.string.mode_strict_desc), fontSize = 10.sp, color = textMuted)
+                        }
+                    }
+                }
+                Spacer(Modifier.height(8.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(stringResource(R.string.label_block_doh), fontSize = 13.sp, color = text, modifier = Modifier.weight(1f))
+                    Switch(
+                        checked = vm.blockDoh.collectAsStateWithLifecycle().value,
+                        onCheckedChange = { vm.setBlockDoh(it) },
+                        colors = SwitchDefaults.colors(checkedTrackColor = danger, checkedThumbColor = surface)
+                    )
+                }
             }
 
             FeatureToggleCard(
@@ -222,21 +261,44 @@ fun ContentScreen(vm: ContentViewModel) {
                 }
                 Spacer(Modifier.height(8.dp))
                 val aiThreshold by vm.aiThreshold.collectAsStateWithLifecycle()
-                var thresholdSlider by remember(aiThreshold) { mutableStateOf(aiThreshold) }
+                var thresholdSlider by remember(aiThreshold) {
+                    mutableStateOf(aiThreshold.coerceIn(0.5f, 0.9f))
+                }
+                val isValidThreshold = thresholdSlider in 0.5f..0.9f
                 Text(
                     "Detection Threshold: ${(thresholdSlider * 100).toInt()}%",
                     fontSize = 13.sp,
                     fontWeight = FontWeight.Medium,
-                    color = text
+                    color = if (isValidThreshold) text else danger
                 )
                 Slider(
                     value = thresholdSlider,
-                    onValueChange = { vm.setAiThreshold(it); thresholdSlider = it },
-                    onValueChangeFinished = { vm.setAiThreshold(thresholdSlider) },
-                    valueRange = 0.5f..0.95f,
-                    steps = 8,
+                    onValueChange = {
+                        thresholdSlider = it.coerceIn(0.5f, 0.9f)
+                    },
+                    onValueChangeFinished = {
+                        if (thresholdSlider in 0.5f..0.9f) {
+                            vm.setAiThreshold(thresholdSlider)
+                        }
+                    },
+                    valueRange = 0.5f..0.9f,
+                    steps = 3,
                     modifier = Modifier.fillMaxWidth()
                 )
+                if (thresholdSlider !in 0.5f..0.9f) {
+                    Surface(
+                        color = danger.copy(alpha = 0.1f),
+                        shape = RoundedCornerShape(6.dp),
+                        border = BorderStroke(1.dp, danger.copy(alpha = 0.3f))
+                    ) {
+                        Text(
+                            "Invalid threshold value",
+                            fontSize = 11.sp,
+                            color = danger,
+                            modifier = Modifier.padding(8.dp)
+                        )
+                    }
+                }
                 Spacer(Modifier.height(4.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("Blur instead of block", fontSize = 13.sp, color = text, modifier = Modifier.weight(1f))
@@ -342,128 +404,76 @@ fun ContentScreen(vm: ContentViewModel) {
         }
     }
 
-    if (showStrongWarningDialog) {
-        AlertDialog(
-            onDismissRequest = { showStrongWarningDialog = false },
-            title = { Text(stringResource(R.string.strong_warning_title), fontWeight = FontWeight.Bold) },
-            text = {
-                Column {
-                    Text(stringResource(R.string.strong_warning_text), fontSize = 13.sp, color = textSecondary)
-                    Spacer(Modifier.height(16.dp))
-                    OutlinedTextField(
-                        value = strongPinInput,
-                        onValueChange = {
-                            strongPinInput = it
-                            strongPinError = false
-                        },
-                        label = { Text(stringResource(R.string.pin_enter)) },
-                        visualTransformation = PasswordVisualTransformation(),
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
-                        singleLine = true,
-                        isError = strongPinError,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                }
-            },
-            confirmButton = {
-                TextButton(onClick = {
-                    val valid = vm.isDeviceAdminGranted() && GuardianDeviceAdminReceiver().verifyPinBeforeDisable(context, strongPinInput)
-                    if (valid) {
-                        vm.setStrongProtection(true)
-                        showStrongWarningDialog = false
-                        strongPinInput = ""
-                    } else {
-                        strongPinError = true
-                    }
-                }) { Text(stringResource(R.string.btn_confirm)) }
-            },
-            dismissButton = {
-                TextButton(onClick = {
-                    showStrongWarningDialog = false
-                    strongPinInput = ""
-                    strongPinError = false
-                }) { Text(stringResource(R.string.btn_cancel)) }
+    PinEntryDialog(
+        show = showStrongWarningDialog,
+        title = stringResource(R.string.strong_warning_title),
+        message = stringResource(R.string.strong_warning_text),
+        confirmLabel = stringResource(R.string.btn_confirm),
+        input = strongPinInput,
+        onInputChange = { strongPinInput = it; strongPinError = false },
+        isError = strongPinError,
+        isPassword = true,
+        onDismiss = {
+            showStrongWarningDialog = false
+            strongPinInput = ""
+            strongPinError = false
+        },
+        onConfirm = {
+            val valid = vm.isDeviceAdminGranted() && GuardianDeviceAdminReceiver().verifyPinBeforeDisable(context, strongPinInput)
+            if (valid) {
+                vm.setStrongProtection(true)
+                showStrongWarningDialog = false
+                strongPinInput = ""
+            } else {
+                strongPinError = true
             }
-        )
-    }
+        }
+    )
 
-    if (showStrongProtectionDialog) {
-        AlertDialog(
-            onDismissRequest = { showStrongProtectionDialog = false },
-            title = { Text(stringResource(R.string.strong_disable_title), fontWeight = FontWeight.Bold) },
-            text = {
-                Column {
-                    Text(stringResource(R.string.strong_disable_text), fontSize = 13.sp, color = textSecondary)
-                    Spacer(Modifier.height(16.dp))
-                    OutlinedTextField(
-                        value = strongPinInput,
-                        onValueChange = {
-                            strongPinInput = it
-                            strongPinError = false
-                        },
-                        label = { Text(stringResource(R.string.pin_enter)) },
-                        visualTransformation = PasswordVisualTransformation(),
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
-                        singleLine = true,
-                        isError = strongPinError,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                }
-            },
-            confirmButton = {
-                TextButton(onClick = {
-                    val valid = GuardianDeviceAdminReceiver().verifyPinBeforeDisable(context, strongPinInput)
-                    if (valid) {
-                        vm.setStrongProtection(false)
-                        showStrongProtectionDialog = false
-                        strongPinInput = ""
-                    } else {
-                        strongPinError = true
-                    }
-                }) { Text(stringResource(R.string.btn_disable)) }
-            },
-            dismissButton = {
-                TextButton(onClick = {
-                    showStrongProtectionDialog = false
-                    strongPinInput = ""
-                    strongPinError = false
-                }) { Text(stringResource(R.string.btn_cancel)) }
+    PinEntryDialog(
+        show = showStrongProtectionDialog,
+        title = stringResource(R.string.strong_disable_title),
+        message = stringResource(R.string.strong_disable_text),
+        confirmLabel = stringResource(R.string.btn_disable),
+        input = strongPinInput,
+        onInputChange = { strongPinInput = it; strongPinError = false },
+        isError = strongPinError,
+        isPassword = true,
+        onDismiss = {
+            showStrongProtectionDialog = false
+            strongPinInput = ""
+            strongPinError = false
+        },
+        onConfirm = {
+            val valid = GuardianDeviceAdminReceiver().verifyPinBeforeDisable(context, strongPinInput)
+            if (valid) {
+                vm.setStrongProtection(false)
+                showStrongProtectionDialog = false
+                strongPinInput = ""
+            } else {
+                strongPinError = true
             }
-        )
-    }
+        }
+    )
 
-    if (editProfileId) {
-        AlertDialog(
-            onDismissRequest = { editProfileId = false },
-            title = { Text(stringResource(R.string.title_nextdns_profile)) },
-            text = {
-                Column {
-                    Text(stringResource(R.string.desc_nextdns_profile), fontSize = 13.sp, color = textSecondary)
-                    Spacer(Modifier.height(12.dp))
-                    OutlinedTextField(
-                        value = profileIdText,
-                        onValueChange = { profileIdText = it },
-                        label = { Text(stringResource(R.string.hint_nextdns_profile)) },
-                        singleLine = true,
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Ascii),
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                }
-            },
-            confirmButton = {
-                TextButton(onClick = {
-                    vm.setNextDnsProfileId(profileIdText.trim())
-                    editProfileId = false
-                }) { Text(stringResource(R.string.btn_save)) }
-            },
-            dismissButton = {
-                TextButton(onClick = {
-                    profileIdText = nextDnsProfileId
-                    editProfileId = false
-                }) { Text(stringResource(R.string.btn_cancel)) }
-            }
-        )
-    }
+    PinEntryDialog(
+        show = editProfileId,
+        title = stringResource(R.string.title_nextdns_profile),
+        message = stringResource(R.string.desc_nextdns_profile),
+        confirmLabel = stringResource(R.string.btn_save),
+        input = profileIdText,
+        onInputChange = { profileIdText = it },
+        isError = false,
+        isPassword = false,
+        onDismiss = {
+            profileIdText = nextDnsProfileId
+            editProfileId = false
+        },
+        onConfirm = {
+            vm.setNextDnsProfileId(profileIdText.trim())
+            editProfileId = false
+        }
+    )
 }
 
 @Composable
@@ -532,5 +542,50 @@ private fun StepRow(number: Int, text: String) {
         }
         Spacer(Modifier.width(8.dp))
         Text(text, fontSize = 12.sp, color = textSecondary)
+    }
+}
+
+@Composable
+private fun PinEntryDialog(
+    show: Boolean,
+    title: String,
+    message: String,
+    confirmLabel: String,
+    input: String,
+    onInputChange: (String) -> Unit,
+    isError: Boolean,
+    isPassword: Boolean,
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit
+) {
+    if (show) {
+        AlertDialog(
+            onDismissRequest = onDismiss,
+            title = { Text(title, fontWeight = FontWeight.Bold) },
+            text = {
+                Column {
+                    Text(message, fontSize = 13.sp, color = textSecondary)
+                    Spacer(Modifier.height(16.dp))
+                    OutlinedTextField(
+                        value = input,
+                        onValueChange = onInputChange,
+                        label = { Text(stringResource(R.string.pin_enter)) },
+                        visualTransformation = if (isPassword) PasswordVisualTransformation() else VisualTransformation.None,
+                        keyboardOptions = KeyboardOptions(
+                            keyboardType = if (isPassword) KeyboardType.NumberPassword else KeyboardType.Ascii
+                        ),
+                        singleLine = true,
+                        isError = isError,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = onConfirm) { Text(confirmLabel) }
+            },
+            dismissButton = {
+                TextButton(onClick = onDismiss) { Text(stringResource(R.string.btn_cancel)) }
+            }
+        )
     }
 }

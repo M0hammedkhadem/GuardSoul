@@ -13,15 +13,31 @@ class ProfileViewModel(application: Application) : AndroidViewModel(application)
     private val repo = (application as GuardianApp).repository
     private val settings = repo.getAppSettings()
 
-    val profileName: StateFlow<String> = settings.profileNameFlow.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "")
-    val shieldActive: StateFlow<Boolean> = settings.shieldActiveFlow.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
-    val totalBlocks: StateFlow<Int> = repo.totalBlocksFlow().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
-    val hasPin: StateFlow<Boolean> = settings.pinHashFlow.map { it.isNotBlank() }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
-    val trialMode: StateFlow<Boolean> = settings.trialModeFlow.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+    val profileName: StateFlow<String> = settings.profileNameFlow
+        .distinctUntilChanged()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "")
+    val shieldActive: StateFlow<Boolean> = settings.shieldActiveFlow
+        .distinctUntilChanged()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+    val totalBlocks: StateFlow<Int> = repo.totalBlocksFlow()
+        .distinctUntilChanged()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
+    val hasPin: StateFlow<Boolean> = settings.pinHashFlow.map { it.isNotBlank() }
+        .distinctUntilChanged()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+    val trialMode: StateFlow<Boolean> = settings.trialModeFlow
+        .distinctUntilChanged()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
 
-    val xpPoints: StateFlow<Int> = settings.xpPointsFlow.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
-    val level: StateFlow<Int> = settings.levelFlow.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 1)
-    val streakCount: StateFlow<Int> = settings.streakCountFlow.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
+    val xpPoints: StateFlow<Int> = settings.xpPointsFlow
+        .distinctUntilChanged()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
+    val level: StateFlow<Int> = settings.levelFlow
+        .distinctUntilChanged()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 1)
+    val streakCount: StateFlow<Int> = settings.streakCountFlow
+        .distinctUntilChanged()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
 
     private val _xpForNextLevel = MutableStateFlow(100)
     val xpForNextLevel: StateFlow<Int> = _xpForNextLevel.asStateFlow()
@@ -44,14 +60,16 @@ class ProfileViewModel(application: Application) : AndroidViewModel(application)
 
     val daysActive: StateFlow<Int> = repo.getAllBlockEvents().map { events ->
         events.map { it.timestamp / 86400000L }.distinct().count()
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
+    }.distinctUntilChanged()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
 
     val heatmapData: StateFlow<Map<Long, Int>> = repo.getAllBlockEvents().map { events ->
         val oneYearAgo = System.currentTimeMillis() - 365L * 86400000L
         events.filter { it.timestamp >= oneYearAgo }
             .groupBy { it.timestamp / 86400000L }
             .mapValues { it.value.size }
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyMap())
+    }.distinctUntilChanged()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyMap())
 
     val badges: StateFlow<List<BadgeWithState>> = combine(
         settings.xpPointsFlow,
@@ -63,7 +81,8 @@ class ProfileViewModel(application: Application) : AndroidViewModel(application)
         BadgesData.allBadges.map { badge ->
             BadgeWithState(badge, badge.isUnlocked(xp, lvl, streak, blocks, days))
         }
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    }.distinctUntilChanged()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     private fun calculateXpForLevel(level: Int): Int {
         var xp = 0

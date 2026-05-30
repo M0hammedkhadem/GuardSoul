@@ -29,20 +29,32 @@ class StatisticsViewModel(application: Application) : AndroidViewModel(applicati
     private val settings = repo.getAppSettings()
     private val appContext = getApplication<GuardianApp>()
 
-    val totalBlocks: StateFlow<Int> = repo.totalBlocksFlow().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
-    val blocksToday: StateFlow<Int> = repo.blocksTodayFlow().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
-    val mostBlockedApp: StateFlow<MostBlockedApp?> = repo.mostBlockedAppFlow().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
-    val recentEvents: StateFlow<List<BlockEventEntity>> = repo.getRecentBlockEvents(50).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    val totalBlocks: StateFlow<Int> = repo.totalBlocksFlow()
+        .distinctUntilChanged()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
+    val blocksToday: StateFlow<Int> = repo.blocksTodayFlow()
+        .distinctUntilChanged()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
+    val mostBlockedApp: StateFlow<MostBlockedApp?> = repo.mostBlockedAppFlow()
+        .distinctUntilChanged()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
+    val recentEvents: StateFlow<List<BlockEventEntity>> = repo.getRecentBlockEvents(50)
+        .distinctUntilChanged()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val daysActive: StateFlow<Int> = repo.getAllBlockEvents().map { events ->
         events.map { it.timestamp / 86400000L }.distinct().count()
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
+    }.distinctUntilChanged()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
 
     val currentStreak: StateFlow<Int> = repo.getAllBlockEvents().map { events ->
         calculateCleanStreak(events)
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
+    }.distinctUntilChanged()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
 
-    val longestStreak: StateFlow<Int> = settings.longestStreakFlow.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
+    val longestStreak: StateFlow<Int> = settings.longestStreakFlow
+        .distinctUntilChanged()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
 
     val blockedAppsToday: StateFlow<List<AppStats>> = repo.getAllBlockEvents().map { events ->
         val todayStart = getTodayStart()
@@ -53,7 +65,8 @@ class StatisticsViewModel(application: Application) : AndroidViewModel(applicati
                 AppStats(first.appLabel.ifBlank { pkg }, pkg, list.size)
             }
             .sortedByDescending { it.blockCount }
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    }.distinctUntilChanged()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val weeklyBlocks: StateFlow<List<DayStats>> = repo.getAllBlockEvents().map { events ->
         (6 downTo 0).map { daysAgo ->
@@ -69,13 +82,15 @@ class StatisticsViewModel(application: Application) : AndroidViewModel(applicati
             val count = events.count { it.timestamp in dayStart until dayEnd }
             DayStats(SimpleDateFormat("E", Locale.getDefault()).format(Date(dayStart)), count)
         }
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    }.distinctUntilChanged()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val topBlockedCategories: StateFlow<List<CategoryStats>> = repo.getAllBlockEvents().map { events ->
         events.groupBy { it.blockType }
             .map { (type, list) -> CategoryStats(type, list.size) }
             .sortedByDescending { it.count }
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    }.distinctUntilChanged()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val dailyBlocksData: StateFlow<List<DailyBlockCount>> = repo.getAllBlockEvents().map { events ->
         (6 downTo 0).map { daysAgo ->
@@ -92,13 +107,15 @@ class StatisticsViewModel(application: Application) : AndroidViewModel(applicati
             val label = SimpleDateFormat("E", Locale.getDefault()).format(Date(dayStart))
             DailyBlockCount(label, count)
         }
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    }.distinctUntilChanged()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val blockDistribution: StateFlow<List<AppBlockCount>> = repo.getAllBlockEvents().map { events ->
         events.groupBy { it.packageName to it.appLabel }
             .map { (key, list) -> AppBlockCount(key.first, key.second, list.size) }
             .sortedByDescending { it.count }
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    }.distinctUntilChanged()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val streakHistoryData: StateFlow<List<DailyBlockCount>> = repo.getAllBlockEvents().map { events ->
         (13 downTo 0).map { daysAgo ->
@@ -115,9 +132,11 @@ class StatisticsViewModel(application: Application) : AndroidViewModel(applicati
             val label = SimpleDateFormat("M/d", Locale.getDefault()).format(Date(dayStart))
             DailyBlockCount(label, count)
         }
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    }.distinctUntilChanged()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val appLimits: StateFlow<List<AppLimitEntity>> = repo.getAllAppLimits()
+        .distinctUntilChanged()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     private val _usageStats = MutableStateFlow<Map<String, Long>>(emptyMap())

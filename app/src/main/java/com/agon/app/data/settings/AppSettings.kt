@@ -42,6 +42,8 @@ class AppSettings(private val context: Context) {
         val STRONG_PROTECTION = booleanPreferencesKey("strong_protection")
         val NEXTDNS_PROFILE_ID = stringPreferencesKey("nextdns_profile_id")
         val AI_OVERLAY_MODE = booleanPreferencesKey("ai_overlay_mode")
+        val SAFE_SEARCH_MODE = stringPreferencesKey("safe_search_mode")
+        val BLOCK_DOH = booleanPreferencesKey("block_doh")
 
         // Gamification Keys
         val XP_POINTS = intPreferencesKey("xp_points")
@@ -102,6 +104,8 @@ class AppSettings(private val context: Context) {
     val strongProtectionFlow: Flow<Boolean> = context.settingsStore.data.map { it[Keys.STRONG_PROTECTION] ?: false }
     val nextDnsProfileIdFlow: Flow<String> = context.settingsStore.data.map { it[Keys.NEXTDNS_PROFILE_ID] ?: "" }
     val aiOverlayModeFlow: Flow<Boolean> = context.settingsStore.data.map { it[Keys.AI_OVERLAY_MODE] ?: false }
+    val safeSearchModeFlow: Flow<String> = context.settingsStore.data.map { it[Keys.SAFE_SEARCH_MODE] ?: "basic" }
+    val blockDohFlow: Flow<Boolean> = context.settingsStore.data.map { it[Keys.BLOCK_DOH] ?: false }
 
     val xpPointsFlow: Flow<Int> = context.settingsStore.data.map { it[Keys.XP_POINTS] ?: 0 }
     val levelFlow: Flow<Int> = context.settingsStore.data.map { it[Keys.LEVEL] ?: 1 }
@@ -161,6 +165,8 @@ class AppSettings(private val context: Context) {
     suspend fun setNextDnsProfileId(v: String) { context.settingsStore.edit { it[Keys.NEXTDNS_PROFILE_ID] = v } }
     suspend fun getNextDnsProfileId(): String = context.settingsStore.data.first()[Keys.NEXTDNS_PROFILE_ID] ?: ""
     suspend fun setAiOverlayMode(v: Boolean) { context.settingsStore.edit { it[Keys.AI_OVERLAY_MODE] = v } }
+    suspend fun setSafeSearchMode(v: String) { context.settingsStore.edit { it[Keys.SAFE_SEARCH_MODE] = v } }
+    suspend fun setBlockDoh(v: Boolean) { context.settingsStore.edit { it[Keys.BLOCK_DOH] = v } }
 
     suspend fun setXpPoints(v: Int) { context.settingsStore.edit { it[Keys.XP_POINTS] = v } }
     suspend fun setLevel(v: Int) { context.settingsStore.edit { it[Keys.LEVEL] = v } }
@@ -236,6 +242,8 @@ class AppSettings(private val context: Context) {
     suspend fun isStrictMode(): Boolean = context.settingsStore.data.first()[Keys.STRICT_MODE] ?: false
     suspend fun isYoutubeShortsMode(): Boolean = getYoutubeMode() == "shorts"
     suspend fun isFacebookReelsMode(): Boolean = getFacebookMode() == "reels"
+    suspend fun getSafeSearchMode(): String = context.settingsStore.data.first()[Keys.SAFE_SEARCH_MODE] ?: "basic"
+    suspend fun isBlockDohEnabled(): Boolean = context.settingsStore.data.first()[Keys.BLOCK_DOH] ?: false
 
     companion object {
         fun calculateXp(blockCount: Int): Int = blockCount * 10

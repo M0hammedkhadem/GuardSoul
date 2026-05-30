@@ -2,32 +2,42 @@ package com.agon.app
 
 import android.content.Context
 import android.content.res.Configuration
-import androidx.datastore.preferences.core.edit
-import androidx.datastore.preferences.core.stringPreferencesKey
-import androidx.datastore.preferences.preferencesDataStore
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.map
 import java.util.Locale
 
-private val Context.languageDataStore by preferencesDataStore(name = "language_settings")
-
 object LanguageManager {
+    private const val PREFS_NAME = "language_settings"
+    private const val KEY_LANG = "app_language"
+
     @Volatile
     var currentLanguageCode: String = "en"
-    private val KEY = stringPreferencesKey("app_language")
+        private set
 
-    fun languageFlow(context: Context): Flow<String> =
-        context.languageDataStore.data.map { it[KEY] ?: "en" }
+    fun load(context: Context): String {
+        currentLanguageCode = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .getString(KEY_LANG, "en") ?: "en"
+        return currentLanguageCode
+    }
 
-    suspend fun setLanguage(context: Context, code: String) {
-        context.languageDataStore.edit { it[KEY] = code }
+    fun setLanguage(context: Context, code: String) {
         currentLanguageCode = code
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .edit()
+            .putString(KEY_LANG, code)
+            .apply()
     }
 
     fun apply(context: Context): Context {
-        val locale = Locale.forLanguageTag(currentLanguageCode)
+        val lang = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .getString(KEY_LANG, "en") ?: "en"
+        currentLanguageCode = lang
+        
+        val locale = Locale.forLanguageTag(lang)
+        Locale.setDefault(locale)
+        
         val config = Configuration(context.resources.configuration)
         config.setLocale(locale)
+        config.setLayoutDirection(locale)
+
         return context.createConfigurationContext(config)
     }
 }

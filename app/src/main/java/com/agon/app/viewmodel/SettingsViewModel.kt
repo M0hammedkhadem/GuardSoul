@@ -14,17 +14,37 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     private val repo = (application as GuardianApp).repository
     private val settings = repo.getAppSettings()
 
-    val shieldActive: StateFlow<Boolean> = settings.shieldActiveFlow.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
-    val vpnActive: StateFlow<Boolean> = settings.pornBlockerFlow.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
-    val aiActive: StateFlow<Boolean> = settings.aiScannerFlow.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
-    val uninstallProt: StateFlow<Boolean> = settings.uninstallProtectionFlow.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+    val shieldActive: StateFlow<Boolean> = settings.shieldActiveFlow
+        .distinctUntilChanged()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+    val vpnActive: StateFlow<Boolean> = settings.pornBlockerFlow
+        .distinctUntilChanged()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+    val aiActive: StateFlow<Boolean> = settings.aiScannerFlow
+        .distinctUntilChanged()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+    val uninstallProt: StateFlow<Boolean> = settings.uninstallProtectionFlow
+        .distinctUntilChanged()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
 
-    val instagram: StateFlow<Boolean> = settings.socialInstagramFlow.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
-    val snapchat: StateFlow<Boolean> = settings.socialSnapchatFlow.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
-    val twitter: StateFlow<Boolean> = settings.socialTwitterFlow.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
-    val tiktok: StateFlow<Boolean> = settings.socialTiktokFlow.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
-    val youtubeMode: StateFlow<String> = settings.youtubeModeFlow.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "off")
-    val facebookMode: StateFlow<String> = settings.facebookModeFlow.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "off")
+    val instagram: StateFlow<Boolean> = settings.socialInstagramFlow
+        .distinctUntilChanged()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+    val snapchat: StateFlow<Boolean> = settings.socialSnapchatFlow
+        .distinctUntilChanged()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+    val twitter: StateFlow<Boolean> = settings.socialTwitterFlow
+        .distinctUntilChanged()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+    val tiktok: StateFlow<Boolean> = settings.socialTiktokFlow
+        .distinctUntilChanged()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+    val youtubeMode: StateFlow<String> = settings.youtubeModeFlow
+        .distinctUntilChanged()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "off")
+    val facebookMode: StateFlow<String> = settings.facebookModeFlow
+        .distinctUntilChanged()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "off")
 
     fun resetStatistics() {
         viewModelScope.launch {

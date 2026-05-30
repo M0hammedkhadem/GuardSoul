@@ -20,7 +20,9 @@ data class AppTimeUsage(
 class TimeLimitsViewModel(application: Application) : AndroidViewModel(application) {
     private val repo = (application as GuardianApp).repository
 
-    val appLimits: StateFlow<List<AppLimitEntity>> = repo.getAllAppLimits().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    val appLimits: StateFlow<List<AppLimitEntity>> = repo.getAllAppLimits()
+        .distinctUntilChanged()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     private val _appUsage = MutableStateFlow<List<AppTimeUsage>>(emptyList())
     val appUsage: StateFlow<List<AppTimeUsage>> = _appUsage.asStateFlow()

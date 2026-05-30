@@ -12,24 +12,22 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.*
+import androidx.compose.material.icons.automirrored.filled.FormatListBulleted
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.painter.BitmapPainter
 import androidx.compose.ui.graphics.painter.Painter
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -38,7 +36,6 @@ import com.agon.app.R
 import com.agon.app.ui.theme.*
 import com.agon.app.viewmodel.ListsViewModel
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ListsScreen(vm: ListsViewModel) {
     val selectedList by vm.selectedListType.collectAsStateWithLifecycle()
@@ -55,157 +52,225 @@ fun ListsScreen(vm: ListsViewModel) {
     var sensitivityLevel by remember { mutableStateOf("medium") }
     var urlInputError by remember { mutableStateOf(false) }
 
+    val accentColor = if (selectedList == "blacklist") danger else success
+
     Scaffold(
-        containerColor = background,
-        topBar = {
-            TopAppBar(
-                title = { Text(stringResource(R.string.screen_lists_title), fontWeight = FontWeight.Bold) },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = background, titleContentColor = text)
-            )
-        }
+        containerColor = background
     ) { padding ->
         Column(
-            modifier = Modifier.fillMaxSize().padding(padding).padding(16.dp)
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .padding(horizontal = 20.dp, vertical = 16.dp)
         ) {
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                ListTypeButton(stringResource(R.string.btn_blacklist), selected = selectedList == "blacklist", danger) { vm.setListType("blacklist") }
-                ListTypeButton(stringResource(R.string.btn_whitelist), selected = selectedList == "whitelist", success) { vm.setListType("whitelist") }
+            // Header: Title "Lists" aligned to the end (right)
+            Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.CenterEnd) {
+                Text(
+                    text = "Lists",
+                    color = text,
+                    fontSize = 28.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(vertical = 8.dp)
+                )
             }
 
             Spacer(Modifier.height(16.dp))
 
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                CategoryTab(stringResource(R.string.tab_keywords), selectedCategory == "keywords", keywordsCount) { vm.setCategory("keywords") }
-                CategoryTab(stringResource(R.string.tab_websites), selectedCategory == "websites", websitesCount) { vm.setCategory("websites") }
-                CategoryTab(stringResource(R.string.tab_apps), selectedCategory == "apps", appsCount) { vm.setCategory("apps") }
-            }
-
-            Spacer(Modifier.height(12.dp))
-
-            OutlinedTextField(
-                value = searchQuery,
-                onValueChange = { vm.setSearchQuery(it) },
-                placeholder = { Text(stringResource(R.string.placeholder_search)) },
-                leadingIcon = { Icon(Icons.Default.Search, null, tint = textMuted, modifier = Modifier.size(20.dp)) },
-                trailingIcon = if (searchQuery.isNotEmpty()) {
-                    { IconButton(onClick = { vm.setSearchQuery("") }) { Icon(Icons.Default.Clear, stringResource(R.string.contentdesc_clear), tint = textMuted) } }
-                } else null,
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(12.dp),
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = primary.copy(alpha = 0.5f),
-                    unfocusedBorderColor = cardBorder
-                )
-            )
-
-            Spacer(Modifier.height(12.dp))
-
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                OutlinedTextField(
-                    value = inputText,
-                    onValueChange = {
-                        inputText = it
-                        if (selectedCategory == "websites") urlInputError = false
-                    },
-                    placeholder = { Text(stringResource(R.string.lists_add_new, selectedCategory)) },
-                    singleLine = true,
-                    isError = urlInputError,
-                    supportingText = if (urlInputError) {{ Text(stringResource(R.string.error_invalid_url), color = shieldRed) }} else null,
-                    modifier = Modifier.weight(1f),
-                    shape = RoundedCornerShape(12.dp),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = primary.copy(alpha = 0.5f),
-                        unfocusedBorderColor = cardBorder
+            // Segmented List Type Toggle
+            Surface(
+                color = Color(0xFF151D2E),
+                shape = RoundedCornerShape(24.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(54.dp)
+            ) {
+                Row(modifier = Modifier.padding(4.dp)) {
+                    ListToggleButton(
+                        label = "Whitelist",
+                        icon = Icons.Default.CheckCircle,
+                        selected = selectedList == "whitelist",
+                        activeColor = success,
+                        modifier = Modifier.weight(1f),
+                        onClick = { vm.setListType("whitelist") }
                     )
-                )
-                Spacer(Modifier.width(8.dp))
-                FilledIconButton(
-                    onClick = {
-                        if (selectedCategory == "apps") {
-                            showAppPicker = true
-                        } else if (inputText.isNotBlank()) {
-                            val trimmed = inputText.trim().lowercase()
-                            if (selectedCategory == "websites" && !isValidUrl(trimmed)) {
-                                urlInputError = true
-                            } else {
-                                urlInputError = false
-                                vm.addItem(trimmed, regexEnabled = regexEnabled, sensitivityLevel = sensitivityLevel)
-                                inputText = ""
-                            }
-                        }
-                    },
-                    shape = RoundedCornerShape(12.dp),
-                    colors = IconButtonDefaults.filledIconButtonColors(containerColor = primary)
-                ) { Icon(Icons.Default.Add, stringResource(R.string.contentdesc_add), tint = surface) }
-            }
-
-            if (selectedCategory == "keywords") {
-                Spacer(Modifier.height(8.dp))
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Checkbox(
-                            checked = regexEnabled,
-                            onCheckedChange = { regexEnabled = it },
-                            colors = CheckboxDefaults.colors(checkedColor = primary, checkmarkColor = surface)
-                        )
-                        Text(stringResource(R.string.label_regex), fontSize = 13.sp, color = text)
-                    }
-                    SensitivitySelector(selected = sensitivityLevel) { sensitivityLevel = it }
+                    ListToggleButton(
+                        label = "Blacklist",
+                        icon = Icons.Default.Block,
+                        selected = selectedList == "blacklist",
+                        activeColor = danger,
+                        modifier = Modifier.weight(1f),
+                        onClick = { vm.setListType("blacklist") }
+                    )
                 }
             }
 
-            Spacer(Modifier.height(12.dp))
+            Spacer(Modifier.height(24.dp))
 
-            if (items.isEmpty()) {
-                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        @Suppress("DEPRECATION") Icon(Icons.Default.ListAlt, null, tint = textMuted, modifier = Modifier.size(64.dp))
-                        Spacer(Modifier.height(12.dp))
-                        Text(stringResource(R.string.empty_title), fontSize = 18.sp, fontWeight = FontWeight.Bold, color = text)
-                        Text(stringResource(R.string.empty_subtitle), fontSize = 14.sp, color = textSecondary)
+            // Category Cards Row
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                CategoryCard(
+                    label = "Apps",
+                    icon = Icons.Default.GridView,
+                    count = appsCount,
+                    selected = selectedCategory == "apps",
+                    accentColor = accentColor,
+                    modifier = Modifier.weight(1f),
+                    onClick = { vm.setCategory("apps") }
+                )
+                CategoryCard(
+                    label = "Websites",
+                    icon = Icons.Default.Language,
+                    count = websitesCount,
+                    selected = selectedCategory == "websites",
+                    accentColor = accentColor,
+                    modifier = Modifier.weight(1f),
+                    onClick = { vm.setCategory("websites") }
+                )
+                CategoryCard(
+                    label = "Keywords",
+                    icon = Icons.Default.TextFields,
+                    count = keywordsCount,
+                    selected = selectedCategory == "keywords",
+                    accentColor = accentColor,
+                    modifier = Modifier.weight(1f),
+                    onClick = { vm.setCategory("keywords") }
+                )
+            }
+
+            Spacer(Modifier.height(24.dp))
+
+            // Category Description Box
+            val descriptionRes = when (selectedList) {
+                "blacklist" -> when (selectedCategory) {
+                    "apps" -> R.string.desc_blacklist_apps
+                    "websites" -> R.string.desc_blacklist_websites
+                    else -> R.string.desc_blacklist_keywords
+                }
+                else -> when (selectedCategory) {
+                    "apps" -> R.string.desc_whitelist_apps
+                    "websites" -> R.string.desc_whitelist_websites
+                    else -> R.string.desc_whitelist_keywords
+                }
+            }
+
+            Surface(
+                color = if (selectedList == "blacklist") danger.copy(alpha = 0.12f) else success.copy(alpha = 0.12f),
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(
+                    text = stringResource(descriptionRes),
+                    color = accentColor,
+                    fontSize = 15.sp,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.padding(18.dp)
+                )
+            }
+
+            Spacer(Modifier.height(24.dp))
+
+            // Action Button
+            if (selectedCategory == "apps") {
+                Surface(
+                    onClick = { showAppPicker = true },
+                    color = accentColor.copy(alpha = 0.1f),
+                    shape = RoundedCornerShape(14.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(56.dp)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center
+                    ) {
+                        Text(
+                            text = if (selectedList == "blacklist") "Add App to blacklist" else "Add App to whitelist",
+                            color = accentColor,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 16.sp
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Icon(Icons.Default.Add, null, tint = accentColor, modifier = Modifier.size(20.dp))
                     }
                 }
             } else {
-                LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    items(items, key = { it.id }) { item ->
-                        val accentColor = when (selectedList) { "blacklist" -> danger; else -> success }
-                        Card(colors = CardDefaults.cardColors(containerColor = card), shape = RoundedCornerShape(12.dp)) {
-                            Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                                Box(Modifier.width(3.dp).height(32.dp).background(accentColor, RoundedCornerShape(2.dp)))
-                                Spacer(Modifier.width(12.dp))
-                                if (item.category == "apps") {
-                                    AppIconView(item.value, modifier = Modifier.size(20.dp))
+                // Input for Websites/Keywords
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    OutlinedTextField(
+                        value = inputText,
+                        onValueChange = {
+                            inputText = it
+                            if (selectedCategory == "websites") urlInputError = false
+                        },
+                        placeholder = { Text(stringResource(R.string.lists_add_new, selectedCategory), color = textMuted) },
+                        singleLine = true,
+                        isError = urlInputError,
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = accentColor,
+                            unfocusedBorderColor = cardBorder,
+                            focusedTextColor = text,
+                            unfocusedTextColor = text
+                        )
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    FilledIconButton(
+                        onClick = {
+                            if (inputText.isNotBlank()) {
+                                val trimmed = inputText.trim().lowercase()
+                                if (selectedCategory == "websites" && !isValidUrl(trimmed)) {
+                                    urlInputError = true
                                 } else {
-                                    Icon(
-                                        when (item.category) {
-                                            "keywords" -> Icons.Default.TextFields
-                                            else -> Icons.Default.Language
-                                        },
-                                        null, tint = textMuted, modifier = Modifier.size(20.dp)
-                                    )
-                                }
-                                Spacer(Modifier.width(12.dp))
-                                Column(Modifier.weight(1f)) {
-                                    Text(item.displayLabel, color = text, fontSize = 14.sp, fontWeight = if (item.label != null) FontWeight.Medium else FontWeight.Normal)
-                                    if (item.label != null) {
-                                        Text(item.value, fontSize = 11.sp, color = textMuted)
-                                    }
-                                    if (item.category == "keywords" && item.regexEnabled) {
-                                        Text(stringResource(R.string.label_regex_on), fontSize = 10.sp, color = accent)
-                                    }
-                                }
-                                if (item.category == "websites" && item.urlCategory != null) {
-                                    Surface(color = cardBorder, shape = RoundedCornerShape(4.dp)) {
-                                        Text(item.urlCategory!!, fontSize = 10.sp, color = textMuted, modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp))
-                                    }
-                                    Spacer(Modifier.width(8.dp))
-                                }
-                                IconButton(onClick = { vm.removeItem(item.id) }) {
-                                    Icon(Icons.Default.RemoveCircle, stringResource(R.string.contentdesc_remove), tint = shieldRed, modifier = Modifier.size(20.dp))
+                                    urlInputError = false
+                                    vm.addItem(trimmed, regexEnabled = regexEnabled, sensitivityLevel = sensitivityLevel)
+                                    inputText = ""
                                 }
                             }
-                        }
+                        },
+                        shape = RoundedCornerShape(12.dp),
+                        colors = IconButtonDefaults.filledIconButtonColors(containerColor = accentColor)
+                    ) { Icon(Icons.Default.Add, null, tint = Color.White) }
+                }
+            }
+
+            Spacer(Modifier.height(32.dp))
+
+            // List or Empty State
+            if (items.isEmpty()) {
+                Box(modifier = Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.FormatListBulleted,
+                            contentDescription = null,
+                            tint = Color(0xFF1E293B),
+                            modifier = Modifier.size(64.dp)
+                        )
+                        Spacer(Modifier.height(20.dp))
+                        Text(
+                            text = "No items yet",
+                            color = text,
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Spacer(Modifier.height(6.dp))
+                        Text(
+                            text = "Add items above to populate this list.",
+                            color = textSecondary,
+                            fontSize = 14.sp
+                        )
+                    }
+                }
+            } else {
+                LazyColumn(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    items(items, key = { it.id }) { item ->
+                        ListItemCard(item, accentColor) { vm.removeItem(item.id) }
                     }
                 }
             }
@@ -220,6 +285,137 @@ fun ListsScreen(vm: ListsViewModel) {
                 showAppPicker = false
             }
         )
+    }
+}
+
+@Composable
+private fun ListToggleButton(
+    label: String,
+    icon: ImageVector,
+    selected: Boolean,
+    activeColor: Color,
+    modifier: Modifier,
+    onClick: () -> Unit
+) {
+    Surface(
+        onClick = onClick,
+        color = if (selected) activeColor.copy(alpha = 0.25f) else Color.Transparent,
+        shape = RoundedCornerShape(20.dp),
+        modifier = modifier.fillMaxHeight()
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.Center,
+            modifier = Modifier.padding(horizontal = 8.dp)
+        ) {
+            Text(
+                text = label,
+                color = if (selected) activeColor else textSecondary,
+                fontWeight = FontWeight.Bold,
+                fontSize = 15.sp
+            )
+            Spacer(Modifier.width(6.dp))
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = if (selected) activeColor else textSecondary,
+                modifier = Modifier.size(20.dp)
+            )
+        }
+    }
+}
+
+@Composable
+private fun CategoryCard(
+    label: String,
+    icon: ImageVector,
+    count: Int,
+    selected: Boolean,
+    accentColor: Color,
+    modifier: Modifier,
+    onClick: () -> Unit
+) {
+    Surface(
+        onClick = onClick,
+        color = Color(0xFF151D2E),
+        shape = RoundedCornerShape(14.dp),
+        border = if (selected) BorderStroke(1.5.dp, accentColor) else null,
+        modifier = modifier.height(115.dp)
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center,
+            modifier = Modifier.padding(8.dp)
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = if (selected) Color.White else textSecondary,
+                modifier = Modifier.size(32.dp)
+            )
+            Spacer(Modifier.height(12.dp))
+            Text(
+                text = label,
+                fontSize = 14.sp,
+                color = if (selected) Color.White else textSecondary,
+                fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal
+            )
+            Spacer(Modifier.height(12.dp))
+            Surface(
+                color = if (selected) accentColor else Color(0xFF1E293B),
+                shape = RoundedCornerShape(10.dp)
+            ) {
+                Text(
+                    text = "$count",
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White,
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 3.dp)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ListItemCard(item: BlocklistItem, accentColor: Color, onDelete: () -> Unit) {
+    Card(
+        colors = CardDefaults.cardColors(containerColor = Color(0xFF151D2E)),
+        shape = RoundedCornerShape(12.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(14.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            if (item.category == "apps") {
+                AppIconView(item.value, modifier = Modifier.size(36.dp))
+            } else {
+                Surface(
+                    color = accentColor.copy(alpha = 0.1f),
+                    shape = CircleShape,
+                    modifier = Modifier.size(36.dp)
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            imageVector = if (item.category == "keywords") Icons.Default.TextFields else Icons.Default.Language,
+                            contentDescription = null,
+                            tint = accentColor,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                }
+            }
+            Spacer(Modifier.width(16.dp))
+            Column(Modifier.weight(1f)) {
+                Text(item.displayLabel, color = text, fontSize = 16.sp, fontWeight = FontWeight.Medium)
+                if (item.label != null) {
+                    Text(item.value, fontSize = 13.sp, color = textSecondary)
+                }
+            }
+            IconButton(onClick = onDelete) {
+                Icon(Icons.Default.RemoveCircle, null, tint = shieldRed, modifier = Modifier.size(24.dp))
+            }
+        }
     }
 }
 
@@ -247,9 +443,9 @@ private fun AppIconView(packageName: String, modifier: Modifier = Modifier) {
         } catch (_: Exception) { null }
     }
     if (painter != null) {
-        Icon(painter, null, modifier = modifier)
+        Icon(painter, null, modifier = modifier, tint = Color.Unspecified)
     } else {
-        Icon(Icons.Default.Apps, null, tint = textMuted, modifier = modifier)
+        Icon(Icons.Default.Apps, null, tint = textSecondary, modifier = modifier)
     }
 }
 
@@ -269,15 +465,17 @@ private fun AppPickerDialog(onDismiss: () -> Unit, onSelect: (String, String) ->
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.dialog_select_app_title)) },
+        title = { Text("Select App", color = text) },
+        containerColor = Color(0xFF111827),
         text = {
             Column {
                 OutlinedTextField(
                     value = search, onValueChange = { search = it },
-                    placeholder = { Text(stringResource(R.string.placeholder_search)) },
-                    singleLine = true, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp)
+                    placeholder = { Text("Search apps…", color = textMuted) },
+                    singleLine = true, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp),
+                    colors = OutlinedTextFieldDefaults.colors(focusedTextColor = text, unfocusedTextColor = text)
                 )
-                Spacer(Modifier.height(8.dp))
+                Spacer(Modifier.height(12.dp))
                 val filtered = if (search.isBlank()) installedApps else installedApps.filter { it.second.contains(search, true) || it.first.contains(search, true) }
                 LazyColumn(Modifier.heightIn(max = 300.dp)) {
                     items(filtered) { (pkg, label) ->
@@ -285,24 +483,23 @@ private fun AppPickerDialog(onDismiss: () -> Unit, onSelect: (String, String) ->
                             Modifier.fillMaxWidth().clickable { onSelect(pkg, label) }.padding(vertical = 8.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            AppIconView(pkg, modifier = Modifier.size(24.dp))
-                            Spacer(Modifier.width(8.dp))
+                            AppIconView(pkg, modifier = Modifier.size(32.dp))
+                            Spacer(Modifier.width(12.dp))
                             Text(label, fontSize = 14.sp, color = text, modifier = Modifier.weight(1f))
-                            Text(pkg.substringAfterLast('.'), fontSize = 11.sp, color = textMuted)
                         }
                     }
                 }
             }
         },
-        confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.btn_cancel)) } }
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Cancel", color = primary) } }
     )
 }
 
 @Composable
 private fun SensitivitySelector(selected: String, onChange: (String) -> Unit) {
-    val options = listOf("low" to stringResource(R.string.sensitivity_low), "medium" to stringResource(R.string.sensitivity_medium), "high" to stringResource(R.string.sensitivity_high))
+    val options = listOf("low" to "Low", "medium" to "Med", "high" to "High")
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-        Text(stringResource(R.string.label_sensitivity), fontSize = 13.sp, color = textMuted)
+        Text("Sensitivity", fontSize = 13.sp, color = textSecondary)
         options.forEach { (value, label) ->
             FilterChip(
                 selected = selected == value,
@@ -311,46 +508,8 @@ private fun SensitivitySelector(selected: String, onChange: (String) -> Unit) {
                 colors = FilterChipDefaults.filterChipColors(
                     selectedContainerColor = primary.copy(alpha = 0.15f),
                     selectedLabelColor = primary
-                ),
-                border = FilterChipDefaults.filterChipBorder(
-                    borderColor = cardBorder,
-                    selectedBorderColor = primary.copy(alpha = 0.5f),
-                    enabled = true,
-                    selected = selected == value
                 )
             )
-        }
-    }
-}
-
-@Composable
-private fun ListTypeButton(label: String, selected: Boolean, color: Color, onClick: () -> Unit) {
-    Surface(
-        onClick = onClick,
-        color = if (selected) color else surface,
-        shape = RoundedCornerShape(12.dp),
-        border = BorderStroke(1.dp, if (selected) color else cardBorder)
-    ) {
-        Text(label, fontWeight = FontWeight.Bold, fontSize = 14.sp, color = if (selected) surface else text, modifier = Modifier.padding(horizontal = 24.dp, vertical = 12.dp))
-    }
-}
-
-@Composable
-private fun CategoryTab(label: String, selected: Boolean, count: Int, onClick: () -> Unit) {
-    Surface(
-        onClick = onClick,
-        color = if (selected) primary.copy(alpha = 0.15f) else Color.Transparent,
-        shape = RoundedCornerShape(8.dp),
-        border = BorderStroke(1.dp, if (selected) primary else cardBorder)
-    ) {
-        Row(Modifier.padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text(label, fontSize = 13.sp, fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal, color = if (selected) primary else textMuted)
-            if (count > 0) {
-                Spacer(Modifier.width(4.dp))
-                Surface(color = if (selected) primary else textMuted, shape = CircleShape) {
-                    Text("$count", fontSize = 10.sp, color = surface, modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp))
-                }
-            }
         }
     }
 }

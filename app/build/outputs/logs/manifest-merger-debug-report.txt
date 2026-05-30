@@ -1,20 +1,20 @@
 -- Merging decision tree log ---
 provider#androidx.core.content.FileProvider
-INJECTED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:161:9-169:20
+INJECTED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:159:9-167:20
 	android:grantUriPermissions
-		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:165:13-47
+		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:163:13-47
 	android:authorities
 		INJECTED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml
-		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:163:13-64
+		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:161:13-64
 	android:exported
-		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:164:13-37
+		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:162:13-37
 	android:name
-		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:162:13-62
+		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:160:13-62
 manifest
-ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:2:1-179:12
-INJECTED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:2:1-179:12
-INJECTED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:2:1-179:12
-INJECTED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:2:1-179:12
+ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:2:1-177:12
+INJECTED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:2:1-177:12
+INJECTED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:2:1-177:12
+INJECTED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:2:1-177:12
 MERGED from [androidx.navigation:navigation-common:2.8.9] C:\Users\moham\.gradle\caches\8.14.3\transforms\df65d2dad20311fa12c33dd02e4e025b\transformed\navigation-common-2.8.9\AndroidManifest.xml:17:1-22:12
 MERGED from [androidx.navigation:navigation-runtime:2.8.9] C:\Users\moham\.gradle\caches\8.14.3\transforms\86ff68d43151e8552b7ee10333a5c8f7\transformed\navigation-runtime-2.8.9\AndroidManifest.xml:17:1-22:12
 MERGED from [androidx.navigation:navigation-common-ktx:2.8.9] C:\Users\moham\.gradle\caches\8.14.3\transforms\54eeb03c613220e55305f77b678f16da\transformed\navigation-common-ktx-2.8.9\AndroidManifest.xml:2:1-7:12
@@ -202,26 +202,30 @@ uses-permission#android.permission.FOREGROUND_SERVICE_SPECIAL_USE
 ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:8:5-89
 	android:name
 		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:8:22-86
-uses-permission#android.permission.SYSTEM_ALERT_WINDOW
-ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:9:5-78
+uses-permission#android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION
+ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:9:5-94
 	android:name
-		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:9:22-75
-uses-permission#android.permission.PACKAGE_USAGE_STATS
+		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:9:22-91
+uses-permission#android.permission.SYSTEM_ALERT_WINDOW
 ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:10:5-78
 	android:name
 		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:10:22-75
+uses-permission#android.permission.PACKAGE_USAGE_STATS
+ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:11:5-78
+	android:name
+		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:11:22-75
 uses-permission#android.permission.QUERY_ALL_PACKAGES
-ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:11:5-77
+ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:12:5-77
 	android:name
-		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:11:22-74
+		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:12:22-74
 uses-permission#android.permission.RECEIVE_BOOT_COMPLETED
-ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:12:5-81
+ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:13:5-81
 MERGED from [androidx.work:work-runtime:2.10.0] C:\Users\moham\.gradle\caches\8.14.3\transforms\4b893770ef53c5ddb76175ccbb6e7480\transformed\work-runtime-2.10.0\AndroidManifest.xml:25:5-81
 MERGED from [androidx.work:work-runtime:2.10.0] C:\Users\moham\.gradle\caches\8.14.3\transforms\4b893770ef53c5ddb76175ccbb6e7480\transformed\work-runtime-2.10.0\AndroidManifest.xml:25:5-81
 	android:name
-		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:12:22-78
+		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:13:22-78
 uses-permission#android.permission.ACCESS_NETWORK_STATE
-ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:13:5-79
+ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:14:5-79
 MERGED from [com.google.firebase:firebase-auth:23.2.0] C:\Users\moham\.gradle\caches\8.14.3\transforms\a8fe2a158f7073d07a558a30ee0e2e48\transformed\firebase-auth-23.2.0\AndroidManifest.xml:26:5-79
 MERGED from [com.google.firebase:firebase-auth:23.2.0] C:\Users\moham\.gradle\caches\8.14.3\transforms\a8fe2a158f7073d07a558a30ee0e2e48\transformed\firebase-auth-23.2.0\AndroidManifest.xml:26:5-79
 MERGED from [com.google.firebase:firebase-database:21.0.0] C:\Users\moham\.gradle\caches\8.14.3\transforms\02596c64dabcdd08665781a7a1c721c9\transformed\firebase-database-21.0.0\AndroidManifest.xml:22:5-79
@@ -241,42 +245,42 @@ MERGED from [com.google.android.datatransport:transport-backend-cct:3.1.9] C:\Us
 MERGED from [com.google.android.datatransport:transport-runtime:3.1.9] C:\Users\moham\.gradle\caches\8.14.3\transforms\cc01aac0619efc22f7281c98fced3fd1\transformed\transport-runtime-3.1.9\AndroidManifest.xml:22:5-79
 MERGED from [com.google.android.datatransport:transport-runtime:3.1.9] C:\Users\moham\.gradle\caches\8.14.3\transforms\cc01aac0619efc22f7281c98fced3fd1\transformed\transport-runtime-3.1.9\AndroidManifest.xml:22:5-79
 	android:name
-		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:13:22-76
+		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:14:22-76
 uses-permission#android.permission.MEDIA_PROJECTION
-ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:14:5-75
+ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:15:5-75
 	android:name
-		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:14:22-72
+		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:15:22-72
 uses-permission#android.permission.REBOOT
-ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:15:5-65
+ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:16:5-65
 	android:name
-		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:15:22-62
+		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:16:22-62
 uses-permission#android.permission.BIND_DEVICE_ADMIN
-ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:17:5-76
+ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:18:5-76
 	android:name
-		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:17:22-73
+		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:18:22-73
 uses-permission#android.permission.MANAGE_USERS
-ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:18:5-71
+ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:19:5-71
 	android:name
-		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:18:22-68
+		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:19:22-68
 uses-permission#android.permission.INTERACT_ACROSS_USERS
-ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:19:5-80
+ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:20:5-80
 	android:name
-		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:19:22-77
+		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:20:22-77
 uses-permission#android.permission.MANAGE_DEVICE_ADMINS
-ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:20:5-79
+ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:21:5-79
 	android:name
-		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:20:22-76
+		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:21:22-76
 uses-permission#com.samsung.android.knox.permission.KNOX_MDM
-ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:22:5-84
+ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:23:5-84
 	android:name
-		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:22:22-81
+		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:23:22-81
 uses-permission#com.samsung.android.knox.permission.KNOX_ENTERPRISE
-ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:23:5-91
+ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:24:5-91
 	android:name
-		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:23:22-88
+		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:24:22-88
 application
-ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:25:5-177:19
-INJECTED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:25:5-177:19
+ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:26:5-175:19
+INJECTED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:26:5-175:19
 MERGED from [io.insert-koin:koin-android:4.0.2] C:\Users\moham\.gradle\caches\8.14.3\transforms\83bb3979423dfefba6d66628be61aa6c\transformed\koin-android-4.0.2\AndroidManifest.xml:7:5-20
 MERGED from [io.insert-koin:koin-android:4.0.2] C:\Users\moham\.gradle\caches\8.14.3\transforms\83bb3979423dfefba6d66628be61aa6c\transformed\koin-android-4.0.2\AndroidManifest.xml:7:5-20
 MERGED from [com.google.firebase:firebase-auth:23.2.0] C:\Users\moham\.gradle\caches\8.14.3\transforms\a8fe2a158f7073d07a558a30ee0e2e48\transformed\firebase-auth-23.2.0\AndroidManifest.xml:28:5-73:19
@@ -356,223 +360,223 @@ MERGED from [com.google.android.play:core-common:2.0.3] C:\Users\moham\.gradle\c
 	android:appComponentFactory
 		ADDED from [androidx.core:core:1.16.0] C:\Users\moham\.gradle\caches\8.14.3\transforms\8ae297b8e5e1228ae92c13e7efbcde12\transformed\core-1.16.0\AndroidManifest.xml:28:18-86
 	android:supportsRtl
-		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:29:9-35
+		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:30:9-35
 	android:label
-		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:28:9-41
+		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:29:9-41
 	android:icon
-		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:30:9-43
+		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:31:9-43
 	android:allowBackup
-		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:27:9-35
+		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:28:9-35
 	android:theme
-		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:31:9-72
+		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:32:9-72
 	android:name
-		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:26:9-36
+		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:27:9-36
 activity#com.agon.app.MainActivity
-ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:33:9-41:20
+ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:34:9-42:20
 	android:windowSoftInputMode
-		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:36:13-55
+		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:37:13-55
 	android:exported
-		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:35:13-36
+		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:36:13-36
 	android:name
-		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:34:13-41
+		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:35:13-41
 intent-filter#action:name:android.intent.action.MAIN+category:name:android.intent.category.LAUNCHER
-ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:37:13-40:29
+ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:38:13-41:29
 action#android.intent.action.MAIN
-ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:38:17-69
+ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:39:17-69
 	android:name
-		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:38:25-66
+		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:39:25-66
 category#android.intent.category.LAUNCHER
-ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:39:17-77
+ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:40:17-77
 	android:name
-		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:39:27-74
+		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:40:27-74
 activity#com.agon.app.ui.screens.BlockActivity
-ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:43:9-49:43
+ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:44:9-50:43
 	android:turnScreenOn
-		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:49:13-40
+		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:50:13-40
 	android:excludeFromRecents
-		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:45:13-46
+		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:46:13-46
 	android:showWhenLocked
-		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:48:13-42
+		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:49:13-42
 	android:launchMode
-		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:47:13-48
+		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:48:13-48
 	android:exported
-		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:46:13-37
+		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:47:13-37
 	android:name
-		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:44:13-53
+		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:45:13-53
 service#com.agon.app.FacebookBlockerService
-ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:51:9-61:19
+ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:52:9-62:19
 	android:exported
-		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:53:13-36
+		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:54:13-36
 	android:permission
-		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:54:13-79
+		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:55:13-79
 	android:name
-		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:52:13-51
+		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:53:13-51
 intent-filter#action:name:android.accessibilityservice.AccessibilityService
-ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:55:13-57:29
+ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:56:13-58:29
 action#android.accessibilityservice.AccessibilityService
-ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:56:17-92
+ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:57:17-92
 	android:name
-		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:56:25-89
+		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:57:25-89
 meta-data#android.accessibilityservice
-ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:58:13-60:72
+ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:59:13-61:72
 	android:resource
-		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:60:17-69
+		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:61:17-69
 	android:name
-		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:59:17-60
+		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:60:17-60
 service#com.agon.app.services.GuardianAccessibilityService
-ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:63:9-73:19
+ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:64:9-74:19
 	android:exported
-		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:66:13-37
+		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:67:13-37
 	android:permission
-		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:65:13-79
+		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:66:13-79
 	android:name
-		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:64:13-66
+		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:65:13-66
 service#com.agon.app.DnsVpnService
-ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:75:9-86:19
+ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:76:9-87:19
 	android:exported
-		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:77:13-37
+		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:78:13-37
 	android:permission
-		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:79:13-69
+		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:80:13-69
 	android:foregroundServiceType
-		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:78:13-55
+		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:79:13-55
 	android:name
-		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:76:13-42
+		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:77:13-42
 intent-filter#action:name:android.net.VpnService
-ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:80:13-82:29
+ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:81:13-83:29
 action#android.net.VpnService
-ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:81:17-65
+ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:82:17-65
 	android:name
-		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:81:25-62
+		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:82:25-62
 property#android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE
-ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:83:13-85:57
+ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:84:13-86:57
 	android:value
-		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:85:17-54
+		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:86:17-54
 	android:name
-		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:84:17-76
+		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:85:17-76
 service#com.agon.app.AiScannerService
-ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:88:9-95:19
+ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:89:9-93:19
 	android:exported
-		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:90:13-37
+		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:91:13-37
 	android:foregroundServiceType
-		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:91:13-55
+		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:92:13-60
 	android:name
-		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:89:13-45
+		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:90:13-45
 service#com.agon.app.AppBlockerService
-ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:97:9-104:19
+ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:95:9-102:19
 	android:exported
-		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:99:13-37
+		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:97:13-37
 	android:foregroundServiceType
-		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:100:13-55
+		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:98:13-55
 	android:name
-		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:98:13-46
+		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:96:13-46
 service#com.agon.app.data.remote.GuardianFcmService
-ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:106:9-112:19
+ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:104:9-110:19
 	android:exported
-		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:108:13-37
+		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:106:13-37
 	android:name
-		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:107:13-59
+		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:105:13-59
 intent-filter#action:name:com.google.firebase.MESSAGING_EVENT
-ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:109:13-111:29
+ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:107:13-109:29
 action#com.google.firebase.MESSAGING_EVENT
-ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:110:17-78
+ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:108:17-78
 	android:name
-		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:110:25-75
+		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:108:25-75
 receiver#com.agon.app.BootReceiver
-ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:114:9-121:20
+ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:112:9-119:20
 	android:exported
-		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:116:13-36
+		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:114:13-36
 	android:name
-		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:115:13-41
+		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:113:13-41
 intent-filter#action:name:android.intent.action.BOOT_COMPLETED+action:name:android.intent.action.QUICKBOOT_POWERON
-ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:117:13-120:29
+ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:115:13-118:29
 action#android.intent.action.BOOT_COMPLETED
-ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:118:17-79
+ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:116:17-79
 	android:name
-		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:118:25-76
+		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:116:25-76
 action#android.intent.action.QUICKBOOT_POWERON
-ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:119:17-82
+ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:117:17-82
 	android:name
-		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:119:25-79
+		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:117:25-79
 receiver#com.agon.app.receivers.ScheduleReceiver
-ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:123:9-125:40
+ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:121:9-123:40
 	android:exported
-		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:125:13-37
+		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:123:13-37
 	android:name
-		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:124:13-55
+		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:122:13-55
 receiver#com.agon.app.GuardianDeviceAdminReceiver
-ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:127:9-138:20
+ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:125:9-136:20
 	android:exported
-		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:129:13-36
+		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:127:13-36
 	android:permission
-		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:130:13-70
+		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:128:13-70
 	android:name
-		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:128:13-56
+		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:126:13-56
 meta-data#android.app.device_admin
-ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:131:13-133:65
+ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:129:13-131:65
 	android:resource
-		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:133:17-62
+		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:131:17-62
 	android:name
-		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:132:17-56
+		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:130:17-56
 intent-filter#action:name:android.app.action.DEVICE_ADMIN_DISABLED+action:name:android.app.action.DEVICE_ADMIN_ENABLED
-ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:134:13-137:29
+ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:132:13-135:29
 action#android.app.action.DEVICE_ADMIN_ENABLED
-ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:135:17-82
+ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:133:17-82
 	android:name
-		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:135:25-79
+		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:133:25-79
 action#android.app.action.DEVICE_ADMIN_DISABLED
-ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:136:17-83
+ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:134:17-83
 	android:name
-		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:136:25-80
+		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:134:25-80
 receiver#com.agon.app.receivers.AdbReceiver
-ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:140:9-146:20
+ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:138:9-144:20
 	android:exported
-		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:142:13-36
+		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:140:13-36
 	android:name
-		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:141:13-50
+		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:139:13-50
 intent-filter#action:name:android.hardware.usb.action.USB_STATE
-ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:143:13-145:29
+ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:141:13-143:29
 action#android.hardware.usb.action.USB_STATE
-ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:144:17-80
+ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:142:17-80
 	android:name
-		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:144:25-77
+		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:142:25-77
 receiver#com.agon.app.receivers.CloneReceiver
-ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:148:9-159:20
+ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:146:9-157:20
 	android:exported
-		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:150:13-36
+		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:148:13-36
 	android:name
-		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:149:13-52
+		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:147:13-52
 intent-filter#action:name:android.intent.action.PACKAGE_ADDED+action:name:android.intent.action.PACKAGE_REPLACED+data:scheme:package
-ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:151:13-155:29
+ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:149:13-153:29
 action#android.intent.action.PACKAGE_ADDED
-ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:152:17-78
+ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:150:17-78
 	android:name
-		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:152:25-75
+		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:150:25-75
 action#android.intent.action.PACKAGE_REPLACED
-ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:153:17-81
+ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:151:17-81
 	android:name
-		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:153:25-78
+		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:151:25-78
 data
-ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:154:17-50
+ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:152:17-50
 	android:scheme
-		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:154:23-47
+		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:152:23-47
 intent-filter#action:name:android.intent.action.BOOT_COMPLETED
-ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:156:13-158:29
+ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:154:13-156:29
 activity#com.agon.app.ui.screens.DeviceOwnerSetupActivity
-ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:171:9-175:49
+ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:169:9-173:49
 	android:excludeFromRecents
-		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:175:13-46
+		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:173:13-46
 	android:exported
-		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:173:13-37
+		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:171:13-37
 	android:theme
-		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:174:13-76
+		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:172:13-76
 	android:name
-		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:172:13-64
+		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:170:13-64
 meta-data#android.support.FILE_PROVIDER_PATHS
-ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:166:13-168:54
+ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:164:13-166:54
 	android:resource
-		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:168:17-51
+		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:166:17-51
 	android:name
-		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:167:17-67
+		ADDED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml:165:17-67
 uses-sdk
 INJECTED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml reason: use-sdk injection requested
 INJECTED from C:\Users\moham\gard\app\src\main\AndroidManifest.xml

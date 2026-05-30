@@ -27,6 +27,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.agon.app.R
 import com.agon.app.data.BadgeWithState
@@ -211,14 +212,22 @@ private fun HeatmapCard(heatmapData: Map<Long, Int>) {
         modifier = Modifier.fillMaxWidth()
     ) {
         Column(Modifier.padding(16.dp)) {
-            Text("سجل النشاط", fontWeight = FontWeight.Bold, color = text, fontSize = 15.sp)
+            Text(stringResource(R.string.profile_activity_log), fontWeight = FontWeight.Bold, color = text, fontSize = 15.sp)
             Spacer(Modifier.height(12.dp))
             val cellSize = 10.dp
             val cellSpacing = 2.dp
             val today = Calendar.getInstance()
             val totalDays = 364
             val weeks = totalDays / 7
-            val daysOfWeek = listOf("ح", "ن", "ث", "ر", "خ", "ج", "س")
+            val daysOfWeek = listOf(
+                stringResource(R.string.profile_heatmap_mon),
+                stringResource(R.string.profile_heatmap_tue),
+                stringResource(R.string.profile_heatmap_wed),
+                stringResource(R.string.profile_heatmap_thu),
+                stringResource(R.string.profile_heatmap_fri),
+                stringResource(R.string.profile_heatmap_sat),
+                stringResource(R.string.profile_heatmap_sun)
+            )
 
             Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 for (row in 0 until 7) {
@@ -265,7 +274,7 @@ private fun HeatmapCard(heatmapData: Map<Long, Int>) {
                 horizontalArrangement = Arrangement.End,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text("أقل", fontSize = 9.sp, color = textMuted)
+                Text(stringResource(R.string.profile_less), fontSize = 9.sp, color = textMuted)
                 Spacer(Modifier.width(4.dp))
                 Box(Modifier.size(8.dp).clip(RoundedCornerShape(1.dp)).background(surfaceLight))
                 Box(Modifier.size(8.dp).clip(RoundedCornerShape(1.dp)).background(success.copy(alpha = 0.3f)))
@@ -273,7 +282,7 @@ private fun HeatmapCard(heatmapData: Map<Long, Int>) {
                 Box(Modifier.size(8.dp).clip(RoundedCornerShape(1.dp)).background(success.copy(alpha = 0.7f)))
                 Box(Modifier.size(8.dp).clip(RoundedCornerShape(1.dp)).background(success.copy(alpha = 0.9f)))
                 Spacer(Modifier.width(4.dp))
-                Text("أكثر", fontSize = 9.sp, color = textMuted)
+                Text(stringResource(R.string.profile_more), fontSize = 9.sp, color = textMuted)
             }
         }
     }
@@ -288,7 +297,7 @@ private fun BadgesCard(badges: List<BadgeWithState>) {
         modifier = Modifier.fillMaxWidth()
     ) {
         Column(Modifier.padding(16.dp)) {
-            Text("الشارات", fontWeight = FontWeight.Bold, color = text, fontSize = 15.sp)
+            Text(stringResource(R.string.profile_badges_title), fontWeight = FontWeight.Bold, color = text, fontSize = 15.sp)
             Spacer(Modifier.height(12.dp))
             LazyVerticalGrid(
                 columns = GridCells.Fixed(4),
@@ -337,6 +346,7 @@ private fun BadgeItem(badgeWithState: BadgeWithState) {
 
 @Composable
 private fun XpHistoryCard(heatmapData: Map<Long, Int>) {
+    val context = LocalContext.current
     val recentDays = remember(heatmapData) {
         val today = Calendar.getInstance()
         (0 until 30).map { offset ->
@@ -348,9 +358,9 @@ private fun XpHistoryCard(heatmapData: Map<Long, Int>) {
             val blocks = heatmapData[dayKey] ?: 0
             val xp = blocks * 10
             val label = when (offset) {
-                0 -> "اليوم"
-                1 -> "أمس"
-                else -> "${offset}ي"
+                0 -> context.getString(R.string.profile_day_today)
+                1 -> context.getString(R.string.profile_day_yesterday)
+                else -> context.getString(R.string.profile_day_offset, offset)
             }
             XpHistoryEntry(label, xp, blocks)
         }.reversed()
@@ -363,7 +373,7 @@ private fun XpHistoryCard(heatmapData: Map<Long, Int>) {
         modifier = Modifier.fillMaxWidth()
     ) {
         Column(Modifier.padding(16.dp)) {
-            Text("تاريخ XP", fontWeight = FontWeight.Bold, color = text, fontSize = 15.sp)
+            Text(stringResource(R.string.profile_xp_history), fontWeight = FontWeight.Bold, color = text, fontSize = 15.sp)
             Spacer(Modifier.height(12.dp))
             LazyRow(
                 horizontalArrangement = Arrangement.spacedBy(4.dp),

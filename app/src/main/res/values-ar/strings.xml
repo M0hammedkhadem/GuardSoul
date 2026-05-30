@@ -8,6 +8,8 @@
     <string name="screen_home_subtitle">درع العافية الرقمية</string>
     <string name="status_protected">محمي</string>
     <string name="status_inactive">غير نشط</string>
+    <string name="status_connected">متصل</string>
+    <string name="status_disconnected">غير متصل</string>
     <string name="contentdesc_timer">مؤقت</string>
     <string name="contentdesc_shield">درع</string>
     <string name="label_active">نشط</string>
@@ -106,7 +108,11 @@
     <string name="contentdesc_back">رجوع</string>
     <string name="section_quick_access">وصول سريع</string>
     <string name="section_status_overview">نظرة عامة على الحالة</string>
-    <string name="section_blocked_apps">ملخص التطبيقات المحظورة</string>
+    <string name="section_social_blocked">وسائل التواصل المحظورة</string>
+    <string name="section_video_blocked">منصات الفيديو المحظورة</string>
+    <string name="section_blocked_apps">التطبيقات المحظورة</string>
+    <string name="section_time_limited_apps">التطبيقات المحددة بوقت</string>
+    <string name="section_blacklisted_apps">التطبيقات المحظورة يدوياً</string>
     <string name="section_data_management">إدارة البيانات</string>
     <string name="row_social_media">إعدادات وسائل التواصل</string>
     <string name="row_content_blocker">إعدادات حظر المحتوى</string>
@@ -255,6 +261,7 @@
     <string name="onboarding_welcome_title">مرحبًا بك في جارديان</string>
     <string name="onboarding_welcome_desc">درع العافية الرقمية الخاص بك. احجب المشتتات، وصنف المحتوى الصريح، وابنِ عادات رقمية صحية.\n\nدعنا نعد ملفك الشخصي في 5 خطوات سريعة.</string>
     <string name="onboarding_profile_label">اسمك</string>
+    <string name="onboarding_language_label">اختر لغتك</string>
     <string name="onboarding_btn_start">ابدأ</string>
     <string name="onboarding_btn_protect">ابدأ الحماية</string>
     <string name="onboarding_skip">تخطي</string>
@@ -357,6 +364,22 @@
     <string name="profile_enabled">مفعل</string>
     <string name="profile_disabled">معطل</string>
     <string name="profile_expired">منتهي</string>
+
+    <string name="profile_activity_log">سجل النشاط</string>
+    <string name="profile_less">أقل</string>
+    <string name="profile_more">أكثر</string>
+    <string name="profile_xp_history">تاريخ XP</string>
+    <string name="profile_badges_title">الشارات</string>
+    <string name="profile_day_today">اليوم</string>
+    <string name="profile_day_yesterday">أمس</string>
+    <string name="profile_day_offset">%1$dي</string>
+    <string name="profile_heatmap_mon">ح</string>
+    <string name="profile_heatmap_tue">ن</string>
+    <string name="profile_heatmap_wed">ث</string>
+    <string name="profile_heatmap_thu">ر</string>
+    <string name="profile_heatmap_fri">خ</string>
+    <string name="profile_heatmap_sat">ج</string>
+    <string name="profile_heatmap_sun">س</string>
 
     <!-- الملف الشخصي - إضافي -->
     <string name="profile_name_label">الاسم</string>
@@ -566,4 +589,11 @@
     <string name="channel_remote_commands_desc">إشعارات الأوامر الواردة من لوحة تحكم الوالدين</string>
     <string name="guardian_accessibility_desc">يستخدم تطبيق Guardian خدمة إمكانية الوصول لكشف وحظر المحتوى المشتت أو الضار في الوقت الفعلي عبر التطبيقات ومواقع الويب. لا يتم جمع أو تخزين أي بيانات شخصية.</string>
 
+    <!-- Safe Search Mode -->
+    <string name="label_safe_search_mode">وضع البحث الآمن</string>
+    <string name="mode_basic">أساسي</string>
+    <string name="mode_basic_desc">تصفية البحث فقط — يبقي Gmail وDrive والخدمات الأخرى تعمل</string>
+    <string name="mode_strict">صارم</string>
+    <string name="mode_strict_desc">تصفية DNS كاملة — قد يعطل بعض الخدمات غير البحثية</string>
+    <string name="label_block_doh">حظر DNS المشفر (DoH/DoT)</string>
 </resources>

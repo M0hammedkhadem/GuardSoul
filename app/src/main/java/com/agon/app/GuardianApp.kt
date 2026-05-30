@@ -8,7 +8,6 @@ import com.agon.app.di.appModules
 import org.koin.android.ext.android.inject
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import org.koin.android.ext.koin.androidContext
 import org.koin.core.context.startKoin
@@ -20,21 +19,27 @@ class GuardianApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        
+        // Load language immediately
+        LanguageManager.load(this)
+        
         startKoin {
             androidContext(this@GuardianApp)
             modules(appModules)
         }
+        
         if (BuildConfig.IS_DEBUG_BUILD) {
             Timber.plant(Timber.DebugTree())
         } else {
             Timber.plant(ReleaseTree())
         }
+        
         AppNotificationChannels.createAll(this)
+        
         CoroutineScope(Dispatchers.IO).launch {
-            val code = LanguageManager.languageFlow(this@GuardianApp).first()
-            LanguageManager.currentLanguageCode = code
             seedDefaultBlocklists()
         }
+
         CoroutineScope(Dispatchers.IO).launch {
             try {
                 val settings = repository.getAppSettings()

@@ -12,7 +12,9 @@ import kotlinx.coroutines.launch
 class ScheduleViewModel(application: Application) : AndroidViewModel(application) {
     private val repo = (application as GuardianApp).repository
 
-    val rules: StateFlow<List<ScheduleRuleEntity>> = repo.getAllScheduleRules().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    val rules: StateFlow<List<ScheduleRuleEntity>> = repo.getAllScheduleRules()
+        .distinctUntilChanged()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     fun addRule(
         daysOfWeek: String,

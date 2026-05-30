@@ -40,14 +40,15 @@ class ListsViewModel(application: Application) : AndroidViewModel(application) {
             }
             flow
         }
-        .map { entities -> entities.map { it.toUiModel() } }
+        .map { entities -> entities.map { it.toUiModel() }.distinctBy { it.id } }
+        .distinctUntilChanged()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     @OptIn(ExperimentalCoroutinesApi::class)
     private fun countFor(category: String): StateFlow<Int> =
         _selectedListType.flatMapLatest { type ->
             repo.getBlocklistFlow(type, category).map { it.size }
-        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
+        }.distinctUntilChanged().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
 
     val keywordsCount = countFor("keywords")
     val websitesCount = countFor("websites")

@@ -6,8 +6,15 @@
     <!-- HomeScreen -->
     <string name="screen_home_title">Guardian</string>
     <string name="screen_home_subtitle">Digital Wellness Shield</string>
+    <string name="section_shield_status">Shield Status</string>
+    <string name="section_statistics">Statistics</string>
+    <string name="section_gamification">Gamification</string>
+    <string name="section_quick_actions">Quick Actions</string>
+    <string name="section_mode_settings">Mode Settings</string>
     <string name="status_protected">Protected</string>
     <string name="status_inactive">Inactive</string>
+    <string name="status_connected">Connected</string>
+    <string name="status_disconnected">Disconnected</string>
     <string name="contentdesc_timer">Timer</string>
     <string name="contentdesc_shield">Shield</string>
     <string name="label_active">ACTIVE</string>
@@ -106,7 +113,11 @@
     <string name="contentdesc_back">Back</string>
     <string name="section_quick_access">Quick Access</string>
     <string name="section_status_overview">Status Overview</string>
-    <string name="section_blocked_apps">Blocked Apps Summary</string>
+    <string name="section_social_blocked">Social Media Blocked</string>
+    <string name="section_video_blocked">Video Platforms Blocked</string>
+    <string name="section_blocked_apps">Blocked Apps</string>
+    <string name="section_time_limited_apps">Time Limited Apps</string>
+    <string name="section_blacklisted_apps">Blacklisted Apps</string>
     <string name="section_data_management">Data Management</string>
     <string name="row_social_media">Social Media Settings</string>
     <string name="row_content_blocker">Content Blocker Settings</string>
@@ -256,6 +267,7 @@
     <string name="onboarding_welcome_title">Welcome to Guardian</string>
     <string name="onboarding_welcome_desc">Your digital wellness shield. Block distractions, filter explicit content, and build healthier digital habits.\n\nLet\'s set up your profile in 5 quick steps.</string>
     <string name="onboarding_profile_label">Your name</string>
+    <string name="onboarding_language_label">Choose your language</string>
     <string name="onboarding_btn_start">Get Started</string>
     <string name="onboarding_btn_protect">Start Protecting</string>
     <string name="onboarding_skip">Skip</string>
@@ -359,6 +371,22 @@
     <string name="profile_enabled">Enabled</string>
     <string name="profile_disabled">Disabled</string>
     <string name="profile_expired">Expired</string>
+
+    <string name="profile_activity_log">Activity Log</string>
+    <string name="profile_less">Less</string>
+    <string name="profile_more">More</string>
+    <string name="profile_xp_history">XP History</string>
+    <string name="profile_badges_title">Badges</string>
+    <string name="profile_day_today">Today</string>
+    <string name="profile_day_yesterday">Yesterday</string>
+    <string name="profile_day_offset">%1$dd</string>
+    <string name="profile_heatmap_mon">M</string>
+    <string name="profile_heatmap_tue">T</string>
+    <string name="profile_heatmap_wed">W</string>
+    <string name="profile_heatmap_thu">T</string>
+    <string name="profile_heatmap_fri">F</string>
+    <string name="profile_heatmap_sat">S</string>
+    <string name="profile_heatmap_sun">S</string>
 
     <!-- Profile - additional -->
     <string name="profile_name_label">Name</string>
@@ -664,4 +692,12 @@
     <string name="vpn_alert_text">Your content filter VPN has stopped unexpectedly</string>
     <string name="vpn_alert_big_text">Guardian\'s content filter VPN disconnected unexpectedly. Your browsing is no longer being filtered. Tap to open settings.</string>
     <string name="vpn_alert_restart">Restart VPN</string>
+
+    <!-- Safe Search Mode -->
+    <string name="label_safe_search_mode">Safe Search Mode</string>
+    <string name="mode_basic">Basic</string>
+    <string name="mode_basic_desc">Safe search only — keeps Gmail, Drive, and other services working</string>
+    <string name="mode_strict">Strict</string>
+    <string name="mode_strict_desc">Full DNS filtering — may break some non-search services</string>
+    <string name="label_block_doh">Block encrypted DNS (DoH/DoT)</string>
 </resources>

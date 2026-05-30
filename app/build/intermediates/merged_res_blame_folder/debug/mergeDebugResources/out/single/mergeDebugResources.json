@@ -1,42 +1,38 @@
 [
     {
-        "merged": "C:\\Users\\moham\\.gradle\\daemon\\8.14.3\\com.agon.app-debug-68:\\xml_accessibility_service_config.xml.flat",
-        "source": "C:\\Users\\moham\\.gradle\\daemon\\8.14.3\\com.agon.app-main-70:\\xml\\accessibility_service_config.xml"
+        "merged": "com.agon.app-debug-68:/mipmap-mdpi_ic_launcher.png.flat",
+        "source": "com.agon.app-main-70:/mipmap-mdpi/ic_launcher.png"
     },
     {
-        "merged": "C:\\Users\\moham\\.gradle\\daemon\\8.14.3\\com.agon.app-debug-68:\\xml_device_admin_receiver.xml.flat",
-        "source": "C:\\Users\\moham\\.gradle\\daemon\\8.14.3\\com.agon.app-main-70:\\xml\\device_admin_receiver.xml"
+        "merged": "com.agon.app-debug-68:/xml_file_paths.xml.flat",
+        "source": "com.agon.app-main-70:/xml/file_paths.xml"
     },
     {
-        "merged": "C:\\Users\\moham\\.gradle\\daemon\\8.14.3\\com.agon.app-debug-68:\\mipmap-xxxhdpi_ic_launcher.png.flat",
-        "source": "C:\\Users\\moham\\.gradle\\daemon\\8.14.3\\com.agon.app-main-70:\\mipmap-xxxhdpi\\ic_launcher.png"
+        "merged": "com.agon.app-debug-68:/mipmap-xhdpi_ic_launcher.png.flat",
+        "source": "com.agon.app-main-70:/mipmap-xhdpi/ic_launcher.png"
     },
     {
-        "merged": "C:\\Users\\moham\\.gradle\\daemon\\8.14.3\\com.agon.app-debug-68:\\mipmap-xhdpi_ic_launcher.png.flat",
-        "source": "C:\\Users\\moham\\.gradle\\daemon\\8.14.3\\com.agon.app-main-70:\\mipmap-xhdpi\\ic_launcher.png"
+        "merged": "com.agon.app-debug-68:/xml_guardianservice.xml.flat",
+        "source": "com.agon.app-main-70:/xml/guardianservice.xml"
     },
     {
-        "merged": "C:\\Users\\moham\\.gradle\\daemon\\8.14.3\\com.agon.app-debug-68:\\mipmap-xxhdpi_ic_launcher.png.flat",
-        "source": "C:\\Users\\moham\\.gradle\\daemon\\8.14.3\\com.agon.app-main-70:\\mipmap-xxhdpi\\ic_launcher.png"
+        "merged": "com.agon.app-debug-68:/xml_accessibility_service_config.xml.flat",
+        "source": "com.agon.app-main-70:/xml/accessibility_service_config.xml"
+    },
+    {
+        "merged": "com.agon.app-debug-68:/mipmap-xxhdpi_ic_launcher.png.flat",
+        "source": "com.agon.app-main-70:/mipmap-xxhdpi/ic_launcher.png"
     },
     {
         "merged": "com.agon.app-debug-68:/xml_device_admin_receiver.xml.flat",
         "source": "com.agon.app-main-70:/xml/device_admin_receiver.xml"
     },
     {
-        "merged": "C:\\Users\\moham\\.gradle\\daemon\\8.14.3\\com.agon.app-debug-68:\\xml_file_paths.xml.flat",
-        "source": "C:\\Users\\moham\\.gradle\\daemon\\8.14.3\\com.agon.app-main-70:\\xml\\file_paths.xml"
+        "merged": "com.agon.app-debug-68:/mipmap-hdpi_ic_launcher.png.flat",
+        "source": "com.agon.app-main-70:/mipmap-hdpi/ic_launcher.png"
     },
     {
-        "merged": "C:\\Users\\moham\\.gradle\\daemon\\8.14.3\\com.agon.app-debug-68:\\mipmap-hdpi_ic_launcher.png.flat",
-        "source": "C:\\Users\\moham\\.gradle\\daemon\\8.14.3\\com.agon.app-main-70:\\mipmap-hdpi\\ic_launcher.png"
-    },
-    {
-        "merged": "C:\\Users\\moham\\.gradle\\daemon\\8.14.3\\com.agon.app-debug-68:\\mipmap-mdpi_ic_launcher.png.flat",
-        "source": "C:\\Users\\moham\\.gradle\\daemon\\8.14.3\\com.agon.app-main-70:\\mipmap-mdpi\\ic_launcher.png"
-    },
-    {
-        "merged": "C:\\Users\\moham\\.gradle\\daemon\\8.14.3\\com.agon.app-debug-68:\\xml_guardianservice.xml.flat",
-        "source": "C:\\Users\\moham\\.gradle\\daemon\\8.14.3\\com.agon.app-main-70:\\xml\\guardianservice.xml"
+        "merged": "com.agon.app-debug-68:/mipmap-xxxhdpi_ic_launcher.png.flat",
+        "source": "com.agon.app-main-70:/mipmap-xxxhdpi/ic_launcher.png"
     }
 ]

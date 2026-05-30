@@ -18,54 +18,103 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
     private val repo = (application as GuardianApp).repository
     private val settings = repo.getAppSettings()
 
-    val shieldActive: StateFlow<Boolean> = settings.shieldActiveFlow.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
-    val trialMode: StateFlow<Boolean> = settings.trialModeFlow.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
-    val deactivationDelay: StateFlow<Int> = settings.deactivationDelayFlow.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
-    val strictMode: StateFlow<Boolean> = settings.strictModeFlow.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
-    val totalBlocks: StateFlow<Int> = repo.totalBlocksFlow().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
-    val blocksToday: StateFlow<Int> = repo.blocksTodayFlow().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
-    val mostBlockedApp: StateFlow<MostBlockedApp?> = repo.mostBlockedAppFlow().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
-    val streakCount: StateFlow<Int> = settings.streakCountFlow.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
+    val shieldActive: StateFlow<Boolean> = settings.shieldActiveFlow
+        .distinctUntilChanged()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+    val trialMode: StateFlow<Boolean> = settings.trialModeFlow
+        .distinctUntilChanged()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+    val deactivationDelay: StateFlow<Int> = settings.deactivationDelayFlow
+        .distinctUntilChanged()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
+    val strictMode: StateFlow<Boolean> = settings.strictModeFlow
+        .distinctUntilChanged()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+    val totalBlocks: StateFlow<Int> = repo.totalBlocksFlow()
+        .distinctUntilChanged()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
+    val blocksToday: StateFlow<Int> = repo.blocksTodayFlow()
+        .distinctUntilChanged()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
+    val mostBlockedApp: StateFlow<MostBlockedApp?> = repo.mostBlockedAppFlow()
+        .distinctUntilChanged()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
+    val streakCount: StateFlow<Int> = settings.streakCountFlow
+        .distinctUntilChanged()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
     val daysActive: StateFlow<Int> = repo.getAllBlockEvents().map { events ->
         events.map { it.timestamp / 86400000L }.distinct().count()
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
-    val profileName: StateFlow<String> = settings.profileNameFlow.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "")
-    val hasPin: StateFlow<Boolean> = settings.pinHashFlow.map { it.isNotBlank() }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+    }.distinctUntilChanged()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
+    val profileName: StateFlow<String> = settings.profileNameFlow
+        .distinctUntilChanged()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "")
+    val hasPin: StateFlow<Boolean> = settings.pinHashFlow.map { it.isNotBlank() }
+        .distinctUntilChanged()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
 
-    val xpPoints: StateFlow<Int> = settings.xpPointsFlow.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
-    val level: StateFlow<Int> = settings.levelFlow.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 1)
+    val xpPoints: StateFlow<Int> = settings.xpPointsFlow
+        .distinctUntilChanged()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
+    val level: StateFlow<Int> = settings.levelFlow
+        .distinctUntilChanged()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 1)
+    
+    val xpForNextLevel: StateFlow<Int> = level.map { calculateXpForLevel(it + 1) }
+        .distinctUntilChanged()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
+    val xpForCurrentLevel: StateFlow<Int> = level.map { calculateXpForLevel(it) }
+        .distinctUntilChanged()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
+    val xpProgress: StateFlow<Float> = combine(xpPoints, xpForCurrentLevel, xpForNextLevel) { points, currentLevelXp, nextLevelXp ->
+        val current = points - currentLevelXp
+        val needed = nextLevelXp - currentLevelXp
+        if (needed > 0) current.toFloat() / needed else 0f
+    }.distinctUntilChanged()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0f)
 
-    val pornBlockerActive: StateFlow<Boolean> = settings.pornBlockerFlow.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
-    val aiScannerActive: StateFlow<Boolean> = settings.aiScannerFlow.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
-    val uninstallProtectionActive: StateFlow<Boolean> = settings.uninstallProtectionFlow.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
-    val facebookMode: StateFlow<String> = settings.facebookModeFlow.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "off")
-    val youtubeMode: StateFlow<String> = settings.youtubeModeFlow.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "off")
-    val socialInstagram: StateFlow<Boolean> = settings.socialInstagramFlow.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
-    val socialSnapchat: StateFlow<Boolean> = settings.socialSnapchatFlow.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
-    val socialTwitter: StateFlow<Boolean> = settings.socialTwitterFlow.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
-    val socialTiktok: StateFlow<Boolean> = settings.socialTiktokFlow.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+    val pornBlockerActive: StateFlow<Boolean> = settings.pornBlockerFlow.distinctUntilChanged().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+    val aiScannerActive: StateFlow<Boolean> = settings.aiScannerFlow
+        .distinctUntilChanged()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+    val uninstallProtectionActive: StateFlow<Boolean> = settings.uninstallProtectionFlow
+        .distinctUntilChanged()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+    val facebookMode: StateFlow<String> = settings.facebookModeFlow
+        .distinctUntilChanged()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "off")
+    val youtubeMode: StateFlow<String> = settings.youtubeModeFlow
+        .distinctUntilChanged()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "off")
+    val socialInstagram: StateFlow<Boolean> = settings.socialInstagramFlow
+        .distinctUntilChanged()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+    val socialSnapchat: StateFlow<Boolean> = settings.socialSnapchatFlow
+        .distinctUntilChanged()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+    val socialTwitter: StateFlow<Boolean> = settings.socialTwitterFlow
+        .distinctUntilChanged()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+    val socialTiktok: StateFlow<Boolean> = settings.socialTiktokFlow
+        .distinctUntilChanged()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
 
     val blockedLinksToday: StateFlow<Int> = repo.getAllBlockEvents().map { events ->
         val todayStart = getTodayStart()
         events.count { it.timestamp >= todayStart && it.blockType == "dns_filter" }
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
+    }.distinctUntilChanged()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
 
     val blockedAppsToday: StateFlow<Int> = repo.getAllBlockEvents().map { events ->
         val todayStart = getTodayStart()
         events.count { it.timestamp >= todayStart && it.blockType != "dns_filter" }
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
+    }.distinctUntilChanged()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
 
     val recentEvents: StateFlow<List<com.agon.app.data.local.entity.BlockEventEntity>> =
-        repo.getRecentBlockEvents(10).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
-
-    val currentLevel: Int get() = calculateLevel(xpPoints.value)
-    val xpForNextLevel: Int get() = calculateXpForLevel(currentLevel + 1)
-    val xpForCurrentLevel: Int get() = calculateXpForLevel(currentLevel)
-    val xpProgress: Float get() {
-        val current = xpPoints.value - xpForCurrentLevel
-        val needed = xpForNextLevel - xpForCurrentLevel
-        return if (needed > 0) current.toFloat() / needed else 0f
-    }
+        repo.getRecentBlockEvents(10)
+            .distinctUntilChanged()
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     private val _countdownActive = MutableStateFlow(false)
     val countdownActive: StateFlow<Boolean> = _countdownActive.asStateFlow()
@@ -140,8 +189,16 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
                 }
                 settings.setLastActiveDate(now)
                 settings.setShieldActive(true)
+                
                 val context = getApplication<GuardianApp>()
                 AppBlockerService.start(context)
+                
+                // If sub-features are ON, start their services too
+                if (settings.isPornBlockerActive()) {
+                    DnsVpnService.start(context)
+                }
+                // Note: AiScannerService usually needs a fresh MediaProjection intent from the UI
+                
                 addXp(XP_PER_DAY_ACTIVE)
             }
         }
@@ -209,19 +266,12 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
             val context = getApplication<GuardianApp>()
 
             AppBlockerService.stop(context)
-
-            if (settings.isPornBlockerActive()) {
-                DnsVpnService.stop(context)
-                settings.setPornBlocker(false)
+            DnsVpnService.stop(context)
+            
+            val stopAiIntent = android.content.Intent(context, AiScannerService::class.java).apply {
+                action = AiScannerService.ACTION_STOP
             }
-
-            if (settings.aiScannerFlow.first()) {
-                val stopIntent = android.content.Intent(context, AiScannerService::class.java).apply {
-                    action = AiScannerService.ACTION_STOP
-                }
-                context.startService(stopIntent)
-                settings.setAiScanner(false)
-            }
+            context.startService(stopAiIntent)
 
             settings.setShieldActive(false)
             settings.setStreakCount(0)
@@ -245,14 +295,14 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
     fun setPornBlocker(v: Boolean) {
         viewModelScope.launch {
             val context = getApplication<GuardianApp>()
-            if (v) {
+            settings.setPornBlocker(v)
+            if (v && shieldActive.value) {
                 val intent = android.net.VpnService.prepare(context)
                 if (intent == null) {
-                    settings.setPornBlocker(true)
+                    DnsVpnService.start(context)
                 }
             } else {
-                com.agon.app.DnsVpnService.stop(context)
-                settings.setPornBlocker(false)
+                DnsVpnService.stop(context)
             }
         }
     }
@@ -264,14 +314,12 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
     fun setAiScanner(v: Boolean) {
         viewModelScope.launch {
             val context = getApplication<GuardianApp>()
-            if (v) {
-                settings.setAiScanner(true)
-            } else {
+            settings.setAiScanner(v)
+            if (!v || !shieldActive.value) {
                 val intent = android.content.Intent(context, com.agon.app.AiScannerService::class.java).apply {
                     action = com.agon.app.AiScannerService.ACTION_STOP
                 }
                 context.startService(intent)
-                settings.setAiScanner(false)
             }
         }
     }

@@ -117,15 +117,8 @@ fun StatisticsScreen(
             }
 
             item {
-                Card(
-                    colors = CardDefaults.cardColors(containerColor = card),
-                    shape = RoundedCornerShape(16.dp),
-                    border = BorderStroke(1.dp, cardBorder)
-                ) {
-                    Column(Modifier.padding(16.dp)) {
-                        Text(stringResource(R.string.statistics_today_breakdown), fontWeight = FontWeight.Bold, color = text)
-                        Spacer(Modifier.height(8.dp))
-                        if (blockedAppsToday.isEmpty()) {
+                StatCardSection(title = stringResource(R.string.statistics_today_breakdown)) {
+                    if (blockedAppsToday.isEmpty()) {
                             Text(stringResource(R.string.statistics_empty), fontSize = 13.sp, color = textMuted)
                         } else {
                             blockedAppsToday.take(10).forEach { app ->
@@ -145,22 +138,14 @@ fun StatisticsScreen(
                                 }
                             }
                         }
-                    }
                 }
             }
 
             // Top Blocked Categories
             if (topBlockedCategories.isNotEmpty()) {
                 item {
-                    Card(
-                        colors = CardDefaults.cardColors(containerColor = card),
-                        shape = RoundedCornerShape(16.dp),
-                        border = BorderStroke(1.dp, cardBorder)
-                    ) {
-                        Column(Modifier.padding(16.dp)) {
-                            Text("Blocked Categories", fontWeight = FontWeight.Bold, color = text)
-                            Spacer(Modifier.height(8.dp))
-                            topBlockedCategories.forEach { cat ->
+                    StatCardSection(title = "Blocked Categories") {
+                        topBlockedCategories.forEach { cat ->
                                 val catLabel = when (cat.category) {
                                     "ai" -> "AI Detection"
                                     "time" -> "Time Limit"
@@ -184,18 +169,10 @@ fun StatisticsScreen(
                         }
                     }
                 }
-            }
 
             item {
-                Card(
-                    colors = CardDefaults.cardColors(containerColor = card),
-                    shape = RoundedCornerShape(16.dp),
-                    border = BorderStroke(1.dp, cardBorder)
-                ) {
-                    Column(Modifier.padding(16.dp)) {
-                        Text(stringResource(R.string.statistics_recent), fontWeight = FontWeight.Bold, color = text)
-                        Spacer(Modifier.height(8.dp))
-                        if (recentEvents.isEmpty()) {
+                StatCardSection(title = stringResource(R.string.statistics_recent)) {
+                    if (recentEvents.isEmpty()) {
                             Text(stringResource(R.string.statistics_empty), fontSize = 13.sp, color = textMuted)
                         } else {
                             recentEvents.take(20).forEach { event ->
@@ -210,84 +187,51 @@ fun StatisticsScreen(
                                 }
                             }
                         }
-                    }
                 }
             }
 
             // BarChart: Daily Blocks (Last 7 Days)
             item {
-                Card(
-                    colors = CardDefaults.cardColors(containerColor = card),
-                    shape = RoundedCornerShape(16.dp),
-                    border = BorderStroke(1.dp, cardBorder)
-                ) {
-                    Column(Modifier.padding(16.dp)) {
-                        Text("Daily Blocks (7 Days)", fontWeight = FontWeight.Bold, color = text)
-                        Spacer(Modifier.height(8.dp))
-                        DailyBarChart(data = dailyBlocksData, modifier = Modifier.fillMaxWidth().height(200.dp))
-                    }
+                StatCardSection(title = "Daily Blocks (7 Days)") {
+                    DailyBarChart(data = dailyBlocksData, modifier = Modifier.fillMaxWidth().height(200.dp))
                 }
             }
 
             // PieChart: Block Distribution by App
             item {
-                Card(
-                    colors = CardDefaults.cardColors(containerColor = card),
-                    shape = RoundedCornerShape(16.dp),
-                    border = BorderStroke(1.dp, cardBorder)
-                ) {
-                    Column(Modifier.padding(16.dp)) {
-                        Text("Block Distribution", fontWeight = FontWeight.Bold, color = text)
-                        Spacer(Modifier.height(8.dp))
-                        if (blockDistribution.isEmpty()) {
-                            Text(stringResource(R.string.statistics_empty), fontSize = 13.sp, color = textMuted)
-                        } else {
-                            BlockPieChart(data = blockDistribution, modifier = Modifier.fillMaxWidth().height(220.dp))
-                        }
+                StatCardSection(title = "Block Distribution") {
+                    if (blockDistribution.isEmpty()) {
+                        Text(stringResource(R.string.statistics_empty), fontSize = 13.sp, color = textMuted)
+                    } else {
+                        BlockPieChart(data = blockDistribution, modifier = Modifier.fillMaxWidth().height(220.dp))
                     }
                 }
             }
 
             // LineChart: Streak History
             item {
-                Card(
-                    colors = CardDefaults.cardColors(containerColor = card),
-                    shape = RoundedCornerShape(16.dp),
-                    border = BorderStroke(1.dp, cardBorder)
-                ) {
-                    Column(Modifier.padding(16.dp)) {
-                        Text("Streak History", fontWeight = FontWeight.Bold, color = text)
-                        Spacer(Modifier.height(8.dp))
-                        StreakLineChart(data = streakHistoryData, modifier = Modifier.fillMaxWidth().height(200.dp))
-                    }
+                StatCardSection(title = "Streak History") {
+                    StreakLineChart(data = streakHistoryData, modifier = Modifier.fillMaxWidth().height(200.dp))
                 }
             }
 
             // Usage Stats (Last 7 Days)
             if (usageStats.isNotEmpty()) {
                 item {
-                    Card(
-                        colors = CardDefaults.cardColors(containerColor = card),
-                        shape = RoundedCornerShape(16.dp),
-                        border = BorderStroke(1.dp, cardBorder)
-                    ) {
-                        Column(Modifier.padding(16.dp)) {
-                            Text("App Usage (7 Days)", fontWeight = FontWeight.Bold, color = text)
-                            Spacer(Modifier.height(8.dp))
-                            usageStats.entries
-                                .sortedByDescending { it.value }
-                                .take(10)
-                                .forEach { (pkg, millis) ->
-                                    val label = pkg.substringAfterLast('.')
-                                    val hours = millis / 3_600_000
-                                    val minutes = (millis % 3_600_000) / 60_000
-                                    val timeStr = if (hours > 0) "${hours}h ${minutes}m" else "${minutes}m"
-                                    Row(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
-                                        Text(label, color = text, fontSize = 13.sp, modifier = Modifier.weight(1f))
-                                        Text(timeStr, color = primary, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                                    }
+                    StatCardSection(title = "App Usage (7 Days)") {
+                        usageStats.entries
+                            .sortedByDescending { it.value }
+                            .take(10)
+                            .forEach { (pkg, millis) ->
+                                val label = pkg.substringAfterLast('.')
+                                val hours = millis / 3_600_000
+                                val minutes = (millis % 3_600_000) / 60_000
+                                val timeStr = if (hours > 0) "${hours}h ${minutes}m" else "${minutes}m"
+                                Row(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+                                    Text(label, color = text, fontSize = 13.sp, modifier = Modifier.weight(1f))
+                                    Text(timeStr, color = primary, fontSize = 13.sp, fontWeight = FontWeight.Bold)
                                 }
-                        }
+                            }
                     }
                 }
             }
@@ -414,6 +358,22 @@ private fun StreakLineChart(data: List<DailyBlockCount>, modifier: Modifier = Mo
         },
         modifier = modifier
     )
+}
+
+@Composable
+private fun StatCardSection(title: String, modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit) {
+    Card(
+        colors = CardDefaults.cardColors(containerColor = card),
+        shape = RoundedCornerShape(16.dp),
+        border = BorderStroke(1.dp, cardBorder),
+        modifier = modifier
+    ) {
+        Column(Modifier.padding(16.dp)) {
+            Text(title, fontWeight = FontWeight.Bold, color = text)
+            Spacer(Modifier.height(8.dp))
+            content()
+        }
+    }
 }
 
 @Composable

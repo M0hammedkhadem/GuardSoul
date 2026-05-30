@@ -27,7 +27,9 @@ import com.agon.app.ui.theme.*
 import com.agon.app.GuardianApp
 import com.agon.app.data.local.entity.AppLimitEntity
 import com.agon.app.data.local.entity.BlocklistItemEntity
+import com.agon.app.viewmodel.SettingsViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.viewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -42,7 +44,8 @@ fun SettingsScreen(
     onNavigateToTimeLimits: () -> Unit = {},
     onNavigateToStatistics: () -> Unit = {},
     onNavigateToExportImport: () -> Unit = {},
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    vm: SettingsViewModel? = null
 ) {
     val context = LocalContext.current
     val app = context.applicationContext as GuardianApp
@@ -116,7 +119,7 @@ fun SettingsScreen(
                 }
             }
 
-            Spacer(modifier = Modifier.height(32.dp))
+            HorizontalDivider(color = cardBorder, modifier = Modifier.padding(vertical = 16.dp))
 
             Text(stringResource(R.string.section_status_overview), fontWeight = FontWeight.Bold, color = textSecondary, modifier = Modifier.padding(bottom = 12.dp, start = 4.dp))
 
@@ -154,7 +157,7 @@ fun SettingsScreen(
                 )
             }
 
-            Spacer(modifier = Modifier.height(32.dp))
+            HorizontalDivider(color = cardBorder, modifier = Modifier.padding(vertical = 16.dp))
 
             Text(stringResource(R.string.section_blocked_apps), fontWeight = FontWeight.Bold, color = textSecondary, modifier = Modifier.padding(bottom = 12.dp, start = 4.dp))
 
@@ -178,9 +181,9 @@ fun SettingsScreen(
                 }
             }
 
-            if (timeLimitedApps.isNotEmpty() || blacklistedApps.isNotEmpty()) {
+            if (timeLimitedApps.isNotEmpty()) {
                 Spacer(modifier = Modifier.height(24.dp))
-                Text(stringResource(R.string.section_blocked_apps), fontWeight = FontWeight.Bold, color = textSecondary, modifier = Modifier.padding(bottom = 12.dp, start = 4.dp))
+                Text(stringResource(R.string.section_time_limited_apps), fontWeight = FontWeight.Bold, color = textSecondary, modifier = Modifier.padding(bottom = 12.dp, start = 4.dp))
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     colors = CardDefaults.cardColors(containerColor = card),
@@ -189,10 +192,23 @@ fun SettingsScreen(
                     Column {
                         timeLimitedApps.forEachIndexed { index, limit ->
                             SettingsRow(icon = Icons.Default.Timer, title = limit.appLabel.ifBlank { limit.packageName.substringAfterLast('.') }) {}
-                            if (index < timeLimitedApps.lastIndex || blacklistedApps.isNotEmpty()) {
+                            if (index < timeLimitedApps.lastIndex) {
                                 HorizontalDivider(color = cardBorder)
                             }
                         }
+                    }
+                }
+            }
+
+            if (blacklistedApps.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(24.dp))
+                Text(stringResource(R.string.section_blacklisted_apps), fontWeight = FontWeight.Bold, color = textSecondary, modifier = Modifier.padding(bottom = 12.dp, start = 4.dp))
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = card),
+                    border = BorderStroke(1.dp, cardBorder)
+                ) {
+                    Column {
                         blacklistedApps.forEachIndexed { index, item ->
                             SettingsRow(icon = Icons.Default.Block, title = item.value.substringAfterLast('.')) {}
                             if (index < blacklistedApps.lastIndex) {
@@ -203,7 +219,7 @@ fun SettingsScreen(
                 }
             }
 
-            Spacer(modifier = Modifier.height(32.dp))
+            HorizontalDivider(color = cardBorder, modifier = Modifier.padding(vertical = 16.dp))
 
             Text(stringResource(R.string.section_data_management), fontWeight = FontWeight.Bold, color = textSecondary, modifier = Modifier.padding(bottom = 12.dp, start = 4.dp))
 
@@ -213,9 +229,9 @@ fun SettingsScreen(
                 border = BorderStroke(1.dp, cardBorder)
             ) {
                 Column {
-                    SettingsRow(icon = Icons.Default.DeleteOutline, title = stringResource(R.string.btn_reset_statistics)) { }
+                    SettingsRow(icon = Icons.Default.DeleteOutline, title = stringResource(R.string.btn_reset_statistics)) { vm?.resetStatistics() }
                     HorizontalDivider(color = cardBorder)
-                    SettingsRow(icon = Icons.Default.Restore, title = stringResource(R.string.btn_reset_all_settings)) { }
+                    SettingsRow(icon = Icons.Default.Restore, title = stringResource(R.string.btn_reset_all_settings)) { vm?.resetAllSettings() }
                 }
             }
 
