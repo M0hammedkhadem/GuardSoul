@@ -27,10 +27,10 @@ object AppNotificationChannels {
 
         val ytShorts = NotificationChannel(
             YOUTUBE_SHORTS,
-            "YouTube Shorts Block",
+            context.getString(R.string.channel_youtube_shorts),
             NotificationManager.IMPORTANCE_HIGH
         ).apply {
-            description = "إشعارات عند حظر YouTube Shorts"
+            description = context.getString(R.string.channel_youtube_shorts_desc)
         }
         manager.createNotificationChannel(ytShorts)
 
@@ -45,10 +45,10 @@ object AppNotificationChannels {
 
         val aiScanner = NotificationChannel(
             AI_SCANNER,
-            "AI Scanner",
+            context.getString(R.string.channel_scanner),
             NotificationManager.IMPORTANCE_HIGH
         ).apply {
-            description = "تنبيهات ماسح الذكاء الاصطناعي عند اكتشاف محتوى غير لائق"
+            description = context.getString(R.string.channel_scanner_desc)
             enableVibration(true)
             vibrationPattern = longArrayOf(0, 400, 200, 400)
         }
@@ -56,10 +56,10 @@ object AppNotificationChannels {
 
         val tamperAlert = NotificationChannel(
             TAMPER_ALERT,
-            "تنبيهات الأمان",
+            context.getString(R.string.channel_tamper_alert),
             NotificationManager.IMPORTANCE_HIGH
         ).apply {
-            description = "تنبيهات عند محاولة تعديل على حماية التطبيق"
+            description = context.getString(R.string.channel_tamper_alert_desc)
             enableVibration(true)
             vibrationPattern = longArrayOf(0, 500, 200, 500)
         }
@@ -67,20 +67,20 @@ object AppNotificationChannels {
 
         val remoteCommands = NotificationChannel(
             REMOTE_COMMANDS,
-            "Remote Commands",
+            context.getString(R.string.channel_remote_commands),
             NotificationManager.IMPORTANCE_HIGH
         ).apply {
-            description = "Notifications for remote commands from parent dashboard"
+            description = context.getString(R.string.channel_remote_commands_desc)
             enableVibration(true)
         }
         manager.createNotificationChannel(remoteCommands)
 
         val vpnAlert = NotificationChannel(
             VPN_SECURITY_ALERT,
-            "VPN Security Alert",
+            context.getString(R.string.channel_vpn_security_alert),
             NotificationManager.IMPORTANCE_MAX
         ).apply {
-            description = "Alert when VPN connection drops unexpectedly"
+            description = context.getString(R.string.channel_vpn_security_alert_desc)
             enableVibration(true)
             vibrationPattern = longArrayOf(0, 500, 200, 500, 200, 500)
         }

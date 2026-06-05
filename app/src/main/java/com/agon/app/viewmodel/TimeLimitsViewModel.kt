@@ -6,6 +6,7 @@ import android.content.pm.PackageManager
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.agon.app.AppBlockerService
+import com.agon.app.guardianApp
 import com.agon.app.GuardianApp
 import com.agon.app.data.local.entity.AppLimitEntity
 import kotlinx.coroutines.flow.*
@@ -18,7 +19,7 @@ data class AppTimeUsage(
 )
 
 class TimeLimitsViewModel(application: Application) : AndroidViewModel(application) {
-    private val repo = (application as GuardianApp).repository
+    private val repo = (application.guardianApp()!!).repository
 
     val appLimits: StateFlow<List<AppLimitEntity>> = repo.getAllAppLimits()
         .distinctUntilChanged()

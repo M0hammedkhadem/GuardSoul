@@ -1,103 +1,62 @@
 package com.agon.app
 
-import android.content.BroadcastReceiver
 import android.content.Context
-import android.content.Intent
 import android.net.ConnectivityManager
-import android.net.Network
 import android.net.NetworkCapabilities
-import android.net.NetworkRequest
-import android.net.VpnService
-import android.os.Build
+import androidx.work.Data
+import androidx.work.ExistingWorkPolicy
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import timber.log.Timber
-import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 
-class VpnStateMonitor : BroadcastReceiver() {
+/**
+ * Was a [android.content.BroadcastReceiver]; we now expose the same work
+ * scheduler and connectivity helpers as a plain object. The receiver was
+ * never registered in the manifest (dead code) and custom broadcasts are not
+ * the right mechanism for the only operation we needed — re-scheduling
+ * [VpnRevocationWorker] from [DnsVpnService.onRevoke].
+ */
+object VpnStateMonitor {
+    private const val TAG = "VpnStateMonitor"
+    private const val WORK_NAME = "vpn_revocation_alert"
+    private const val WORK_TAG = "vpn_revocation"
 
-    companion object {
-        const val ACTION_VPN_REVOKED = "com.agon.app.action.VPN_REVOKED"
-        const val ACTION_VPN_STOPPED = "com.agon.app.action.VPN_STOPPED"
-        const val ACTION_VPN_RESTART = "com.agon.app.action.VPN_RESTART"
-        private const val TAG = "VpnStateMonitor"
+    fun scheduleRevocationWork(context: Context, attempts: Int = 0) {
+        val inputData = Data.Builder()
+            .putInt("restart_attempts", attempts)
+            .build()
 
-        fun scheduleRevocationWork(context: Context) {
-            val work = OneTimeWorkRequestBuilder<VpnRevocationWorker>()
-                .setInitialDelay(1, TimeUnit.SECONDS)
-                .addTag("vpn_revocation")
-                .build()
-            WorkManager.getInstance(context).enqueueUniqueWork(
-                "vpn_revocation_alert",
-                androidx.work.ExistingWorkPolicy.REPLACE,
-                work
-            )
-            Timber.d(TAG, "Revocation work scheduled")
-        }
+        val work = OneTimeWorkRequestBuilder<VpnRevocationWorker>()
+            .setInitialDelay(1, TimeUnit.SECONDS)
+            .setInputData(inputData)
+            .addTag(WORK_TAG)
+            .build()
 
-        fun cancelRevocationWork(context: Context) {
-            WorkManager.getInstance(context).cancelUniqueWork("vpn_revocation_alert")
-        }
-
-        fun registerNetworkCallback(context: ConnectivityManager, callback: NetworkCallback) {
-            val request = NetworkRequest.Builder()
-                .addCapability(4)
-                .build()
-            try {
-                context.registerNetworkCallback(request, callback)
-                Timber.d(TAG, "VPN network callback registered")
-            } catch (e: Exception) {
-                Timber.w(e, TAG, "Failed to register VPN network callback")
-            }
-        }
-
-        fun isVpnActive(context: Context): Boolean {
-            val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
-            val networks = cm.allNetworks
-            for (network in networks) {
-                val caps = cm.getNetworkCapabilities(network) ?: continue
-                if (caps.hasTransport(NetworkCapabilities.TRANSPORT_VPN)) {
-                    val pkg = cm.getNetworkInfo(network)?.extraInfo
-                    if (pkg != null && pkg.contains(context.packageName)) {
-                        return true
-                    }
-                }
-            }
-            return false
-        }
+        WorkManager.getInstance(context).enqueueUniqueWork(
+            WORK_NAME,
+            ExistingWorkPolicy.REPLACE,
+            work,
+        )
+        Timber.d(TAG, "Revocation work scheduled (attempts: $attempts)")
     }
 
-    override fun onReceive(context: Context, intent: Intent) {
-        Timber.d(TAG, "Received action: ${intent.action}")
-        when (intent.action) {
-            ACTION_VPN_REVOKED, ACTION_VPN_STOPPED -> {
-                if (!DnsVpnService.wasStoppedIntentionally()) {
-                    Timber.w(TAG, "VPN stopped unintentionally! Scheduling alert...")
-                    scheduleRevocationWork(context)
-                } else {
-                    Timber.d(TAG, "VPN stopped intentionally, no alert needed")
-                    DnsVpnService.clearIntentionalStopFlag()
-                }
-            }
-            ACTION_VPN_RESTART -> {
-                if (!DnsVpnService.wasStoppedIntentionally()) {
-                    Timber.d(TAG, "Auto-restart requested")
-                    DnsVpnService.start(context)
-                }
-            }
-        }
+    fun cancelRevocationWork(context: Context) {
+        WorkManager.getInstance(context).cancelUniqueWork(WORK_NAME)
     }
 
-    abstract class NetworkCallback : ConnectivityManager.NetworkCallback() {
-        override fun onLost(network: Network) {
-            super.onLost(network)
-            Timber.d(TAG, "VPN network lost: $network")
+    fun isVpnActive(context: Context): Boolean {
+        val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+        val networks = cm.allNetworks
+        for (network in networks) {
+            val caps = cm.getNetworkCapabilities(network) ?: continue
+            if (caps.hasTransport(NetworkCapabilities.TRANSPORT_VPN)) {
+                val info = cm.getNetworkInfo(network)
+                if (info?.extraInfo?.contains(context.packageName) == true) {
+                    return true
+                }
+            }
         }
-
-        override fun onCapabilitiesChanged(network: Network, caps: NetworkCapabilities) {
-            super.onCapabilitiesChanged(network, caps)
-            Timber.d(TAG, "VPN capabilities changed: ${caps.transportInfo}")
-        }
+        return false
     }
 }

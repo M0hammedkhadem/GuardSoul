@@ -3,6 +3,7 @@ package com.agon.app.viewmodel
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.agon.app.guardianApp
 import com.agon.app.GuardianApp
 import com.agon.app.data.BadgeWithState
 import com.agon.app.data.BadgesData
@@ -10,7 +11,7 @@ import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 
 class ProfileViewModel(application: Application) : AndroidViewModel(application) {
-    private val repo = (application as GuardianApp).repository
+    private val repo = (application.guardianApp()!!).repository
     private val settings = repo.getAppSettings()
 
     val profileName: StateFlow<String> = settings.profileNameFlow

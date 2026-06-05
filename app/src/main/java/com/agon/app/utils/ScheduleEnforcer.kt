@@ -4,6 +4,7 @@ import android.app.AlarmManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import com.agon.app.blocking.DayOfWeekUtil
 import com.agon.app.data.repository.AppRepository
 import com.agon.app.receivers.ScheduleReceiver
 import kotlinx.coroutines.flow.first
@@ -22,6 +23,7 @@ object ScheduleEnforcer {
         if (transitions.isEmpty()) return
 
         // Cancel all existing schedule alarms (request codes 1000-1999)
+        // Using a slightly larger range to be safe
         for (oldCode in 1000 until 1100) {
             val oldIntent = Intent(context, ScheduleReceiver::class.java)
             val oldPending = PendingIntent.getBroadcast(
@@ -64,23 +66,12 @@ object ScheduleEnforcer {
             val now = Calendar.getInstance()
             val allTransitions = mutableListOf<Transition>()
 
-            fun mapToAppDay(calDay: Int): Int = when(calDay) {
-                Calendar.MONDAY -> 1
-                Calendar.TUESDAY -> 2
-                Calendar.WEDNESDAY -> 3
-                Calendar.THURSDAY -> 4
-                Calendar.FRIDAY -> 5
-                Calendar.SATURDAY -> 6
-                Calendar.SUNDAY -> 7
-                else -> 1
-            }
-
             for (dayOffset in 0..7) {
                 val checkDay = (now.clone() as Calendar).apply { add(Calendar.DAY_OF_YEAR, dayOffset) }
-                val appDay = mapToAppDay(checkDay.get(Calendar.DAY_OF_WEEK))
-                
+                val appDay = DayOfWeekUtil.calendarDayToMondayFirstIndex(checkDay.get(Calendar.DAY_OF_WEEK))
+
                 for (rule in rules) {
-                    val ruleDays = rule.daysOfWeek.split(",").mapNotNull { it.trim().toIntOrNull() }
+                    val ruleDays = DayOfWeekUtil.decode(rule.daysOfWeek)
                     if (appDay !in ruleDays) continue
 
                     listOf(
@@ -94,7 +85,8 @@ object ScheduleEnforcer {
                             set(Calendar.MILLISECOND, 0)
                         }.timeInMillis
 
-                        if (transitionTime > System.currentTimeMillis()) {
+                        // Issue #239: Use >= to include transitions happening exactly now
+                        if (transitionTime >= System.currentTimeMillis()) {
                             allTransitions.add(Transition(transitionTime, type))
                         }
                     }

@@ -30,7 +30,7 @@ com.agon.app/
 │   └── theme/
 │       ├── Color.kt               # ألوان التطبيق
 │       └── Theme.kt               # الثيم الداكن
-├── FacebookBlockerService.kt      # خدمة حظر فيديوهات فيسبوك (AccessibilityService)
+├── ShortstopAccessibilityService.kt # خدمة الحظر الجراحي (AccessibilityService) — FB Reels + YT Shorts + IG Reels + TikTok + Snap
 ├── FacebookSettings.kt            # إعدادات فيسبوك (DataStore)
 ├── AccessibilityUtils.kt          # أدوات إمكانية الوصول
 ├── DnsVpnService.kt               # خدمة DNS/VPN (stub)
@@ -56,7 +56,7 @@ com.agon.app/
 | التحقق من الحالة | ✅ مكتمل | قراءة من النظام (`isServiceEnabled`, `canDrawOverlays`, `isAdminActive`, `AppOpsManager`) |
 | شريط التقدم | ✅ مكتمل | 0/5 → 5/5 مع لون أخضر عند الاكتمال |
 
-### 2. حظر فيديوهات فيسبوك — FacebookBlockerService
+### 2. حظر فيديوهات فيسبوك — ShortstopAccessibilityService
 | الجزء | الحالة | التفاصيل |
 |-------|--------|----------|
 | AccessibilityService | ✅ مكتمل | يكشف النقر على الفيديو ونوافذ المشغل |
@@ -83,7 +83,7 @@ com.agon.app/
 | الجزء | الحالة | التفاصيل |
 |-------|--------|----------|
 | GuardianDeviceAdminReceiver | ✅ مكتمل | مع Toast ورسالة تحذير |
-| BootReceiver | ✅ مكتمل | إعادة تشغيل FacebookBlockerService |
+| BootReceiver | ✅ مكتمل | إعادة تشغيل ShortstopAccessibilityService |
 | قنوات الإشعارات | ✅ مكتمل | 6 قنوات معرفة |
 | Timber Logging | ✅ مكتمل | DebugTree في GuardianApp |
 
@@ -118,7 +118,7 @@ com.agon.app/
 |-------|--------|---------|
 | Toggle switches للتطبيقات | ✅ UI مكتمل | حالة التبديل غير محفوظة |
 | YouTube mode selector | ✅ UI مكتمل | لا يوجد AccessibilityService ليوتيوب |
-| Facebook mode selector | ✅ UI مكتمل | موجود FacebookBlockerService لكن غير مربوط |
+| Facebook mode selector | ✅ UI مكتمل | مربوط بـ ShortstopAccessibilityService عبر SocialViewModel |
 | Instagram/Snapchat/Twitter/TikTok | ✅ UI مكتمل | لا يوجد أي blocking logic |
 | **ما يجب بناؤه:** DataStore للتبديلات + AccessibilityService لكل تطبيق + UsageStatsManager للكشف |
 
@@ -249,7 +249,7 @@ com.agon.app/
 |---------|--------|
 | منع الحذف عبر Device Admin | ✅ معلن لكن غير مفعل بالكامل |
 | EncryptedSharedPreferences لكلمة المرور | ❌ غير موجود (SHA-256 في UiModels فقط) |
-| إعادة تشغيل جميع الخدمات بعد BOOT_COMPLETED | 🔶 جزئي (فقط FacebookBlockerService) |
+| إعادة تشغيل جميع الخدمات بعد BOOT_COMPLETED | 🔶 جزئي (ShortstopAccessibilityService + باقي الخدمات) |
 
 ---
 
@@ -323,7 +323,7 @@ com.agon.app/
 | الفئة | العدد |
 |-------|-------|
 | 🟢 UI مكتمل بالكامل | 15 شاشة |
-| 🟢 UI + Logic مكتمل | 3 (PermissionsScreen, FacebookBlockerService, ExportImport) |
+| 🟢 UI + Logic مكتمل | 3 (PermissionsScreen, ShortstopAccessibilityService, ExportImport) |
 | 🔶 UI فقط — يحتاج Logic | 12 شاشة |
 | ❌ غير موجود بالمرة | 6 ميزات رئيسية |
 | 🔧 يحتاج تعديل | 7 نقاط |

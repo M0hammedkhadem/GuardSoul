@@ -125,3 +125,45 @@
 -keepclassmembers class * {
     @kotlinx.serialization.Transient <fields>;
 }
+
+# ---------------------------------------
+# Google Play Billing
+# ---------------------------------------
+-keep class com.android.billingclient.** { *; }
+-keepclassmembers class com.android.billingclient.** { *; }
+-keep class com.google.android.gms.ads.identifier.** { *; }
+
+# ---------------------------------------
+# Firebase Crashlytics + Analytics
+# ---------------------------------------
+-keep class com.google.firebase.crashlytics.** { *; }
+-keep class com.google.firebase.analytics.** { *; }
+-keepclassmembers class ** {
+    @com.google.firebase.crashlytics.annotations.Suppress <fields>;
+}
+
+# ---------------------------------------
+# Google Play In-App Review / In-App Update
+# ---------------------------------------
+-keep class com.google.android.play.core.** { *; }
+-keepclassmembers class com.google.android.play.core.** { *; }
+
+# ---------------------------------------
+# User Messaging Platform (UMP / GDPR)
+# ---------------------------------------
+-keep class com.google.android.ump.** { *; }
+-keepclassmembers class com.google.android.ump.** { *; }
+
+# ---------------------------------------
+# Suppress warnings for optional / split-library references
+# ---------------------------------------
+-dontwarn com.google.android.gms.common.annotation.NoNullnessRewrite
+-dontwarn com.google.api.client.http.GenericUrl
+-dontwarn com.google.api.client.http.HttpHeaders
+-dontwarn com.google.api.client.http.HttpRequest
+-dontwarn com.google.api.client.http.HttpRequestFactory
+-dontwarn com.google.api.client.http.HttpResponse
+-dontwarn com.google.api.client.http.HttpTransport
+-dontwarn com.google.api.client.http.javanet.NetHttpTransport$Builder
+-dontwarn com.google.api.client.http.javanet.NetHttpTransport
+-dontwarn org.joda.time.Instant

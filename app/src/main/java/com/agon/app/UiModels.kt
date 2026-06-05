@@ -1,67 +1,72 @@
 package com.agon.app
 
 import com.agon.app.data.local.entity.BlocklistItemEntity
-import java.util.UUID
 
-data class ScheduleRule(
-    val id: String = UUID.randomUUID().toString(),
-    val enabled: Boolean = true,
-    val daysOfWeek: Set<Int> = emptySet(),
-    val startHour: Int = 22,
-    val startMinute: Int = 0,
-    val endHour: Int = 8,
-    val endMinute: Int = 0,
-)
-
-data class DailyTimeLimit(
-    val packageName: String = "",
-    val appLabel: String = "",
-    val dailyMinutes: Int = 30,
-)
-
-data class BlockEvent(
-    val timestamp: Long = System.currentTimeMillis(),
-    val packageName: String = "",
-    val blockType: String = "manual",
-)
-
+/**
+ * UI-facing representation of a single blocklist entry. Wraps the Room entity
+ * so the entity's storage concerns (autoGenerate id, Room annotations) stay
+ * inside the data layer while screens consume a stable model.
+ */
 data class BlocklistItem(
-    val id: Long = 0,
+    val id: Long,
     val listType: String,
     val category: String,
     val value: String,
-    val enabled: Boolean = true,
-    val createdAt: Long = System.currentTimeMillis(),
-    val label: String? = null,
-    val regexEnabled: Boolean = false,
-    val sensitivityLevel: String = "medium",
-    val urlCategory: String? = null
+    val enabled: Boolean,
+    val createdAt: Long,
+    val label: String?,
+    val regexEnabled: Boolean,
+    val sensitivityLevel: String,
+    val urlCategory: String?,
 ) {
     val displayLabel: String get() = label ?: value
+
+    fun toEntity(): BlocklistItemEntity = BlocklistItemEntity(
+        id = id,
+        listType = listType,
+        category = category,
+        value = value,
+        enabled = enabled,
+        createdAt = createdAt,
+        label = label,
+        regexEnabled = regexEnabled,
+        sensitivityLevel = sensitivityLevel,
+        urlCategory = urlCategory,
+    )
+
+    companion object {
+        fun fromEntity(e: BlocklistItemEntity): BlocklistItem = BlocklistItem(
+            id = e.id,
+            listType = e.listType,
+            category = e.category,
+            value = e.value,
+            enabled = e.enabled,
+            createdAt = e.createdAt,
+            label = e.label,
+            regexEnabled = e.regexEnabled,
+            sensitivityLevel = e.sensitivityLevel,
+            urlCategory = e.urlCategory,
+        )
+
+        fun create(
+            listType: String,
+            category: String,
+            value: String,
+            label: String? = null,
+            regexEnabled: Boolean = false,
+            sensitivityLevel: String = "medium",
+            urlCategory: String? = null,
+        ): BlocklistItem = BlocklistItem(
+            id = 0,
+            listType = listType,
+            category = category,
+            value = value,
+            enabled = true,
+            createdAt = System.currentTimeMillis(),
+            label = label,
+            regexEnabled = regexEnabled,
+            sensitivityLevel = sensitivityLevel,
+            urlCategory = urlCategory,
+        )
+    }
 }
-
-fun BlocklistItemEntity.toUiModel() = BlocklistItem(
-    id = id,
-    listType = listType,
-    category = category,
-    value = value,
-    enabled = enabled,
-    createdAt = createdAt,
-    label = label,
-    regexEnabled = regexEnabled,
-    sensitivityLevel = sensitivityLevel,
-    urlCategory = urlCategory
-)
-
-fun BlocklistItem.toEntity() = BlocklistItemEntity(
-    id = id,
-    listType = listType,
-    category = category,
-    value = value,
-    enabled = enabled,
-    createdAt = createdAt,
-    label = label,
-    regexEnabled = regexEnabled,
-    sensitivityLevel = sensitivityLevel,
-    urlCategory = urlCategory
-)

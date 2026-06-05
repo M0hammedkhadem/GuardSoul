@@ -13,6 +13,9 @@ import timber.log.Timber
 object ForegroundServiceHelper {
 
     private const val NOTIFICATION_CHANNEL_ID = "guardian_foreground_service"
+    
+    // Issue #174: Use a stable request code for the notification PendingIntent
+    private const val FOREGROUND_NOTIFICATION_REQUEST_CODE = 1001
 
     /**
      * إنشاء قناة إشعارات خاصة بالخدمات الخلفية بأقل مستوى أهمية
@@ -55,9 +58,11 @@ object ForegroundServiceHelper {
         val openIntent = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
         }
+        
+        // Issue #174: Fixed request code to avoid resource exhaustion and allow reuse
         val pendingIntent = PendingIntent.getActivity(
             context,
-            System.currentTimeMillis().toInt(),
+            FOREGROUND_NOTIFICATION_REQUEST_CODE,
             openIntent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
@@ -79,17 +84,6 @@ object ForegroundServiceHelper {
 
     /**
      * startForegroundCompat - دالة متوافقة مع جميع إصدارات أندرويد
-     *
-     * Android 14+ (API 34): يتطلب تحديد foregroundServiceType في startForeground()
-     * Android 12+ (API 31): يتطلب startForegroundService() لبدء الخدمة
-     * Android 8+  (API 26): يتطلب إنشاء NotificationChannel
-     * Android 6+  (API 23): يتطلب صلاحية POST_NOTIFICATIONS
-     * الأقدم: يعمل بشكل طبيعي
-     *
-     * @param service كائن الخدمة (Service)
-     * @param notificationId معرف الإشعار
-     * @param notification كائن الإشعار
-     * @param foregroundServiceType نوع الخدمة الأمامية (متوافق مع Android 14+)
      */
     fun startForegroundCompat(
         service: Service,
@@ -99,51 +93,41 @@ object ForegroundServiceHelper {
     ) {
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-                // Android 14+ (API 34): يجب تحديد foregroundServiceType صراحةً
                 service.startForeground(
                     notificationId,
                     notification,
                     foregroundServiceType
                 )
-                Timber.d("startForegroundCompat: Android 14+ with type=$foregroundServiceType")
-            } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                // Android 12-13 (API 31-33): يدعم ForegroundServiceType لكن اختياري
-                service.startForeground(notificationId, notification)
-                Timber.d("startForegroundCompat: Android 12-13")
             } else {
-                // Android 8-11 (API 26-30)
                 service.startForeground(notificationId, notification)
-                Timber.d("startForegroundCompat: Android 8-11")
             }
         } catch (e: SecurityException) {
-            Timber.e(e, "startForegroundCompat: SecurityException - missing permission or wrong type")
-            // محاولة أخيرة بدون تحديد النوع
+            Timber.e(e, "startForegroundCompat: SecurityException")
             try {
                 service.startForeground(notificationId, notification)
             } catch (e2: Exception) {
-                Timber.e(e2, "startForegroundCompat: fallback also failed")
+                Timber.e(e2, "startForegroundCompat: fallback failed")
             }
         } catch (e: Exception) {
-            Timber.e(e, "startForegroundCompat: unexpected error")
+            // Issue #267: Broaden exception handling to catch IllegalStateException for FGS start requirements
+            Timber.e(e, "startForegroundCompat: unexpected error starting foreground service")
         }
     }
 
-    /**
-     * دالة مساعدة لبدء خدمة كـ Foreground Service بشكل متوافق
-     * تجمع بين startForegroundService + startForegroundCompat
-     */
     fun startServiceAsForeground(
         context: Context,
         serviceClass: Class<*>,
-        extras: (Intent.() -> Unit)? = null
+        intent: Intent? = null
     ) {
-        val intent = Intent(context, serviceClass).apply {
-            extras?.invoke(this)
-        }
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            context.startForegroundService(intent)
-        } else {
-            context.startService(intent)
+        val serviceIntent = intent ?: Intent(context, serviceClass)
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                context.startForegroundService(serviceIntent)
+            } else {
+                context.startService(serviceIntent)
+            }
+        } catch (e: Exception) {
+            Timber.e(e, "Failed to start service ${serviceClass.simpleName} as foreground")
         }
     }
 }

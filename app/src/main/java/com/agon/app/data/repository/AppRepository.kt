@@ -14,6 +14,7 @@ import com.agon.app.data.local.entity.ScheduleRuleEntity
 import com.agon.app.data.local.entity.TamperAlertEntity
 import com.agon.app.data.remote.FirebaseManager
 import com.agon.app.data.settings.AppSettings
+import com.agon.app.data.settings.EncryptedPrefs
 import kotlinx.coroutines.flow.Flow
 
 class AppRepository(
@@ -59,8 +60,6 @@ class AppRepository(
         blocklistDao.getItems(listType, category)
     suspend fun getBlocklistItemById(id: Long): BlocklistItemEntity? =
         blocklistDao.getById(id)
-    fun searchBlocklist(listType: String, category: String, query: String): Flow<List<BlocklistItemEntity>> =
-        blocklistDao.search(listType, category, query)
     suspend fun addBlocklistItem(listType: String, category: String, value: String) {
         blocklistDao.insert(BlocklistItemEntity(listType = listType, category = category, value = value))
     }
@@ -73,7 +72,6 @@ class AppRepository(
     suspend fun removeBlocklistItemById(id: Long) {
         blocklistDao.deleteById(id)
     }
-    suspend fun getFullBlocklist(listType: String) = blocklistDao.getItems(listType, "apps")
 
     // App Limits
     fun getAllAppLimits(): Flow<List<AppLimitEntity>> = appLimitDao.getAllFlow()
@@ -88,6 +86,19 @@ class AppRepository(
 
     suspend fun recordTamperAlert(type: String, detail: String, packageName: String = "", userId: Int = 0) {
         tamperAlertDao.insert(TamperAlertEntity(type = type, detail = detail, packageName = packageName, userId = userId))
+        // Side-channel: queue a parent email intent if configured.
+        // Done outside the DAO call so a slow mail-app launch can never
+        // block the DB write.
+        com.agon.app.utils.TamperEmailNotifier.maybeNotify(
+            context = application,
+            scope = kotlinx.coroutines.CoroutineScope(
+                kotlinx.coroutines.Dispatchers.IO +
+                    kotlinx.coroutines.SupervisorJob()
+            ),
+            settings = settings,
+            tamperType = type,
+            tamperDetail = detail
+        )
     }
 
     suspend fun clearTamperAlerts() = tamperAlertDao.deleteAll()
@@ -99,21 +110,18 @@ class AppRepository(
     suspend fun deleteScheduleRule(rule: ScheduleRuleEntity) = scheduleRuleDao.delete(rule)
     suspend fun toggleScheduleRule(id: Long, enabled: Boolean) = scheduleRuleDao.setEnabled(id, enabled)
 
-    // Streak calculation — counts consecutive days with ≥1 block event
+    // Streak calculation
     suspend fun calculateStreak(): Int {
-        val allEvents = blockEventDao.blocksSince(0L)
         val todayStart = getTodayStart()
         var streak = 0
         var checkTime = todayStart
-
         while (true) {
             val dayEnd = checkTime + 86400000L
-            val hasEvent = allEvents.any { it.timestamp in checkTime until dayEnd }
+            val hasEvent = blockEventDao.blocksSince(checkTime).any { it.timestamp < dayEnd }
             if (!hasEvent) break
             streak++
             checkTime -= 86400000L
-            val oldest = allEvents.minOfOrNull { it.timestamp } ?: break
-            if (checkTime < oldest - 86400000L) break
+            if (streak > 3650) break 
         }
         return streak
     }
@@ -125,7 +133,11 @@ class AppRepository(
 
     suspend fun resetAllSettings() {
         clearAllEvents()
-        settings.setOnboardingComplete()
+        clearTamperAlerts()
+        
+        // Issue #241: Explicitly clear EncryptedPrefs as well
+        EncryptedPrefs(application).clear()
+        
         settings.setShieldActive(false)
         settings.setTrialMode(false)
         settings.setDeactivationDelay(0)
@@ -133,6 +145,12 @@ class AppRepository(
         settings.setPinHash("")
         settings.setStreakCount(0)
         settings.setLongestStreak(0)
+        settings.setXpPoints(0)
+        settings.setLevel(1)
+        
+        // Clear all schedules and limits
+        appLimitDao.deleteAll()
+        scheduleRuleDao.deleteAll()
     }
 
     // ── Firebase Remote Monitoring ─────────────────────────────
@@ -140,32 +158,32 @@ class AppRepository(
     suspend fun syncToFirebase() {
         if (!settings.isRemoteMonitoringEnabled()) return
         try {
-            val firebase = FirebaseManager(application, blockEventDao, appLimitDao)
+            val firebase = FirebaseManager(application, blockEventDao, appLimitDao, settings)
             if (!firebase.initialize()) return
             firebase.syncDeviceInfo()
             firebase.syncAppLimits()
             firebase.syncBlockEvents()
             firebase.syncWeeklyReport()
         } catch (e: Exception) {
-            android.util.Log.e("AppRepository", "syncToFirebase failed", e)
+            timber.log.Timber.e(e, "AppRepository: syncToFirebase failed")
         }
     }
 
     suspend fun sendAlert(type: String, message: String) {
         if (!settings.isRemoteMonitoringEnabled()) return
         try {
-            val firebase = FirebaseManager(application, blockEventDao, appLimitDao)
+            val firebase = FirebaseManager(application, blockEventDao, appLimitDao, settings)
             if (!firebase.initialize()) return
             firebase.sendAlert(type, message)
         } catch (e: Exception) {
-            android.util.Log.e("AppRepository", "sendAlert failed", e)
+            timber.log.Timber.e(e, "AppRepository: sendAlert failed")
         }
     }
 
     suspend fun processRemoteCommands() {
         if (!settings.isRemoteMonitoringEnabled()) return
         try {
-            val firebase = FirebaseManager(application, blockEventDao, appLimitDao)
+            val firebase = FirebaseManager(application, blockEventDao, appLimitDao, settings)
             if (!firebase.initialize()) return
             firebase.processPendingCommands { command, data ->
                 when (command) {
@@ -176,7 +194,7 @@ class AppRepository(
                 }
             }
         } catch (e: Exception) {
-            android.util.Log.e("AppRepository", "processRemoteCommands failed", e)
+            timber.log.Timber.e(e, "AppRepository: processRemoteCommands failed")
         }
     }
 
@@ -189,3 +207,4 @@ class AppRepository(
         return cal.timeInMillis
     }
 }
+

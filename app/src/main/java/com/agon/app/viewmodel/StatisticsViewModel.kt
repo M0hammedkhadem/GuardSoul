@@ -6,6 +6,7 @@ import android.content.Context
 import android.content.Intent
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.agon.app.guardianApp
 import com.agon.app.GuardianApp
 import com.agon.app.data.local.dao.MostBlockedApp
 import com.agon.app.data.local.entity.AppLimitEntity
@@ -204,7 +205,7 @@ class StatisticsViewModel(application: Application) : AndroidViewModel(applicati
                 }
                 appContext.startActivity(Intent.createChooser(intent, "Share Stats"))
             } catch (e: Exception) {
-                android.util.Log.e("StatsVM", "CSV export failed", e)
+                timber.log.Timber.e(e, "StatsVM: CSV export failed")
             }
         }
     }

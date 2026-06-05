@@ -4,7 +4,6 @@ import android.app.Activity
 import android.app.admin.DevicePolicyManager
 import android.content.ComponentName
 import android.content.Intent
-import android.net.VpnService
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
@@ -42,55 +41,45 @@ import com.agon.app.GuardianDeviceAdminReceiver
 import com.agon.app.R
 import com.agon.app.ui.theme.*
 import com.agon.app.viewmodel.ContentViewModel
-import timber.log.Timber
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ContentScreen(vm: ContentViewModel) {
     val context = LocalContext.current
     val pornBlockerActive by vm.pornBlocker.collectAsStateWithLifecycle()
-    val nextDnsProfileId by vm.nextDnsProfileId.collectAsStateWithLifecycle()
-    val aiExplorerActive by vm.aiScanner.collectAsStateWithLifecycle()
+    val aiScannerActive by vm.aiScanner.collectAsStateWithLifecycle()
+    val isDeviceOwner by vm.isDeviceOwner.collectAsStateWithLifecycle()
     val uninstallProtectionActive by vm.uninstallProtection.collectAsStateWithLifecycle()
     val strongProtectionActive by vm.strongProtection.collectAsStateWithLifecycle()
     val dpm = context.getSystemService(android.content.Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
     val deviceAdminComponent = ComponentName(context, GuardianDeviceAdminReceiver::class.java)
     val deviceAdminGranted = dpm.isAdminActive(deviceAdminComponent)
     val scrollState = rememberScrollState()
-    var editProfileId by remember { mutableStateOf(false) }
-    var profileIdText by remember(nextDnsProfileId) { mutableStateOf(nextDnsProfileId) }
 
     var showStrongProtectionDialog by remember { mutableStateOf(false) }
     var strongPinInput by remember { mutableStateOf("") }
     var strongPinError by remember { mutableStateOf(false) }
     var showStrongWarningDialog by remember { mutableStateOf(false) }
 
-    val vpnLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.StartActivityForResult()
-    ) { result ->
-        if (result.resultCode == Activity.RESULT_OK) {
-            vm.setPornBlocker(true)
-        }
-    }
-
-    val mediaProjectionLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.StartActivityForResult()
-    ) { result ->
-        if (result.resultCode == Activity.RESULT_OK) {
-            val data = result.data
-            if (data != null) {
-                vm.startAiScannerWithProjection(data)
-            } else {
-                Timber.w("MediaProjection permission denied by user")
-            }
-        }
-    }
-
     val adminLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult()
     ) { result ->
         if (result.resultCode == Activity.RESULT_OK) {
             vm.setUninstallProtection(true)
+        }
+    }
+
+    // MediaProjection consent: required for AI Explorer to actually capture
+    // frames. Without this intent the service starts but the scan loop stays
+    // dormant (the user has to re-grant to make the feature useful).
+    val projectionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK && result.data != null) {
+            vm.startAiScannerWithProjection(result.data!!)
+        } else {
+            // User cancelled — roll back the toggle.
+            vm.setAiScanner(false)
         }
     }
 
@@ -123,92 +112,22 @@ fun ContentScreen(vm: ContentViewModel) {
                 title = stringResource(R.string.card_porn_blocker_title),
                 subtitle = stringResource(R.string.card_porn_blocker_subtitle),
                 isActive = pornBlockerActive,
-                activeBadge = stringResource(R.string.badge_vpn_active),
+                activeBadge = when {
+                    !pornBlockerActive -> "OFF"
+                    isDeviceOwner -> stringResource(R.string.badge_dns_active)
+                    else -> stringResource(R.string.badge_keyword_active)
+                },
                 icon = Icons.Default.Security,
                 color = success,
-                onToggle = { active ->
-                    if (active) {
-                        val intent = VpnService.prepare(context)
-                        if (intent != null) {
-                            vpnLauncher.launch(intent)
-                        } else {
-                            vm.setPornBlocker(true)
-                        }
-                    } else {
-                        vm.setPornBlocker(false)
-                    }
-                }
+                onToggle = { active -> vm.setPornBlocker(active) }
             ) {
-                ChecklistItem(stringResource(R.string.feature_google_safe_search))
-                ChecklistItem(stringResource(R.string.feature_youtube_restricted))
-                ChecklistItem(stringResource(R.string.feature_bing_safe_search))
-                ChecklistItem(stringResource(R.string.feature_browser_filter))
-                ChecklistItem(stringResource(R.string.feature_dns_blocking))
-                Spacer(Modifier.height(8.dp))
-                Text(stringResource(R.string.label_dns_provider), fontSize = 13.sp, fontWeight = FontWeight.Medium, color = text)
-                Spacer(Modifier.height(4.dp))
-                Surface(color = surfaceLight, shape = RoundedCornerShape(8.dp), modifier = Modifier.fillMaxWidth()) {
-                    Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Box(Modifier.size(24.dp).clip(CircleShape).background(primary.copy(alpha = 0.2f)), contentAlignment = Alignment.Center) {
-                            Text("N", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = primary)
-                        }
-                        Spacer(Modifier.width(8.dp))
-                        Column(Modifier.weight(1f)) {
-                            Text("NextDNS", fontSize = 13.sp, fontWeight = FontWeight.Medium, color = text)
-                            Text("45.90.28.0 / 45.90.29.0", fontSize = 11.sp, color = textMuted)
-                        }
-                    }
-                }
-                Spacer(Modifier.height(8.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f)) {
-                        Text(stringResource(R.string.label_nextdns_profile), fontSize = 13.sp, fontWeight = FontWeight.Medium, color = text)
-                        if (nextDnsProfileId.isNotBlank()) {
-                            Text(nextDnsProfileId, fontSize = 12.sp, color = textMuted)
-                        } else {
-                            Text(stringResource(R.string.hint_nextdns_profile_empty), fontSize = 11.sp, color = textMuted)
-                        }
-                    }
-                    TextButton(onClick = { editProfileId = true }) {
-                        Text(if (nextDnsProfileId.isNotBlank()) stringResource(R.string.btn_change) else stringResource(R.string.btn_set))
-                    }
-                }
-                Spacer(Modifier.height(12.dp))
-                val currentMode by vm.safeSearchMode.collectAsStateWithLifecycle()
-                Text(stringResource(R.string.label_safe_search_mode), fontSize = 13.sp, fontWeight = FontWeight.Medium, color = text)
-                Spacer(Modifier.height(6.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Surface(
-                        color = if (currentMode == "basic") success.copy(alpha = 0.12f) else surfaceLight,
-                        shape = RoundedCornerShape(8.dp),
-                        border = BorderStroke(1.dp, if (currentMode == "basic") success.copy(alpha = 0.3f) else cardBorder),
-                        modifier = Modifier.weight(1f).clickable(enabled = pornBlockerActive) { vm.setSafeSearchMode("basic") }
-                    ) {
-                        Column(Modifier.padding(10.dp)) {
-                            Text(stringResource(R.string.mode_basic), fontSize = 13.sp, fontWeight = FontWeight.Bold, color = if (currentMode == "basic") success else text)
-                            Text(stringResource(R.string.mode_basic_desc), fontSize = 10.sp, color = textMuted)
-                        }
-                    }
-                    Spacer(Modifier.width(8.dp))
-                    Surface(
-                        color = if (currentMode == "strict") warning.copy(alpha = 0.12f) else surfaceLight,
-                        shape = RoundedCornerShape(8.dp),
-                        border = BorderStroke(1.dp, if (currentMode == "strict") warning.copy(alpha = 0.3f) else cardBorder),
-                        modifier = Modifier.weight(1f).clickable(enabled = pornBlockerActive) { vm.setSafeSearchMode("strict") }
-                    ) {
-                        Column(Modifier.padding(10.dp)) {
-                            Text(stringResource(R.string.mode_strict), fontSize = 13.sp, fontWeight = FontWeight.Bold, color = if (currentMode == "strict") warning else text)
-                            Text(stringResource(R.string.mode_strict_desc), fontSize = 10.sp, color = textMuted)
-                        }
-                    }
-                }
-                Spacer(Modifier.height(8.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(stringResource(R.string.label_block_doh), fontSize = 13.sp, color = text, modifier = Modifier.weight(1f))
-                    Switch(
-                        checked = vm.blockDoh.collectAsStateWithLifecycle().value,
-                        onCheckedChange = { vm.setBlockDoh(it) },
-                        colors = SwitchDefaults.colors(checkedTrackColor = danger, checkedThumbColor = surface)
+                Text(stringResource(R.string.dns_blocking_desc), fontSize = 12.sp, color = textSecondary)
+                if (pornBlockerActive && !isDeviceOwner) {
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        text = stringResource(R.string.porn_block_requires_device_owner),
+                        fontSize = 11.sp,
+                        color = warning,
                     )
                 }
             }
@@ -216,102 +135,31 @@ fun ContentScreen(vm: ContentViewModel) {
             FeatureToggleCard(
                 title = stringResource(R.string.card_ai_explorer_title),
                 subtitle = stringResource(R.string.card_ai_explorer_subtitle),
-                isActive = aiExplorerActive,
-                activeBadge = stringResource(R.string.badge_scanning),
+                isActive = aiScannerActive,
+                activeBadge = if (aiScannerActive) stringResource(R.string.badge_on) else stringResource(R.string.badge_off),
                 icon = Icons.Default.Visibility,
                 color = accent,
                 onToggle = { active ->
                     if (active) {
-                        val projectionIntent = vm.getMediaProjectionIntent()
-                        if (projectionIntent != null) {
-                            mediaProjectionLauncher.launch(projectionIntent)
-                        }
+                        // Enable the flag first, then ask for screen-capture
+                        // consent. If the user denies, the onCancel handler
+                        // flips it back to false.
+                        vm.setAiScanner(true)
+                        val mpManager = context.getSystemService(
+                            android.content.Context.MEDIA_PROJECTION_SERVICE
+                        ) as android.media.projection.MediaProjectionManager
+                        projectionLauncher.launch(mpManager.createScreenCaptureIntent())
                     } else {
                         vm.setAiScanner(false)
                     }
                 }
             ) {
-                Text(stringResource(R.string.privacy_ai_note), fontSize = 12.sp, color = textMuted)
-                Spacer(Modifier.height(8.dp))
-                val isDownloading by vm.isModelDownloading.collectAsStateWithLifecycle()
-                val downloadProgress by vm.modelDownloadProgress.collectAsStateWithLifecycle()
-                if (isDownloading) {
-                    Column(Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
-                        Text("Downloading NSFW model... $downloadProgress%",
-                            fontSize = 12.sp, color = accent)
-                        Spacer(Modifier.height(4.dp))
-                        LinearProgressIndicator(
-                            progress = { downloadProgress / 100f },
-                            modifier = Modifier.fillMaxWidth().height(6.dp),
-                            color = accent,
-                            trackColor = surfaceLight
-                        )
-                    }
-                }
-                Surface(color = surfaceLight, shape = RoundedCornerShape(8.dp)) {
-                    Column(Modifier.padding(12.dp)) {
-                        Text(stringResource(R.string.card_how_ai_title), fontWeight = FontWeight.Bold, fontSize = 13.sp, color = text)
-                        Spacer(Modifier.height(8.dp))
-                        StepRow(1, stringResource(R.string.step_ai_capture))
-                        StepRow(2, stringResource(R.string.step_ai_analyze))
-                        StepRow(3, stringResource(R.string.step_ai_detect))
-                        StepRow(4, stringResource(R.string.step_ai_notify))
-                        StepRow(5, stringResource(R.string.step_ai_ban))
-                    }
-                }
-                Spacer(Modifier.height(8.dp))
-                val aiThreshold by vm.aiThreshold.collectAsStateWithLifecycle()
-                var thresholdSlider by remember(aiThreshold) {
-                    mutableStateOf(aiThreshold.coerceIn(0.5f, 0.9f))
-                }
-                val isValidThreshold = thresholdSlider in 0.5f..0.9f
-                Text(
-                    "Detection Threshold: ${(thresholdSlider * 100).toInt()}%",
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Medium,
-                    color = if (isValidThreshold) text else danger
-                )
-                Slider(
-                    value = thresholdSlider,
-                    onValueChange = {
-                        thresholdSlider = it.coerceIn(0.5f, 0.9f)
-                    },
-                    onValueChangeFinished = {
-                        if (thresholdSlider in 0.5f..0.9f) {
-                            vm.setAiThreshold(thresholdSlider)
-                        }
-                    },
-                    valueRange = 0.5f..0.9f,
-                    steps = 3,
-                    modifier = Modifier.fillMaxWidth()
-                )
-                if (thresholdSlider !in 0.5f..0.9f) {
-                    Surface(
-                        color = danger.copy(alpha = 0.1f),
-                        shape = RoundedCornerShape(6.dp),
-                        border = BorderStroke(1.dp, danger.copy(alpha = 0.3f))
-                    ) {
-                        Text(
-                            "Invalid threshold value",
-                            fontSize = 11.sp,
-                            color = danger,
-                            modifier = Modifier.padding(8.dp)
-                        )
-                    }
-                }
-                Spacer(Modifier.height(4.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("Blur instead of block", fontSize = 13.sp, color = text, modifier = Modifier.weight(1f))
-                    Switch(
-                        checked = vm.aiOverlayMode.collectAsStateWithLifecycle().value,
-                        onCheckedChange = { vm.setAiOverlayMode(it) },
-                        colors = SwitchDefaults.colors(checkedTrackColor = accent, checkedThumbColor = surface)
-                    )
-                }
-                Spacer(Modifier.height(8.dp))
-                Surface(color = danger.copy(alpha = 0.1f), shape = RoundedCornerShape(6.dp), border = BorderStroke(1.dp, danger.copy(alpha = 0.2f))) {
-                    Text(stringResource(R.string.warning_auto_ban), fontSize = 11.sp, color = danger, modifier = Modifier.padding(8.dp))
-                }
+                Text(stringResource(R.string.privacy_ai_note), fontSize = 12.sp, color = textSecondary)
+                Spacer(Modifier.height(6.dp))
+                Text(stringResource(R.string.step_ai_capture), fontSize = 11.sp, color = textMuted)
+                Text(stringResource(R.string.step_ai_analyze), fontSize = 11.sp, color = textMuted)
+                Text(stringResource(R.string.step_ai_detect), fontSize = 11.sp, color = textMuted)
+                Text(stringResource(R.string.step_ai_ban), fontSize = 11.sp, color = textMuted)
             }
 
             FeatureToggleCard(
@@ -419,7 +267,7 @@ fun ContentScreen(vm: ContentViewModel) {
             strongPinError = false
         },
         onConfirm = {
-            val valid = vm.isDeviceAdminGranted() && GuardianDeviceAdminReceiver().verifyPinBeforeDisable(context, strongPinInput)
+            val valid = vm.isDeviceAdminGranted() && GuardianDeviceAdminReceiver.verifyPinBeforeDisable(context, strongPinInput)
             if (valid) {
                 vm.setStrongProtection(true)
                 showStrongWarningDialog = false
@@ -445,7 +293,7 @@ fun ContentScreen(vm: ContentViewModel) {
             strongPinError = false
         },
         onConfirm = {
-            val valid = GuardianDeviceAdminReceiver().verifyPinBeforeDisable(context, strongPinInput)
+            val valid = GuardianDeviceAdminReceiver.verifyPinBeforeDisable(context, strongPinInput)
             if (valid) {
                 vm.setStrongProtection(false)
                 showStrongProtectionDialog = false
@@ -456,24 +304,6 @@ fun ContentScreen(vm: ContentViewModel) {
         }
     )
 
-    PinEntryDialog(
-        show = editProfileId,
-        title = stringResource(R.string.title_nextdns_profile),
-        message = stringResource(R.string.desc_nextdns_profile),
-        confirmLabel = stringResource(R.string.btn_save),
-        input = profileIdText,
-        onInputChange = { profileIdText = it },
-        isError = false,
-        isPassword = false,
-        onDismiss = {
-            profileIdText = nextDnsProfileId
-            editProfileId = false
-        },
-        onConfirm = {
-            vm.setNextDnsProfileId(profileIdText.trim())
-            editProfileId = false
-        }
-    )
 }
 
 @Composable
@@ -531,17 +361,6 @@ private fun ChecklistItem(text: String) {
         Icon(Icons.Default.CheckCircle, null, tint = success, modifier = Modifier.size(16.dp))
         Spacer(Modifier.width(8.dp))
         Text(text, fontSize = 13.sp, color = textSecondary)
-    }
-}
-
-@Composable
-private fun StepRow(number: Int, text: String) {
-    Row(Modifier.padding(vertical = 3.dp), verticalAlignment = Alignment.CenterVertically) {
-        Box(Modifier.size(20.dp).clip(CircleShape).background(accent.copy(alpha = 0.2f)), contentAlignment = Alignment.Center) {
-            Text("$number", fontSize = 10.sp, color = accent, fontWeight = FontWeight.Bold)
-        }
-        Spacer(Modifier.width(8.dp))
-        Text(text, fontSize = 12.sp, color = textSecondary)
     }
 }
 

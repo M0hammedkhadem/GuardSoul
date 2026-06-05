@@ -2,7 +2,6 @@ package com.agon.app.ui.screens
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
@@ -10,8 +9,21 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.*
-import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.automirrored.filled.Chat
+import androidx.compose.material.icons.filled.Block
+import androidx.compose.material.icons.filled.CameraAlt
+import androidx.compose.material.icons.filled.Cancel
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Groups
+import androidx.compose.material.icons.filled.Help
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.MusicNote
+import androidx.compose.material.icons.filled.Shield
+import androidx.compose.material.icons.filled.Tag
+import androidx.compose.material.icons.filled.Videocam
+import androidx.compose.material.icons.filled.VisibilityOff
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -25,7 +37,6 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.agon.app.utils.AccessibilityUtils
-import com.agon.app.FacebookBlockerService
 import com.agon.app.R
 import com.agon.app.ui.theme.*
 import com.agon.app.viewmodel.SocialViewModel
@@ -34,7 +45,7 @@ import com.agon.app.viewmodel.SocialViewModel
 @Composable
 fun SocialScreen(vm: SocialViewModel) {
     val context = LocalContext.current
-    val instagramBlocked by vm.instagram.collectAsStateWithLifecycle()
+    val instagramMode by vm.instagramMode.collectAsStateWithLifecycle()
     val snapchatBlocked by vm.snapchat.collectAsStateWithLifecycle()
     val twitterBlocked by vm.twitter.collectAsStateWithLifecycle()
     val tiktokBlocked by vm.tiktok.collectAsStateWithLifecycle()
@@ -42,20 +53,35 @@ fun SocialScreen(vm: SocialViewModel) {
     val facebookMode by vm.facebookMode.collectAsStateWithLifecycle()
     val blocksToday by vm.blocksToday.collectAsStateWithLifecycle()
     val blocksPerApp by vm.blocksPerApp.collectAsStateWithLifecycle()
+    val instagramServiceRunning by vm.instagramServiceRunning.collectAsStateWithLifecycle()
     val youtubeServiceRunning by vm.youtubeServiceRunning.collectAsStateWithLifecycle()
     val facebookServiceRunning by vm.facebookServiceRunning.collectAsStateWithLifecycle()
+    
+    var showInstagramSheet by remember { mutableStateOf(false) }
     var showYoutubeSheet by remember { mutableStateOf(false) }
     var showFacebookSheet by remember { mutableStateOf(false) }
     var showAccessibilityDialog by remember { mutableStateOf(false) }
+    var snackbarSeq by remember { mutableIntStateOf(0) }
+    var snackbarMessage by remember { mutableStateOf("") }
+    val snackbarHostState = remember { SnackbarHostState() }
     val scrollState = rememberScrollState()
+    val blockedOn = context.getString(R.string.social_blocked_on)
+    val blockedOff = context.getString(R.string.social_blocked_off)
 
-    fun appCount(labelRes: Int): Int {
-        val label = context.getString(labelRes)
-        return blocksPerApp.find { it.appLabel == label }?.count ?: 0
+    // Issue #216 Fix: Use packageName instead of appLabel for reliable lookup
+    fun appCount(pkg: String): Int {
+        return blocksPerApp.find { it.packageName == pkg }?.count ?: 0
+    }
+
+    LaunchedEffect(snackbarSeq) {
+        if (snackbarSeq > 0) {
+            snackbarHostState.showSnackbar(snackbarMessage)
+        }
     }
 
     Scaffold(
         containerColor = background,
+        snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
         topBar = {
             TopAppBar(
                 title = { Text(stringResource(R.string.screen_social_title), fontWeight = FontWeight.Bold) },
@@ -71,10 +97,28 @@ fun SocialScreen(vm: SocialViewModel) {
 
             SectionHeader(Icons.Default.Block, stringResource(R.string.section_direct_block), danger)
             Spacer(Modifier.height(4.dp))
-            ToggleRow(Icons.Default.CameraAlt, stringResource(R.string.app_instagram), instagramBlocked, { vm.setInstagram(it) }, count = appCount(R.string.app_instagram))
-            @Suppress("DEPRECATION") ToggleRow(Icons.Default.Chat, stringResource(R.string.app_snapchat), snapchatBlocked, { vm.setSnapchat(it) }, count = appCount(R.string.app_snapchat))
-            ToggleRow(Icons.Default.Tag, stringResource(R.string.app_twitter), twitterBlocked, { vm.setTwitter(it) }, count = appCount(R.string.app_twitter))
-            ToggleRow(Icons.Default.MusicNote, stringResource(R.string.app_tiktok), tiktokBlocked, { vm.setTiktok(it) }, count = appCount(R.string.app_tiktok))
+            
+            ToggleRow(Icons.AutoMirrored.Filled.Chat, stringResource(R.string.app_snapchat), snapchatBlocked, { vm.setSnapchat(it); snackbarMessage = if (it) blockedOn else blockedOff; snackbarSeq++ }, count = appCount("com.snapchat.android"))
+            ToggleRow(Icons.Default.Tag, stringResource(R.string.app_twitter), twitterBlocked, { vm.setTwitter(it); snackbarMessage = if (it) blockedOn else blockedOff; snackbarSeq++ }, count = appCount("com.twitter.android"))
+            ToggleRow(Icons.Default.MusicNote, stringResource(R.string.app_tiktok), tiktokBlocked, { vm.setTiktok(it); snackbarMessage = if (it) blockedOn else blockedOff; snackbarSeq++ }, count = appCount("com.zhiliaoapp.musically"))
+
+            Spacer(Modifier.height(24.dp))
+            SectionHeader(Icons.Default.CameraAlt, stringResource(R.string.section_instagram), accent)
+            Spacer(Modifier.height(4.dp))
+            DropdownCard(
+                title = stringResource(R.string.app_instagram),
+                mode = instagramMode,
+                badgeMap = mapOf(
+                    "off" to Triple(Icons.Default.CheckCircle, stringResource(R.string.badge_open), success),
+                    "full" to Triple(Icons.Default.Cancel, stringResource(R.string.badge_blocked_upper), danger),
+                    "reels" to Triple(Icons.Default.Warning, stringResource(R.string.badge_partial), warning)
+                ),
+                serviceRunning = instagramMode != "off" && instagramServiceRunning,
+                onClick = { if (instagramMode != "off" && !instagramServiceRunning) showAccessibilityDialog = true else showInstagramSheet = true }
+            )
+            if (instagramMode == "reels") {
+                InfoBox(stringResource(R.string.info_instagram))
+            }
 
             Spacer(Modifier.height(24.dp))
             SectionHeader(Icons.Default.Videocam, stringResource(R.string.section_youtube), shieldRed)
@@ -91,7 +135,7 @@ fun SocialScreen(vm: SocialViewModel) {
             }
 
             Spacer(Modifier.height(24.dp))
-            SectionHeader(Icons.Default.Facebook, stringResource(R.string.section_facebook), primary)
+            SectionHeader(Icons.Default.Groups, stringResource(R.string.section_facebook), primary)
             Spacer(Modifier.height(4.dp))
             DropdownCard(
                 title = stringResource(R.string.app_facebook),
@@ -106,7 +150,81 @@ fun SocialScreen(vm: SocialViewModel) {
 
             Spacer(Modifier.height(24.dp))
             HowItWorksCard()
+            Spacer(Modifier.height(16.dp))
+
+            // =========================================================
+            // Shortstop — surgical scheduling & quota
+            // =========================================================
+            val quotaMin by vm.shortstopDailyQuotaMinutes.collectAsStateWithLifecycle()
+            val breakIntervalMin by vm.shortstopBreakIntervalMinutes.collectAsStateWithLifecycle()
+            val breakLengthMin by vm.shortstopBreakLengthMinutes.collectAsStateWithLifecycle()
+            val minutesSpent by vm.shortstopMinutesSpentToday.collectAsStateWithLifecycle()
+            val quotaExceeded by vm.shortstopDailyQuotaExceeded.collectAsStateWithLifecycle()
+            val breakActive by vm.shortstopBreakActive.collectAsStateWithLifecycle()
+            val blockedHourActive by vm.shortstopBlockedHourActive.collectAsStateWithLifecycle()
+
+            SectionHeader(Icons.Default.Warning, stringResource(R.string.shortstop_settings_title), danger)
+            Spacer(Modifier.height(4.dp))
+            InfoBox(stringResource(R.string.shortstop_settings_subtitle))
+            Spacer(Modifier.height(8.dp))
+
+            ShortstopStepperCard(
+                label = stringResource(R.string.shortstop_quota_label),
+                summary = stringResource(R.string.shortstop_quota_summary, quotaMin),
+                current = quotaMin,
+                range = 0..120,
+                step = 5,
+                unit = " min",
+                onValueChange = { vm.setShortstopDailyQuota(it) },
+            )
+            ShortstopStepperCard(
+                label = stringResource(R.string.shortstop_break_interval_label),
+                summary = stringResource(R.string.shortstop_break_interval_summary, breakIntervalMin),
+                current = breakIntervalMin,
+                range = 0..60,
+                step = 5,
+                unit = " min",
+                onValueChange = { vm.setShortstopBreakInterval(it) },
+            )
+            ShortstopStepperCard(
+                label = stringResource(R.string.shortstop_break_length_label),
+                summary = stringResource(R.string.shortstop_break_length_summary, breakLengthMin),
+                current = breakLengthMin,
+                range = 0..30,
+                step = 1,
+                unit = " min",
+                onValueChange = { vm.setShortstopBreakLength(it) },
+            )
+
+            if (quotaExceeded) {
+                Spacer(Modifier.height(8.dp))
+                InfoBox(stringResource(R.string.shortstop_reason_quota))
+            }
+            if (breakActive) {
+                Spacer(Modifier.height(8.dp))
+                InfoBox(stringResource(R.string.shortstop_reason_break))
+            }
+            if (blockedHourActive) {
+                Spacer(Modifier.height(8.dp))
+                InfoBox(stringResource(R.string.shortstop_reason_hours, ""))
+            }
+
             Spacer(Modifier.height(32.dp))
+        }
+    }
+
+    if (showInstagramSheet) {
+        ModalBottomSheet(onDismissRequest = { showInstagramSheet = false }, containerColor = surface) {
+            ModeSelectionSheet(
+                title = stringResource(R.string.sheet_instagram_title),
+                currentMode = instagramMode,
+                options = listOf(
+                    Triple("off", stringResource(R.string.option_no_block), stringResource(R.string.desc_instagram_off)),
+                    Triple("full", stringResource(R.string.option_ig_full_block), stringResource(R.string.desc_instagram_full)),
+                    Triple("reels", stringResource(R.string.option_block_reels), stringResource(R.string.desc_instagram_reels))
+                ),
+                onSelect = { vm.setInstagramMode(it); showInstagramSheet = false; snackbarMessage = if (it == "off") blockedOff else blockedOn; snackbarSeq++ }
+            )
         }
     }
 
@@ -120,7 +238,7 @@ fun SocialScreen(vm: SocialViewModel) {
                     Triple("full", stringResource(R.string.option_yt_full_block), stringResource(R.string.desc_youtube_full)),
                     Triple("shorts", stringResource(R.string.option_block_shorts), stringResource(R.string.desc_youtube_shorts))
                 ),
-                onSelect = { vm.setYoutubeMode(it); showYoutubeSheet = false }
+                onSelect = { vm.setYoutubeMode(it); showYoutubeSheet = false; snackbarMessage = if (it == "off") blockedOff else blockedOn; snackbarSeq++ }
             )
         }
     }
@@ -135,7 +253,7 @@ fun SocialScreen(vm: SocialViewModel) {
                     Triple("full", stringResource(R.string.option_fb_full_block), stringResource(R.string.desc_facebook_full)),
                     Triple("reels", stringResource(R.string.option_block_reels), stringResource(R.string.desc_facebook_reels))
                 ),
-                onSelect = { vm.setFacebookMode(it); showFacebookSheet = false }
+                onSelect = { vm.setFacebookMode(it); showFacebookSheet = false; snackbarMessage = if (it == "off") blockedOff else blockedOn; snackbarSeq++ }
             )
         }
     }
@@ -167,7 +285,7 @@ private fun SummaryCard(totalBlocks: Int) {
     ) {
         Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
             Box(Modifier.size(40.dp).clip(CircleShape).background(danger.copy(alpha = 0.12f)), contentAlignment = Alignment.Center) {
-                Icon(Icons.Default.Shield, null, tint = danger, modifier = Modifier.size(22.dp))
+                Icon(Icons.Default.Shield, stringResource(R.string.contentdesc_shield), tint = danger, modifier = Modifier.size(22.dp))
             }
             Spacer(Modifier.width(12.dp))
             Column {
@@ -183,7 +301,7 @@ private fun SummaryCard(totalBlocks: Int) {
 private fun SectionHeader(icon: androidx.compose.ui.graphics.vector.ImageVector, title: String, color: Color) {
     Row(verticalAlignment = Alignment.CenterVertically) {
         Box(Modifier.size(28.dp).clip(CircleShape).background(color.copy(alpha = 0.15f)), contentAlignment = Alignment.Center) {
-            Icon(icon, null, tint = color, modifier = Modifier.size(16.dp))
+            Icon(icon, title, tint = color, modifier = Modifier.size(16.dp))
         }
         Spacer(Modifier.width(8.dp))
         Text(title, fontWeight = FontWeight.Bold, color = text, fontSize = 16.sp)
@@ -194,12 +312,12 @@ private fun SectionHeader(icon: androidx.compose.ui.graphics.vector.ImageVector,
 private fun ToggleRow(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, checked: Boolean, onToggle: (Boolean) -> Unit, count: Int = 0) {
     Card(colors = CardDefaults.cardColors(containerColor = card), shape = RoundedCornerShape(12.dp), border = BorderStroke(1.dp, cardBorder), modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-            Icon(icon, null, tint = textMuted, modifier = Modifier.size(22.dp))
+            Icon(icon, label, tint = textMuted, modifier = Modifier.size(22.dp))
             Spacer(Modifier.width(12.dp))
             Text(label, color = text, modifier = Modifier.weight(1f))
             if (count > 0 && checked) {
-                Surface(color = danger.copy(alpha = 0.1f), shape = RoundedCornerShape(6.dp), border = BorderStroke(1.dp, danger.copy(alpha = 0.25f))) {
-                    Text(" $count ", color = danger, fontSize = 12.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp))
+                Surface(color = danger.copy(alpha = 0.1f), shape = RoundedCornerShape(6.dp), border = BorderStroke(1.dp, danger.copy(alpha = 0.25f)), modifier = Modifier.padding(horizontal = 4.dp)) {
+                    Text("$count", color = danger, fontSize = 12.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp))
                 }
                 Spacer(Modifier.width(8.dp))
             }
@@ -210,7 +328,7 @@ private fun ToggleRow(icon: androidx.compose.ui.graphics.vector.ImageVector, lab
 
 @Composable
 private fun DropdownCard(title: String, mode: String, badgeMap: Map<String, Triple<androidx.compose.ui.graphics.vector.ImageVector, String, Color>>, onClick: () -> Unit, serviceRunning: Boolean = true) {
-    val badge = badgeMap[mode] ?: badgeMap["off"]!!
+    val badge = badgeMap[mode] ?: badgeMap["off"] ?: Triple(Icons.Default.Help, stringResource(R.string.contentdesc_help), textMuted)
     Card(colors = CardDefaults.cardColors(containerColor = card), shape = RoundedCornerShape(12.dp), border = BorderStroke(1.dp, if (mode != "off" && !serviceRunning) warning.copy(alpha = 0.5f) else cardBorder), modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp).clickable(onClick = onClick)) {
         Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
@@ -224,13 +342,13 @@ private fun DropdownCard(title: String, mode: String, badgeMap: Map<String, Trip
             }
             Surface(color = badge.third.copy(alpha = 0.1f), shape = RoundedCornerShape(6.dp), border = BorderStroke(1.dp, badge.third.copy(alpha = 0.3f))) {
                 Row(Modifier.padding(horizontal = 8.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Icon(badge.first, null, tint = badge.third, modifier = Modifier.size(14.dp))
+                    Icon(badge.first, badge.second, tint = badge.third, modifier = Modifier.size(14.dp))
                     Spacer(Modifier.width(4.dp))
                     Text(badge.second, color = badge.third, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                 }
             }
             Spacer(Modifier.width(4.dp))
-            Icon(Icons.Default.KeyboardArrowDown, null, tint = textMuted, modifier = Modifier.size(20.dp))
+            Icon(Icons.Default.KeyboardArrowDown, stringResource(R.string.contentdesc_arrow_down), tint = textMuted, modifier = Modifier.size(20.dp))
         }
     }
 }
@@ -239,7 +357,7 @@ private fun DropdownCard(title: String, mode: String, badgeMap: Map<String, Trip
 private fun InfoBox(text: String) {
     Card(colors = CardDefaults.cardColors(containerColor = warning.copy(alpha = 0.05f)), shape = RoundedCornerShape(8.dp), border = BorderStroke(1.dp, warning.copy(alpha = 0.2f)), modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
         Row(Modifier.padding(12.dp), verticalAlignment = Alignment.Top) {
-            Icon(Icons.Default.Info, null, tint = warning, modifier = Modifier.size(16.dp))
+            Icon(Icons.Default.Info, stringResource(R.string.contentdesc_info), tint = warning, modifier = Modifier.size(16.dp))
             Spacer(Modifier.width(8.dp))
             Text(text, color = textSecondary, fontSize = 13.sp)
         }
@@ -262,7 +380,7 @@ private fun HowItWorksCard() {
 @Composable
 private fun HowItWorksRow(icon: androidx.compose.ui.graphics.vector.ImageVector, text: String, color: Color) {
     Row(Modifier.padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-        Icon(icon, null, tint = color, modifier = Modifier.size(18.dp))
+        Icon(icon, text, tint = color, modifier = Modifier.size(18.dp))
         Spacer(Modifier.width(8.dp))
         Text(text, fontSize = 13.sp, color = textSecondary)
     }
@@ -288,5 +406,46 @@ private fun ModeSelectionSheet(title: String, currentMode: String, options: List
             }
         }
         Spacer(Modifier.height(16.dp))
+    }
+}
+
+@Composable
+private fun ShortstopStepperCard(
+    label: String,
+    summary: String,
+    current: Int,
+    range: IntRange,
+    step: Int,
+    unit: String,
+    onValueChange: (Int) -> Unit,
+) {
+    Card(
+        colors = CardDefaults.cardColors(containerColor = card),
+        shape = RoundedCornerShape(12.dp),
+        border = BorderStroke(1.dp, cardBorder),
+        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+    ) {
+        Column(Modifier.fillMaxWidth().padding(16.dp)) {
+            Text(label, color = text, fontWeight = FontWeight.Medium, fontSize = 14.sp)
+            Spacer(Modifier.height(2.dp))
+            Text(summary, fontSize = 12.sp, color = textSecondary)
+            Spacer(Modifier.height(8.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                FilledTonalIconButton(
+                    onClick = { onValueChange((current - step).coerceIn(range)) },
+                ) { Text("−", color = text, fontSize = 18.sp, fontWeight = FontWeight.Bold) }
+                Spacer(Modifier.width(12.dp))
+                Text(
+                    "$current$unit",
+                    color = text,
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.weight(1f),
+                )
+                FilledTonalIconButton(
+                    onClick = { onValueChange((current + step).coerceIn(range)) },
+                ) { Text("+", color = text, fontSize = 18.sp, fontWeight = FontWeight.Bold) }
+            }
+        }
     }
 }

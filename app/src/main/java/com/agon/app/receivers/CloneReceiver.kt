@@ -7,6 +7,7 @@ import android.content.Intent
 import android.content.IntentFilter
 import androidx.core.app.NotificationCompat
 import com.agon.app.AppNotificationChannels
+import com.agon.app.guardianApp
 import com.agon.app.GuardianApp
 import com.agon.app.R
 import kotlinx.coroutines.CoroutineScope
@@ -16,6 +17,8 @@ import kotlinx.coroutines.launch
 import timber.log.Timber
 
 class CloneReceiver : BroadcastReceiver() {
+
+    private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
     override fun onReceive(context: Context, intent: Intent) {
         when (intent.action) {
@@ -28,7 +31,7 @@ class CloneReceiver : BroadcastReceiver() {
             }
             Intent.ACTION_BOOT_COMPLETED -> {
                 val pendingResult = goAsync()
-                CoroutineScope(Dispatchers.IO + SupervisorJob()).launch {
+                scope.launch {
                     try {
                         scanAllInstalled(context)
                     } finally {
@@ -39,12 +42,11 @@ class CloneReceiver : BroadcastReceiver() {
         }
     }
 
-    private fun scanAllInstalled(context: Context) {
-        val app = context.applicationContext as GuardianApp
+    private suspend fun scanAllInstalled(context: Context) {
+        val app = context.guardianApp() ?: return
         try {
-            val shieldActive = kotlinx.coroutines.runBlocking {
-                app.repository.getAppSettings().isShieldActive()
-            }
+            // Issue #169: Removed runBlocking
+            val shieldActive = app.repository.getAppSettings().isShieldActive()
             if (!shieldActive) return
         } catch (_: Exception) { return }
 
@@ -63,7 +65,7 @@ class CloneReceiver : BroadcastReceiver() {
             if (info.packageName == ourPackage) continue
             if (isPotentialClone(context, info.packageName)) {
                 notifyCloneDetected(context, info.packageName)
-                return
+                // Issue #279: Removed 'return' to notify about all clones
             }
         }
     }
@@ -118,7 +120,7 @@ class CloneReceiver : BroadcastReceiver() {
             .setAutoCancel(true)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .build()
-        manager.notify(9004, notification)
+        manager.notify(clonePackage.hashCode(), notification) // Use hashCode to avoid overwriting different clones
     }
 
     companion object {

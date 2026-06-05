@@ -5,6 +5,7 @@ import android.content.Context
 import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.agon.app.guardianApp
 import com.agon.app.GuardianApp
 import com.agon.app.R
 import com.agon.app.utils.AppLogger
@@ -17,7 +18,7 @@ import java.text.SimpleDateFormat
 import java.util.*
 
 class ExportImportViewModel(application: Application) : AndroidViewModel(application) {
-    private val repo = (application as GuardianApp).repository
+    private val repo = (application.guardianApp()!!).repository
 
     private val _statusMessage = MutableStateFlow<String?>(null)
     val statusMessage = _statusMessage.asStateFlow()

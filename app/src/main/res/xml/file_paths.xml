@@ -1,4 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+  FileProvider paths configuration.
+  Only expose the `exports/` subfolder of the cache — never the entire cache directory.
+  This prevents an attacker who receives a content:// URI from a victim app from
+  browsing arbitrary cached files. Everything written to FileProvider MUST go
+  under getCacheDir()/exports/.
+-->
 <paths>
-    <cache-path name="cache" path="." />
+    <cache-path name="exports" path="exports/" />
 </paths>

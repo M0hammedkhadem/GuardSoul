@@ -37,12 +37,21 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import com.agon.app.account.AuthRepository
+import com.agon.app.account.CloudSyncRepository
+import com.agon.app.account.UserSession
+import com.agon.app.analytics.AnalyticsManager
+import com.agon.app.analytics.InAppUpdater
+import com.agon.app.analytics.ReviewPrompt
+import com.agon.app.billing.BillingManager
+import com.agon.app.consent.ConsentManager
 import com.agon.app.ui.components.PinGate
 import com.agon.app.ui.screens.*
 import com.agon.app.utils.AccessibilityUtils
@@ -50,23 +59,60 @@ import com.agon.app.utils.PermissionUtils
 import com.agon.app.ui.theme.*
 import com.agon.app.viewmodel.*
 import kotlinx.coroutines.launch
+import org.koin.android.ext.android.inject
+import timber.log.Timber
 
 class MainActivity : ComponentActivity() {
+    private val billingManager: BillingManager by inject()
+    private val analyticsManager: AnalyticsManager by inject()
+    private val authRepository: AuthRepository by inject()
+    private val cloudSync: CloudSyncRepository by inject()
+    private val consentManager: ConsentManager by inject()
+    private val reviewPrompt: ReviewPrompt by inject()
+    private val inAppUpdater: InAppUpdater by inject()
+
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
 
         val app = application as GuardianApp
 
+        // Try to request GDPR consent early. The form only shows in EEA/UK
+        // and only on the first launch; on subsequent launches this is a
+        // near-instant no-op.
+        lifecycleScope.launch {
+            runCatching { consentManager.ensureConsent(this@MainActivity) }
+                .onFailure { Timber.w(it, "ConsentManager failed") }
+        }
+
+        // Check for a Play Store update. Resumes any in-progress download.
+        lifecycleScope.launch {
+            runCatching { inAppUpdater.checkForUpdate(this@MainActivity) }
+                .onFailure { Timber.w(it, "InAppUpdater check failed") }
+        }
+
         setContent {
             AgonAppTheme {
                 val onboardingComplete by produceState<Boolean?>(initialValue = null) {
                     value = app.repository.getAppSettings().isOnboardingComplete()
                 }
+                val isComplete = onboardingComplete ?: false
                 if (onboardingComplete != null) {
-                    MainApp(initialOnboardingComplete = onboardingComplete!!)
+                    MainApp(
+                        initialOnboardingComplete = isComplete,
+                        billingManager = billingManager,
+                        analyticsManager = analyticsManager,
+                        authRepository = authRepository,
+                        cloudSync = cloudSync,
+                        reviewPrompt = reviewPrompt
+                    )
                 } else {
-                    Box(modifier = Modifier.fillMaxSize())
+                    Box(
+                        modifier = Modifier.fillMaxSize().background(background),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        CircularProgressIndicator(color = primary)
+                    }
                 }
             }
         }
@@ -78,7 +124,14 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-fun MainApp(initialOnboardingComplete: Boolean = false) {
+fun MainApp(
+    initialOnboardingComplete: Boolean = false,
+    billingManager: BillingManager,
+    analyticsManager: AnalyticsManager,
+    authRepository: AuthRepository,
+    cloudSync: CloudSyncRepository,
+    reviewPrompt: ReviewPrompt
+) {
     val navController = rememberNavController()
     val context = LocalContext.current
     val app = context.applicationContext as GuardianApp
@@ -92,6 +145,12 @@ fun MainApp(initialOnboardingComplete: Boolean = false) {
     val onboardingComplete by settings.onboardingCompleteFlow.collectAsState(initial = initialOnboardingComplete)
     val pinHash by settings.pinHashFlow.collectAsState(initial = "")
     val hasPinSet = pinHash.isNotBlank()
+    val authUserId by settings.authUserIdFlow.collectAsState(initial = "")
+    val cloudSyncEnabled by settings.cloudSyncEnabledFlow.collectAsState(initial = false)
+    val cloudLastSyncAt by settings.cloudLastSyncAtFlow.collectAsState(initial = 0L)
+    val currentSession = remember(authUserId) {
+        if (authUserId.isBlank()) UserSession.SignedOut else authRepository.currentSession()
+    }
 
     LaunchedEffect(onboardingComplete) {
         if (onboardingComplete) {
@@ -117,7 +176,7 @@ fun MainApp(initialOnboardingComplete: Boolean = false) {
         ) {
             composable("onboarding") {
                 val lifecycleOwner = LocalLifecycleOwner.current
-                
+
                 val accessibilityGranted by settings.permAccessibilityFlow.collectAsState(initial = false)
                 val overlayGranted by settings.permOverlayFlow.collectAsState(initial = false)
                 val usageAccessGranted by settings.permUsageFlow.collectAsState(initial = false)
@@ -145,7 +204,7 @@ fun MainApp(initialOnboardingComplete: Boolean = false) {
 
                 val adminLauncher = rememberLauncherForActivityResult(
                     contract = ActivityResultContracts.StartActivityForResult()
-                ) { result ->
+                ) {
                     PermissionUtils.syncPermissionsWithCache(context, settings)
                 }
 
@@ -172,6 +231,10 @@ fun MainApp(initialOnboardingComplete: Boolean = false) {
                     onComplete = {
                         scope.launch {
                             settings.setOnboardingComplete()
+                            analyticsManager.logOnboardingCompleted()
+                            // Trigger cloud sync (anonymously) so the user
+                            // doesn't lose their first session on reinstall.
+                            runCatching { authRepository.signInAnonymously() }
                             (context as Activity).recreate()
                         }
                     },
@@ -244,8 +307,10 @@ fun MainApp(initialOnboardingComplete: Boolean = false) {
             }
 
             composable("social") {
-                val vm: SocialViewModel = viewModel()
-                SocialScreen(vm = vm)
+                PinGate(hasPinSet = hasPinSet, storedHash = pinHash) {
+                    val vm: SocialViewModel = viewModel()
+                    SocialScreen(vm = vm)
+                }
             }
 
             composable("content") {
@@ -279,7 +344,12 @@ fun MainApp(initialOnboardingComplete: Boolean = false) {
                         onNavigateToSchedule = { navController.navigate("schedule") },
                         onNavigateToTimeLimits = { navController.navigate("time_limits") },
                         onNavigateToStatistics = { navController.navigate("statistics") },
+                        onNavigateToLearner = { navController.navigate("learner") },
                         onNavigateToExportImport = { navController.navigate("export_import") },
+                        onNavigateToAccount = { navController.navigate("account") },
+                        onNavigateToUpgrade = { navController.navigate("upgrade") },
+                        onNavigateToPrivacy = { navController.navigate("privacy") },
+                        onNavigateToTerms = { navController.navigate("terms") },
                         onBack = { navController.popBackStack() }
                     )
                 }
@@ -307,8 +377,70 @@ fun MainApp(initialOnboardingComplete: Boolean = false) {
                 StatisticsScreen(vm = vm, onBack = { navController.popBackStack() })
             }
 
+            composable("learner") {
+                LearnerScreen(onBack = { navController.popBackStack() })
+            }
+
             composable("export_import") {
                 ExportImportScreen(onBack = { navController.popBackStack() })
+            }
+
+            composable("upgrade") {
+                UpgradeScreen(
+                    billingManager = billingManager,
+                    analytics = analyticsManager,
+                    onClose = { navController.popBackStack() }
+                )
+            }
+
+            composable("auth_signin") {
+                AuthScreen(
+                    mode = AuthMode.SignIn,
+                    onAuthSuccess = { navController.popBackStack() },
+                    onBack = { navController.popBackStack() },
+                    onSignIn = { e, p -> runCatching { authRepository.signInWithEmail(e, p) }.map { } },
+                    onSignUp = { _, _, _ -> Result.success(Unit) },
+                    onSignInWithGoogle = { Result.success(Unit) },
+                    onContinueAnonymously = { authRepository.signInAnonymously() }
+                )
+            }
+
+            composable("auth_signup") {
+                AuthScreen(
+                    mode = AuthMode.SignUp,
+                    onAuthSuccess = { navController.popBackStack() },
+                    onBack = { navController.popBackStack() },
+                    onSignIn = { _, _ -> Result.success(Unit) },
+                    onSignUp = { e, p, n -> runCatching { authRepository.signUpWithEmail(e, p, n) }.map { } },
+                    onSignInWithGoogle = { Result.success(Unit) },
+                    onContinueAnonymously = { authRepository.signInAnonymously() }
+                )
+            }
+
+            composable("account") {
+                AccountScreen(
+                    session = currentSession,
+                    billingManager = billingManager,
+                    onBack = { navController.popBackStack() },
+                    onSignInClicked = { navController.navigate("auth_signin") },
+                    onSignOut = { authRepository.signOut() },
+                    onOpenSubscription = { navController.navigate("upgrade") },
+                    onOpenPrivacy = { navController.navigate("privacy") },
+                    onOpenTerms = { navController.navigate("terms") },
+                    onToggleCloudSync = { enabled ->
+                        scope.launch { cloudSync.enable(enabled) }
+                    },
+                    cloudSyncEnabled = cloudSyncEnabled,
+                    cloudLastSyncAt = cloudLastSyncAt
+                )
+            }
+
+            composable("privacy") {
+                PrivacyPolicyScreen(onBack = { navController.popBackStack() })
+            }
+
+            composable("terms") {
+                TermsOfServiceScreen(onBack = { navController.popBackStack() })
             }
         }
     }

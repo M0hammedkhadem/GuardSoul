@@ -2,45 +2,71 @@ package com.agon.app
 
 import android.app.Application
 import android.content.Context
+import com.agon.app.analytics.CrashReporter
+import com.agon.app.billing.BillingManager
 import com.agon.app.data.remote.FirebaseSyncWorker
 import com.agon.app.data.repository.AppRepository
 import com.agon.app.di.appModules
+import com.agon.app.utils.CategoryRegistry
 import org.koin.android.ext.android.inject
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import org.koin.android.ext.koin.androidContext
 import org.koin.core.context.startKoin
 import com.agon.app.logging.ReleaseTree
+import com.agon.app.consent.ConsentManager
+import com.agon.app.account.CloudSyncRepository
 import timber.log.Timber
+
+fun Context.guardianApp(): GuardianApp? {
+    return applicationContext as? GuardianApp
+}
 
 class GuardianApp : Application() {
     val repository: AppRepository by inject()
+    val billingManager: BillingManager by inject()
+    val crashReporter: CrashReporter by inject()
+    val consentManager: ConsentManager by inject()
+    val cloudSync: CloudSyncRepository by inject()
+
+    val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+
+    @Volatile
+    var accessibilityBounceDelegate: android.accessibilityservice.AccessibilityService? = null
 
     override fun onCreate() {
         super.onCreate()
-        
-        // Load language immediately
+
         LanguageManager.load(this)
-        
+
         startKoin {
             androidContext(this@GuardianApp)
             modules(appModules)
         }
-        
+
         if (BuildConfig.IS_DEBUG_BUILD) {
             Timber.plant(Timber.DebugTree())
         } else {
             Timber.plant(ReleaseTree())
         }
-        
+
         AppNotificationChannels.createAll(this)
-        
-        CoroutineScope(Dispatchers.IO).launch {
+
+        // Apply persisted GDPR consent decisions to the SDKs.
+        consentManager.applyPersistedDecisions()
+
+        // Start the billing client lazily — connects on first product
+        // query. We just prime the in-memory state.
+        billingManager.start()
+
+        applicationScope.launch(Dispatchers.IO) {
             seedDefaultBlocklists()
+            seedCategoryDefaults()
         }
 
-        CoroutineScope(Dispatchers.IO).launch {
+        applicationScope.launch(Dispatchers.IO) {
             try {
                 val settings = repository.getAppSettings()
                 if (settings.isRemoteMonitoringEnabled() && settings.isShieldActive()) {
@@ -79,6 +105,15 @@ class GuardianApp : Application() {
             Timber.d("GuardianApp: seeded ${defaultKeywords.size} keywords, ${defaultWebsites.size} websites")
         } catch (e: Exception) {
             Timber.e(e, "GuardianApp: failed to seed default blocklists")
+        }
+    }
+
+    private suspend fun seedCategoryDefaults() {
+        try {
+            val total = CategoryRegistry.totalPackages()
+            Timber.d("GuardianApp: category registry covers $total packages across ${CategoryRegistry.all().size} categories")
+        } catch (e: Exception) {
+            Timber.e(e, "GuardianApp: failed to seed category defaults")
         }
     }
 

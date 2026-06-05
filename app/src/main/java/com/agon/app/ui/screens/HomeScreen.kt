@@ -28,12 +28,14 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.agon.app.GuardianApp
+import kotlinx.coroutines.launch
 import com.agon.app.LanguageManager
 import com.agon.app.R
 import com.agon.app.ui.theme.*
+import com.agon.app.utils.DisciplineTier
+import com.agon.app.utils.DisciplineTiers
+import com.agon.app.utils.ShareCardGenerator
 import com.agon.app.viewmodel.HomeViewModel
-import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -43,20 +45,25 @@ fun HomeScreen(
     onNavigateToSettings: () -> Unit
 ) {
     val context = LocalContext.current
-    val scope = rememberCoroutineScope()
     val shieldActive by vm.shieldActive.collectAsStateWithLifecycle()
     val totalBlocks by vm.totalBlocks.collectAsStateWithLifecycle()
     val daysActive by vm.daysActive.collectAsStateWithLifecycle()
+    val tier by vm.tier.collectAsStateWithLifecycle()
+    val disciplineScore by vm.disciplineScore.collectAsStateWithLifecycle()
     val countdownActive by vm.countdownActive.collectAsStateWithLifecycle()
     val remainingSeconds by vm.remainingSeconds.collectAsStateWithLifecycle()
     val deactivationDelay by vm.deactivationDelay.collectAsStateWithLifecycle()
     val showPinDialog by vm.showPinDialog.collectAsStateWithLifecycle()
+    val showPartnerDialog by vm.showPartnerDialog.collectAsStateWithLifecycle()
+    val partnerError by vm.partnerError.collectAsStateWithLifecycle()
+    val partnerRequestInFlight by vm.partnerRequestInFlight.collectAsStateWithLifecycle()
     val pinError by vm.pinError.collectAsStateWithLifecycle()
-
-    val app = context.applicationContext as GuardianApp
-    val appSettings = app.repository.getAppSettings()
+    val trialMode by vm.trialMode.collectAsStateWithLifecycle()
 
     var pinInput by remember { mutableStateOf("") }
+    var partnerCodeInput by remember { mutableStateOf("") }
+    var showDelaySheet by remember { mutableStateOf(false) }
+    val shareScope = rememberCoroutineScope()
 
     Box(Modifier.fillMaxSize().background(background)) {
         LazyColumn(
@@ -121,19 +128,29 @@ fun HomeScreen(
                     trailingContent = {
                         Surface(
                             shape = RoundedCornerShape(8.dp),
-                            color = surfaceLight,
-                            border = BorderStroke(1.dp, cardBorder)
+                            color = if (trialMode) warning.copy(alpha = 0.2f) else surfaceLight,
+                            border = BorderStroke(1.dp, if (trialMode) warning else cardBorder)
                         ) {
                             Text(
-                                "OFF",
+                                if (trialMode) stringResource(R.string.trial_mode_on) else stringResource(R.string.trial_mode_off),
                                 modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
                                 fontWeight = FontWeight.Black,
                                 fontSize = 12.sp,
-                                color = text
+                                color = if (trialMode) warning else text
                             )
                         }
                     },
-                    onClick = {}
+                    onClick = { vm.toggleTrialMode() }
+                )
+            }
+
+            item {
+                Spacer(Modifier.height(12.dp))
+                TierCard(
+                    tier = tier,
+                    score = disciplineScore,
+                    progressToNext = DisciplineTiers.progressToNext(disciplineScore),
+                    nextTier = DisciplineTiers.nextTier(tier)
                 )
             }
 
@@ -147,7 +164,7 @@ fun HomeScreen(
                     trailingContent = {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(
-                                "7 Days",
+                                deactivationDelayLabel(deactivationDelay),
                                 fontWeight = FontWeight.Bold,
                                 color = Color(0xFF7C3AED),
                                 fontSize = 13.sp
@@ -155,9 +172,62 @@ fun HomeScreen(
                             Icon(Icons.Default.ChevronRight, null, tint = textMuted, modifier = Modifier.size(20.dp))
                         }
                     },
-                    onClick = onNavigateToSettings
+                    onClick = { showDelaySheet = true }
                 )
             }
+
+            item {
+                Spacer(Modifier.height(12.dp))
+                ActionTile(
+                    title = stringResource(R.string.share_card_title),
+                    subtitle = stringResource(R.string.share_card_subtitle),
+                    icon = Icons.Default.Share,
+                    iconColor = Color(0xFF22C55E),
+                    trailingContent = {},
+                    onClick = {
+                        val totalBlocks = totalBlocks
+                        shareScope.launch {
+                            val data = vm.buildShareCardData(weeklyBlockCount = totalBlocks)
+                            val bmp = ShareCardGenerator.render(data)
+                            val chooser = ShareCardGenerator.share(context, bmp)
+                            context.startActivity(chooser)
+                        }
+                    }
+                )
+            }
+
+            item {
+                Spacer(Modifier.height(12.dp))
+                val studyRoomActive by vm.studyRoomRemainingMs.collectAsStateWithLifecycle()
+                ActionTile(
+                    title = if (studyRoomActive > 0L)
+                        stringResource(R.string.study_room_active_title, (studyRoomActive / 60_000L).coerceAtLeast(1))
+                    else
+                        stringResource(R.string.study_room_title),
+                    subtitle = if (studyRoomActive > 0L)
+                        stringResource(R.string.study_room_active_subtitle)
+                    else
+                        stringResource(R.string.study_room_subtitle),
+                    icon = Icons.Default.School,
+                    iconColor = Color(0xFF22C55E),
+                    trailingContent = {},
+                    onClick = {
+                        if (studyRoomActive > 0L) vm.stopStudyRoom()
+                        else vm.startStudyRoom(60)
+                    }
+                )
+            }
+        }
+
+        if (showDelaySheet) {
+            DelaySelectorSheet(
+                current = deactivationDelay,
+                onSelect = {
+                    vm.setDeactivationDelay(it)
+                    showDelaySheet = false
+                },
+                onDismiss = { showDelaySheet = false }
+            )
         }
 
         if (countdownActive) {
@@ -172,10 +242,34 @@ fun HomeScreen(
     if (showPinDialog) {
         PinVerifyDialog(
             pinInput = pinInput,
-            onPinInputChange = { if (it.length <= 6) pinInput = it },
+            onPinInputChange = {
+                if (it.length <= 6) {
+                    pinInput = it
+                    // Clear the error highlight as soon as the user starts
+                    // re-typing — otherwise the field stays red even after
+                    // a correct entry on the next attempt.
+                    if (pinError) vm.dismissPinError()
+                }
+            },
             isError = pinError,
             onConfirm = { vm.verifyPin(pinInput); pinInput = "" },
             onDismiss = { vm.dismissPinDialog(); pinInput = "" }
+        )
+    }
+
+    if (showPartnerDialog) {
+        PartnerApprovalDialog(
+            codeInput = partnerCodeInput,
+            onCodeInputChange = {
+                if (it.length <= 8) {
+                    partnerCodeInput = it.filter { ch -> ch.isDigit() }
+                }
+            },
+            errorMessage = partnerError,
+            inFlight = partnerRequestInFlight,
+            onConfirm = { vm.verifyPartnerCode(partnerCodeInput); partnerCodeInput = "" },
+            onResend = { vm.resendPartnerRequest(); partnerCodeInput = "" },
+            onDismiss = { vm.dismissPartnerDialog(); partnerCodeInput = "" }
         )
     }
 }
@@ -441,17 +535,26 @@ fun CountdownOverlay(
                     color = textSecondary
                 )
                 Spacer(Modifier.height(20.dp))
-                val minutes = remainingSeconds / 60
-                val seconds = remainingSeconds % 60
+                val totalSeconds = remainingSeconds
+                val days = totalSeconds / 86_400
+                val hours = (totalSeconds % 86_400) / 3_600
+                val minutes = (totalSeconds % 3_600) / 60
+                val seconds = totalSeconds % 60
+                val display = when {
+                    days > 0 -> stringResource(R.string.countdown_days_hours_minutes_seconds, days, hours, minutes, seconds)
+                    hours > 0 -> stringResource(R.string.countdown_hours_minutes_seconds, hours, minutes, seconds)
+                    else -> stringResource(R.string.countdown_minutes_seconds, minutes, seconds)
+                }
                 Text(
-                    stringResource(R.string.countdown_minutes_seconds, minutes, seconds),
-                    fontSize = 48.sp,
+                    display,
+                    fontSize = if (days > 0) 36.sp else 48.sp,
                     fontWeight = FontWeight.Black,
                     color = warning
                 )
                 Spacer(Modifier.height(12.dp))
+                val totalDelaySeconds = (deactivationDelay * 86_400L).coerceAtLeast(1L)
                 LinearProgressIndicator(
-                    progress = { remainingSeconds.toFloat() / (deactivationDelay * 60).coerceAtLeast(1) },
+                    progress = { (totalSeconds.toFloat() / totalDelaySeconds).coerceIn(0f, 1f) },
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(6.dp)
@@ -522,4 +625,191 @@ fun PinVerifyDialog(
         containerColor = surface,
         shape = RoundedCornerShape(24.dp)
     )
+}
+
+@Composable
+private fun deactivationDelayLabel(days: Int): String = when (days) {
+    0 -> stringResource(R.string.delay_no_delay)
+    2 -> stringResource(R.string.delay_2_days)
+    7 -> stringResource(R.string.delay_7_days)
+    15 -> stringResource(R.string.delay_15_days)
+    30 -> stringResource(R.string.delay_1_month)
+    else -> "$days days"
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun DelaySelectorSheet(
+    current: Int,
+    onSelect: (Int) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val options = listOf(0, 2, 7, 15, 30)
+    ModalBottomSheet(onDismissRequest = onDismiss, containerColor = surface) {
+        Column(Modifier.fillMaxWidth().padding(24.dp)) {
+            Text(
+                stringResource(R.string.card_delay_title),
+                fontSize = 20.sp,
+                fontWeight = FontWeight.Bold,
+                color = text
+            )
+            Spacer(Modifier.height(16.dp))
+            options.forEach { days ->
+                val selected = days == current
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .clickable { onSelect(days) }
+                        .background(if (selected) Color(0xFF7C3AED).copy(alpha = 0.15f) else Color.Transparent)
+                        .padding(horizontal = 16.dp, vertical = 14.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    RadioButton(
+                        selected = selected,
+                        onClick = { onSelect(days) },
+                        colors = RadioButtonDefaults.colors(selectedColor = Color(0xFF7C3AED))
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text(deactivationDelayLabel(days), color = text, fontSize = 16.sp, fontWeight = FontWeight.Medium)
+                }
+            }
+            Spacer(Modifier.height(16.dp))
+        }
+    }
+}
+
+/**
+ * "Accountability Partner" approval dialog (Bulldog Blocker + Canopy
+ * style). The user has just emailed a 6-digit unlock code to their
+ * partner; once the partner confirms, the user types the code back
+ * here. The code expires after 5 minutes — the "Resend" button
+ * requests a fresh one.
+ */
+@Composable
+fun PartnerApprovalDialog(
+    codeInput: String,
+    onCodeInputChange: (String) -> Unit,
+    errorMessage: String?,
+    inFlight: Boolean,
+    onConfirm: () -> Unit,
+    onResend: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(stringResource(R.string.partner_dialog_title), fontWeight = FontWeight.Bold)
+        },
+        text = {
+            Column {
+                Text(
+                    stringResource(R.string.partner_dialog_desc),
+                    color = textSecondary,
+                    fontSize = 14.sp
+                )
+                Spacer(Modifier.height(16.dp))
+                OutlinedTextField(
+                    value = codeInput,
+                    onValueChange = onCodeInputChange,
+                    label = { Text(stringResource(R.string.partner_code_label)) },
+                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                        keyboardType = androidx.compose.ui.text.input.KeyboardType.NumberPassword
+                    ),
+                    singleLine = true,
+                    isError = errorMessage != null,
+                    supportingText = if (errorMessage != null) {
+                        { Text(errorMessage, color = MaterialTheme.colorScheme.error) }
+                    } else null,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = onConfirm,
+                enabled = codeInput.length >= 4 && !inFlight,
+                shape = RoundedCornerShape(12.dp)
+            ) { Text(stringResource(R.string.partner_btn_confirm)) }
+        },
+        dismissButton = {
+            Row {
+                TextButton(onClick = onResend, enabled = !inFlight) {
+                    Text(stringResource(R.string.partner_btn_resend))
+                }
+                Spacer(Modifier.width(4.dp))
+                TextButton(onClick = onDismiss) {
+                    Text(stringResource(R.string.btn_cancel))
+                }
+            }
+        },
+        containerColor = surface,
+        shape = RoundedCornerShape(24.dp)
+    )
+}
+
+@Composable
+private fun TierCard(
+    tier: DisciplineTier,
+    score: Int,
+    progressToNext: Float,
+    nextTier: DisciplineTier?
+) {
+    androidx.compose.material3.Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(20.dp),
+        colors = androidx.compose.material3.CardDefaults.cardColors(containerColor = surface)
+    ) {
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(20.dp)
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(text = tier.emoji, fontSize = 36.sp)
+                Spacer(Modifier.width(14.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = stringResource(R.string.tier_section_title),
+                        color = textMuted,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Medium
+                    )
+                    Text(
+                        text = stringResource(tier.titleRes),
+                        color = text,
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        text = stringResource(tier.subtitleRes),
+                        color = textMuted,
+                        fontSize = 12.sp
+                    )
+                }
+                Text(
+                    text = "$score",
+                    color = Color(0xFF7C3AED),
+                    fontSize = 22.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+            Spacer(Modifier.height(12.dp))
+            LinearProgressIndicator(
+                progress = { progressToNext.coerceIn(0f, 1f) },
+                modifier = Modifier.fillMaxWidth().height(8.dp).clip(RoundedCornerShape(4.dp)),
+                color = Color(0xFF7C3AED),
+                trackColor = Color(0xFF7C3AED).copy(alpha = 0.18f)
+            )
+            Spacer(Modifier.height(6.dp))
+            val progressLabel = if (nextTier == null) {
+                stringResource(R.string.tier_progress_at_top)
+            } else {
+                val remaining = (nextTier.minScore - score).coerceAtLeast(0)
+                stringResource(R.string.tier_progress_to_next, remaining)
+            }
+            Text(text = progressLabel, color = textMuted, fontSize = 11.sp)
+        }
+    }
 }

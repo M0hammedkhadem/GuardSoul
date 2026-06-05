@@ -4,15 +4,12 @@ import android.app.NotificationManager
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import android.hardware.usb.UsbManager
 import android.provider.Settings
 import androidx.core.app.NotificationCompat
 import com.agon.app.AppNotificationChannels
-import com.agon.app.GuardianApp
+import com.agon.app.guardianApp
 import com.agon.app.R
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import timber.log.Timber
 
@@ -21,15 +18,24 @@ class AdbReceiver : BroadcastReceiver() {
         if (intent.action != "android.hardware.usb.action.USB_STATE") return
 
         val connected = intent.getBooleanExtra("connected", false)
-        if (!connected) return
+        val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        
+        if (!connected) {
+            // Issue #281: Remove notification when USB is disconnected
+            manager.cancel(9002)
+            return
+        }
 
+        val app = context.guardianApp() ?: return
         val pendingResult = goAsync()
-        CoroutineScope(Dispatchers.IO + SupervisorJob()).launch {
+        
+        // Issue #169: Use applicationScope to prevent leak
+        app.applicationScope.launch(Dispatchers.IO) {
             try {
-                val app = context.applicationContext as GuardianApp
                 val shieldActive = try {
                     app.repository.getAppSettings().isShieldActive()
                 } catch (_: Exception) { false }
+                
                 if (!shieldActive) return@launch
 
                 val adbEnabled = try {
@@ -41,7 +47,7 @@ class AdbReceiver : BroadcastReceiver() {
 
                 if (adbEnabled) {
                     Timber.w("AdbReceiver: ADB is enabled while USB connected")
-                    showAdbWarningNotification(context)
+                    showAdbWarningNotification(context, manager)
                 }
             } finally {
                 pendingResult.finish()
@@ -49,8 +55,7 @@ class AdbReceiver : BroadcastReceiver() {
         }
     }
 
-    private fun showAdbWarningNotification(context: Context) {
-        val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+    private fun showAdbWarningNotification(context: Context, manager: NotificationManager) {
         val notification = NotificationCompat.Builder(context, AppNotificationChannels.TAMPER_ALERT)
             .setSmallIcon(android.R.drawable.ic_dialog_alert)
             .setContentTitle(context.getString(R.string.tamper_adb_title))

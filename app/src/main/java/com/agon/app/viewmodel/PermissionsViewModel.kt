@@ -1,13 +1,9 @@
 package com.agon.app.viewmodel
 
 import android.app.Application
-import android.content.Intent
-import android.net.Uri
-import android.os.Build
-import android.provider.Settings
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.agon.app.GuardianApp
+import com.agon.app.guardianApp
 import com.agon.app.utils.PermissionUtils
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -22,6 +18,9 @@ data class PermissionsUiState(
     val overlayGranted: Boolean = false,
     val usageAccessGranted: Boolean = false,
     val notificationGranted: Boolean = false,
+    val batteryOptimizationIgnored: Boolean = false,
+    val writeSettingsGranted: Boolean = false,
+    val exactAlarmGranted: Boolean = false,
     val grantAllProgress: Int = 0,
     val grantAllTotal: Int = 0,
     val isGrantingAll: Boolean = false,
@@ -29,12 +28,15 @@ data class PermissionsUiState(
 )
 
 class PermissionsViewModel(application: Application) : AndroidViewModel(application) {
-    private val app = application as GuardianApp
+    private val app = application.guardianApp()!!
     private val ctx = application
     val settings = app.repository.getAppSettings()
 
     private val _uiState = MutableStateFlow(PermissionsUiState())
     val uiState: StateFlow<PermissionsUiState> = _uiState.asStateFlow()
+
+    // Cache the list of permissions to grant when starting "Grant All"
+    private var permissionsToGrant = listOf<String>()
 
     fun refreshPermissionStates() {
         viewModelScope.launch {
@@ -44,6 +46,9 @@ class PermissionsViewModel(application: Application) : AndroidViewModel(applicat
             val overlay = PermissionUtils.isOverlayGranted(ctx)
             val usage = PermissionUtils.isUsageAccessGranted(ctx)
             val notif = PermissionUtils.isNotificationGranted(ctx)
+            val battery = PermissionUtils.isBatteryOptimizationIgnored(ctx)
+            val write = PermissionUtils.isWriteSettingsGranted(ctx)
+            val alarm = PermissionUtils.isExactAlarmGranted(ctx)
 
             _uiState.update {
                 it.copy(
@@ -53,6 +58,9 @@ class PermissionsViewModel(application: Application) : AndroidViewModel(applicat
                     overlayGranted = overlay,
                     usageAccessGranted = usage,
                     notificationGranted = notif,
+                    batteryOptimizationIgnored = battery,
+                    writeSettingsGranted = write,
+                    exactAlarmGranted = alarm
                 )
             }
 
@@ -67,109 +75,67 @@ class PermissionsViewModel(application: Application) : AndroidViewModel(applicat
         "overlay" -> _uiState.value.overlayGranted
         "usage_access" -> _uiState.value.usageAccessGranted
         "notifications" -> _uiState.value.notificationGranted
+        "battery" -> _uiState.value.batteryOptimizationIgnored
+        "write_settings" -> _uiState.value.writeSettingsGranted
+        "exact_alarm" -> _uiState.value.exactAlarmGranted
         else -> false
     }
 
     fun startGrantAll() {
-        val s = _uiState.value
-        val ungranted = mutableListOf<String>().apply {
-            if (!s.overlayGranted) add("overlay")
-            if (!s.usageAccessGranted) add("usage_access")
-            if (!s.notificationGranted) add("notifications")
-            if (!s.accessibilityGranted) add("accessibility")
-            if (!s.vpnGranted) add("vpn")
-            if (!s.deviceAdminGranted) add("device_admin")
-        }
-        if (ungranted.isEmpty()) return
+        permissionsToGrant = getUngrantedList()
+        if (permissionsToGrant.isEmpty()) return
 
         _uiState.update {
             it.copy(
                 isGrantingAll = true,
                 grantAllProgress = 0,
-                grantAllTotal = ungranted.size,
-                currentGrantingPermission = ungranted.first()
+                grantAllTotal = permissionsToGrant.size,
+                currentGrantingPermission = permissionsToGrant.first()
             )
         }
     }
 
+    // Issue #136: Fixed logic to advance through the cached list of ungranted permissions
     fun advanceGrantAll() {
         val s = _uiState.value
+        if (!s.isGrantingAll) return
+        
         val current = s.currentGrantingPermission ?: run { finishGrantAll(); return }
 
         if (isPermissionGranted(current)) {
             val nextIndex = s.grantAllProgress + 1
             if (nextIndex >= s.grantAllTotal) {
-                _uiState.update {
-                    it.copy(
-                        grantAllProgress = nextIndex,
-                        isGrantingAll = false,
-                        currentGrantingPermission = null,
-                    )
-                }
+                finishGrantAll()
             } else {
                 _uiState.update {
                     it.copy(
                         grantAllProgress = nextIndex,
-                        currentGrantingPermission = getUngrantedAtIndex(nextIndex),
-                    )
-                }
-            }
-        } else {
-            val nextIndex = s.grantAllProgress + 1
-            if (nextIndex >= s.grantAllTotal) {
-                _uiState.update {
-                    it.copy(
-                        grantAllProgress = nextIndex,
-                        isGrantingAll = false,
-                        currentGrantingPermission = null,
-                    )
-                }
-            } else {
-                _uiState.update {
-                    it.copy(
-                        grantAllProgress = nextIndex,
-                        currentGrantingPermission = getUngrantedAtIndex(nextIndex),
+                        currentGrantingPermission = permissionsToGrant.getOrNull(nextIndex),
                     )
                 }
             }
         }
     }
 
-    private fun getUngrantedAtIndex(index: Int): String? {
+    private fun getUngrantedList(): List<String> {
         val s = _uiState.value
-        val ungranted = mutableListOf<String>().apply {
+        return mutableListOf<String>().apply {
+            if (!s.notificationGranted) add("notifications")
             if (!s.overlayGranted) add("overlay")
             if (!s.usageAccessGranted) add("usage_access")
-            if (!s.notificationGranted) add("notifications")
+            if (!s.batteryOptimizationIgnored) add("battery")
+            if (!s.writeSettingsGranted) add("write_settings")
+            if (!s.exactAlarmGranted) add("exact_alarm")
             if (!s.accessibilityGranted) add("accessibility")
             if (!s.vpnGranted) add("vpn")
             if (!s.deviceAdminGranted) add("device_admin")
         }
-        return ungranted.getOrNull(index)
     }
 
     private fun finishGrantAll() {
         _uiState.update {
-            it.copy(isGrantingAll = false, currentGrantingPermission = null)
+            it.copy(isGrantingAll = false, currentGrantingPermission = null, grantAllProgress = it.grantAllTotal)
         }
-    }
-
-    fun getSettingsIntent(permission: String): Intent? = when (permission) {
-        "overlay" -> Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION).apply {
-            data = Uri.parse("package:${ctx.packageName}")
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        }
-        "usage_access" -> Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS).apply {
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        }
-        "notifications" -> {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).apply {
-                    putExtra(Settings.EXTRA_APP_PACKAGE, ctx.packageName)
-                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                }
-            } else null
-        }
-        else -> null
+        permissionsToGrant = emptyList()
     }
 }

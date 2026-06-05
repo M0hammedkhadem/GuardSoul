@@ -14,34 +14,34 @@ import timber.log.Timber
 class FirebaseManager(
     private val context: Context,
     private val blockEventDao: BlockEventDao,
-    private val appLimitDao: AppLimitDao
+    private val appLimitDao: AppLimitDao,
+    private val settings: AppSettings
 ) {
     private val auth: FirebaseAuth = FirebaseAuth.getInstance()
     private val database: FirebaseDatabase = FirebaseDatabase.getInstance()
-    private val settings = AppSettings(context)
 
     private var userId: String = ""
     private var childDeviceId: String = ""
+    private var lastFcmToken: String = ""
 
     private val deviceRef
         get() = if (childDeviceId.isBlank()) null
         else database.getReference("childDevices").child(childDeviceId)
 
     suspend fun initialize(): Boolean {
+        if (userId.isNotBlank()) return true
         return try {
             val user = auth.signInAnonymously().await().user
             if (user != null) {
                 userId = user.uid
                 childDeviceId = settings.getChildDeviceId().ifBlank {
-                    settings.setChildDeviceId(user.uid)
-                    user.uid
+                    val newId = user.uid
+                    settings.setChildDeviceId(newId)
+                    newId
                 }
                 Timber.d("FirebaseManager: authenticated as $userId")
                 true
-            } else {
-                Timber.w("FirebaseManager: anonymous auth returned null")
-                false
-            }
+            } else false
         } catch (e: Exception) {
             Timber.e(e, "FirebaseManager: auth failed")
             false
@@ -51,26 +51,29 @@ class FirebaseManager(
     suspend fun syncDeviceInfo() {
         val ref = deviceRef ?: return
         try {
-            val todayStart = getTodayStart()
+            // Issue #183: Only fetch FCM token if not already cached to save battery/IPC
+            val token = if (lastFcmToken.isBlank()) {
+                FirebaseMessaging.getInstance().token.await().also { lastFcmToken = it }
+            } else lastFcmToken
+
+            val todayStart = settings.getTodayStart()
             val blocksToday = blockEventDao.blocksSince(todayStart).size
-            val totalBlocks = blockEventDao.blocksSince(0L).size
-            val allEvents = blockEventDao.blocksSince(0L)
-            val mostBlocked = allEvents.groupBy { it.appLabel }
-                .maxByOrNull { it.value.size }?.key ?: ""
+            val allEventsCount = blockEventDao.getCount()
+            
+            // Issue #179 fix was already in DAO, we just use it here
+            val mostBlocked = blockEventDao.getMostBlockedApp()?.appLabel ?: ""
 
             ref.child("info").updateChildren(mapOf(
                 "profileName" to settings.getProfileName(),
                 "shieldActive" to settings.isShieldActive(),
                 "lastSeen" to ServerValue.TIMESTAMP,
-                "streak" to calculateStreak(),
-                "totalBlocks" to totalBlocks,
+                "streak" to settings.calculateStreak(blockEventDao),
+                "totalBlocks" to allEventsCount,
                 "blocksToday" to blocksToday,
                 "mostBlockedApp" to mostBlocked,
                 "parentEmail" to settings.getParentEmail(),
-                "fcmToken" to FirebaseMessaging.getInstance().token.await()
+                "fcmToken" to token
             )).await()
-
-            Timber.d("FirebaseManager: device info synced")
         } catch (e: Exception) {
             Timber.e(e, "FirebaseManager: syncDeviceInfo failed")
         }
@@ -95,9 +98,7 @@ class FirebaseManager(
     suspend fun syncBlockEvents() {
         val ref = deviceRef ?: return
         try {
-            val events = blockEventDao.blocksSince(
-                System.currentTimeMillis() - 3600000L
-            )
+            val events = blockEventDao.blocksSince(System.currentTimeMillis() - 86400000L)
             val eventsMap = events.associate { event ->
                 event.id.toString() to mapOf(
                     "packageName" to event.packageName,
@@ -107,7 +108,6 @@ class FirebaseManager(
                 )
             }
             ref.child("events").updateChildren(eventsMap).await()
-            Timber.d("FirebaseManager: ${events.size} events synced")
         } catch (e: Exception) {
             Timber.e(e, "FirebaseManager: syncBlockEvents failed")
         }
@@ -116,14 +116,12 @@ class FirebaseManager(
     suspend fun sendAlert(type: String, message: String) {
         val ref = deviceRef ?: return
         try {
-            val alertRef = ref.child("alerts").push()
-            alertRef.setValue(mapOf(
+            ref.child("alerts").push().setValue(mapOf(
                 "type" to type,
                 "message" to message,
                 "timestamp" to ServerValue.TIMESTAMP,
                 "acknowledged" to false
             )).await()
-            Timber.d("FirebaseManager: alert sent ($type)")
         } catch (e: Exception) {
             Timber.e(e, "FirebaseManager: sendAlert failed")
         }
@@ -137,9 +135,12 @@ class FirebaseManager(
                 val command = snapshot.value as? Map<*, *> ?: continue
                 if (command["status"] != "pending") continue
                 val type = command["type"] as? String ?: continue
+                
                 @Suppress("UNCHECKED_CAST")
                 val data = (command["data"] as? Map<String, String>) ?: emptyMap()
                 onCommand(type, data)
+                
+                // Issue #190: Mark as completed or remove to prevent node bloat
                 snapshot.ref.child("status").setValue("completed").await()
             }
         } catch (e: Exception) {
@@ -151,7 +152,12 @@ class FirebaseManager(
         val ref = deviceRef ?: return
         try {
             val now = System.currentTimeMillis()
-            val weekStart = now - (now % 604800000L)
+            // Issue #189: Use Calendar to get actual local week start
+            val cal = java.util.Calendar.getInstance()
+            cal.set(java.util.Calendar.DAY_OF_WEEK, cal.firstDayOfWeek)
+            cal.set(java.util.Calendar.HOUR_OF_DAY, 0)
+            val weekStart = cal.timeInMillis
+
             val events = blockEventDao.blocksSince(weekStart)
             val daysActive = events.map { it.timestamp / 86400000L }.distinct().count()
             val perApp = events.groupBy { it.packageName }
@@ -167,36 +173,8 @@ class FirebaseManager(
                 "perApp" to perApp,
                 "generatedAt" to ServerValue.TIMESTAMP
             )).await()
-
-            Timber.d("FirebaseManager: weekly report synced")
         } catch (e: Exception) {
             Timber.e(e, "FirebaseManager: syncWeeklyReport failed")
         }
-    }
-
-    private suspend fun calculateStreak(): Int {
-        val allEvents = blockEventDao.blocksSince(0L)
-        val todayStart = getTodayStart()
-        var streak = 0
-        var checkTime = todayStart
-        while (true) {
-            val dayEnd = checkTime + 86400000L
-            val hasEvent = allEvents.any { it.timestamp in checkTime until dayEnd }
-            if (!hasEvent) break
-            streak++
-            checkTime -= 86400000L
-            val oldest = allEvents.minOfOrNull { it.timestamp } ?: break
-            if (checkTime < oldest - 86400000L) break
-        }
-        return streak
-    }
-
-    private fun getTodayStart(): Long {
-        val cal = java.util.Calendar.getInstance()
-        cal.set(java.util.Calendar.HOUR_OF_DAY, 0)
-        cal.set(java.util.Calendar.MINUTE, 0)
-        cal.set(java.util.Calendar.SECOND, 0)
-        cal.set(java.util.Calendar.MILLISECOND, 0)
-        return cal.timeInMillis
     }
 }

@@ -5,14 +5,17 @@ import android.app.admin.DevicePolicyManager
 import android.content.ComponentName
 import android.content.Intent
 import android.media.projection.MediaProjectionManager
+import android.os.Build
+import android.provider.Settings
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.agon.app.AiScannerService
 import com.agon.app.AppBlockerService
-import com.agon.app.DnsVpnService
+import com.agon.app.PornBlockerService
+import com.agon.app.blocking.PornBlockerController
+import com.agon.app.guardianApp
 import com.agon.app.GuardianDeviceAdminReceiver
 import com.agon.app.GuardianApp
-import com.agon.app.nn.NsfwModelDownloader
 import com.agon.app.services.DeviceOwnerService
 import com.agon.app.utils.KnoxManager
 import kotlinx.coroutines.flow.*
@@ -37,90 +40,41 @@ class ContentViewModel(application: Application) : AndroidViewModel(application)
     val strongProtection: StateFlow<Boolean> = settings.strongProtectionFlow
         .distinctUntilChanged()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
-    val aiThreshold: StateFlow<Float> = settings.aiSensitivityFlow
-        .map { (it.coerceIn(50, 90) / 100f) }
-        .distinctUntilChanged()
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0.7f)
-    val aiOverlayMode: StateFlow<Boolean> = settings.aiOverlayModeFlow
-        .distinctUntilChanged()
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
     val safeSearchMode: StateFlow<String> = settings.safeSearchModeFlow
         .distinctUntilChanged()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "basic")
-    val blockDoh: StateFlow<Boolean> = settings.blockDohFlow
-        .distinctUntilChanged()
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
-
-    private val modelDownloader = NsfwModelDownloader(context)
-
-    val modelDownloadProgress: StateFlow<Int> = modelDownloader.downloadProgress
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
-    val isModelDownloading: StateFlow<Boolean> = modelDownloader.isDownloading
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
 
     val isKnoxDevice: Boolean = KnoxManager.isKnoxDevice()
 
+    val isDeviceOwner: StateFlow<Boolean> = flow { emit(DeviceOwnerService.isDeviceOwner(context)) }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+
     fun setPornBlocker(v: Boolean) = viewModelScope.launch {
         settings.setPornBlocker(v)
-        if (v && settings.isShieldActive()) {
-            DnsVpnService.start(getApplication())
-        } else if (!v) {
-            DnsVpnService.stop(getApplication())
-        }
+        PornBlockerController.sync(getApplication())
     }
 
     fun setNextDnsProfileId(v: String) = viewModelScope.launch {
         settings.setNextDnsProfileId(v)
-        if (pornBlocker.value && settings.isShieldActive()) {
-            DnsVpnService.stop(getApplication())
-            DnsVpnService.start(getApplication())
-        }
     }
 
     fun setAiScanner(v: Boolean) = viewModelScope.launch {
         settings.setAiScanner(v)
-        val ctx = getApplication<GuardianApp>()
         if (!v) {
-            val stopIntent = Intent(ctx, AiScannerService::class.java).apply {
-                action = AiScannerService.ACTION_STOP
-            }
-            ctx.startService(stopIntent)
+            AiScannerService.stop(getApplication())
         }
     }
 
     fun setSafeSearchMode(mode: String) = viewModelScope.launch {
         settings.setSafeSearchMode(mode)
-        if (pornBlocker.value && settings.isShieldActive()) {
-            DnsVpnService.stop(getApplication())
-            DnsVpnService.start(getApplication())
-        }
-    }
-
-    fun setBlockDoh(v: Boolean) = viewModelScope.launch {
-        settings.setBlockDoh(v)
-        if (pornBlocker.value && settings.isShieldActive()) {
-            DnsVpnService.stop(getApplication())
-            DnsVpnService.start(getApplication())
-        }
     }
 
     fun startAiScannerWithProjection(projectionIntent: Intent) = viewModelScope.launch {
         settings.setAiScanner(true)
         if (!settings.isShieldActive()) return@launch
-        val ctx = getApplication<GuardianApp>()
-        if (!modelDownloader.isModelDownloaded()) {
-            modelDownloader.downloadModel()
-        }
-        val serviceIntent = Intent(ctx, AiScannerService::class.java).apply {
-            putExtra(AiScannerService.EXTRA_PROJECTION_INTENT, projectionIntent)
-        }
-        ctx.startForegroundService(serviceIntent)
-    }
-
-    fun getMediaProjectionIntent(): Intent? {
-        val ctx = getApplication<GuardianApp>()
-        val mpm = ctx.getSystemService(Application.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
-        return mpm.createScreenCaptureIntent()
+        // Delegate to the companion's start() so we get the same
+        // foreground-service-promotion + OEM fallback logic.
+        AiScannerService.start(getApplication(), projectionIntent)
     }
 
     fun setUninstallProtection(v: Boolean) = viewModelScope.launch {
@@ -154,12 +108,4 @@ class ContentViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun isDeviceOwner(): Boolean = DeviceOwnerService.isDeviceOwner(context)
-
-    fun setAiThreshold(v: Float) = viewModelScope.launch {
-        settings.setAiSensitivity((v * 100).toInt().coerceIn(50, 90))
-    }
-
-    fun setAiOverlayMode(v: Boolean) = viewModelScope.launch {
-        settings.setAiOverlayMode(v)
-    }
 }

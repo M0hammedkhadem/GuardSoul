@@ -6,7 +6,7 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface AppLimitDao {
-    @Query("SELECT * FROM app_limits")
+    @Query("SELECT * FROM app_limits ORDER BY appLabel ASC")
     fun getAllFlow(): Flow<List<AppLimitEntity>>
 
     @Query("SELECT * FROM app_limits")
@@ -18,6 +18,12 @@ interface AppLimitDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(limit: AppLimitEntity)
 
+    @Update
+    suspend fun update(limit: AppLimitEntity)
+
     @Delete
     suspend fun delete(limit: AppLimitEntity)
+
+    @Query("DELETE FROM app_limits")
+    suspend fun deleteAll()
 }

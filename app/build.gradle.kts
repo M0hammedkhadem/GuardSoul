@@ -7,6 +7,7 @@ plugins {
     id("org.jetbrains.kotlin.plugin.serialization")
     id("com.google.devtools.ksp")
     id("com.google.gms.google-services")
+    id("com.google.firebase.crashlytics")
 }
 
 val keystoreProperties = Properties()
@@ -33,9 +34,15 @@ android {
         applicationId = "com.agon.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = 100
+        versionName = "1.0.0"
         buildConfigField("boolean", "IS_DEBUG_BUILD", "false")
+
+        // SaaS Billing: replace these in production with real Play Console SKUs
+        buildConfigField("String", "SKU_PRO_MONTHLY", "\"guardsoul_pro_monthly\"")
+        buildConfigField("String", "SKU_PRO_YEARLY", "\"guardsoul_pro_yearly\"")
+        buildConfigField("String", "SKU_PREMIUM_MONTHLY", "\"guardsoul_premium_monthly\"")
+        buildConfigField("String", "SKU_PREMIUM_YEARLY", "\"guardsoul_premium_yearly\"")
     }
 
     signingConfigs {
@@ -46,10 +53,12 @@ android {
             keyPassword = "android"
         }
         create("release") {
-            storeFile = keystoreProperties["storeFile"]?.let { file(it.toString()) }
-            storePassword = keystoreProperties["storePassword"]?.toString()
-            keyAlias = keystoreProperties["keyAlias"]?.toString()
-            keyPassword = keystoreProperties["keyPassword"]?.toString()
+            if (keystoreProperties.isNotEmpty()) {
+                storeFile = rootProject.file(keystoreProperties.getProperty("storeFile"))
+                storePassword = keystoreProperties.getProperty("storePassword")
+                keyAlias = keystoreProperties.getProperty("keyAlias")
+                keyPassword = keystoreProperties.getProperty("keyPassword")
+            }
         }
     }
 
@@ -66,6 +75,11 @@ android {
                 "proguard-rules.pro"
             )
             buildConfigField("boolean", "IS_DEBUG_BUILD", "false")
+            signingConfig = if (keystoreProperties.isNotEmpty()) {
+                signingConfigs.getByName("release")
+            } else {
+                signingConfigs.getByName("debug")
+            }
         }
     }
 
@@ -83,6 +97,10 @@ android {
     buildFeatures {
         compose = true
         buildConfig = true
+    }
+
+    ksp {
+        arg("room.schemaLocation", "$projectDir/schemas")
     }
 }
 
@@ -108,7 +126,8 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.9.0")
 
     implementation("androidx.datastore:datastore-preferences:1.2.0")
-    implementation("androidx.security:security-crypto:1.1.0-alpha06")
+    // Issue #146: Updated to stable version of security-crypto
+    implementation("androidx.security:security-crypto:1.1.0")
 
     implementation("com.jakewharton.timber:timber:5.0.1")
 
@@ -125,6 +144,7 @@ dependencies {
     implementation(platform("com.google.firebase:firebase-bom:33.12.0"))
     implementation("com.google.firebase:firebase-auth")
     implementation("com.google.firebase:firebase-database")
+    implementation("com.google.firebase:firebase-firestore")
     implementation("com.google.firebase:firebase-messaging")
 
     // WorkManager
@@ -140,6 +160,24 @@ dependencies {
     implementation("org.tensorflow:tensorflow-lite:2.16.1")
     implementation("org.tensorflow:tensorflow-lite-support:0.4.4")
     implementation("org.tensorflow:tensorflow-lite-metadata:0.4.4")
+
+    // Google Play Billing (SaaS monetization)
+    implementation("com.android.billingclient:billing-ktx:7.1.1")
+
+    // Firebase Crashlytics (SaaS reliability)
+    implementation("com.google.firebase:firebase-crashlytics")
+    implementation("com.google.firebase:firebase-analytics")
+
+    // Google Play In-App Review (SaaS growth)
+    implementation("com.google.android.play:review:2.0.2")
+    implementation("com.google.android.play:review-ktx:2.0.2")
+
+    // Google Play In-App Update (seamless upgrades between releases)
+    implementation("com.google.android.play:app-update:2.1.0")
+    implementation("com.google.android.play:app-update-ktx:2.1.0")
+
+    // User Messaging Platform (GDPR / consent)
+    implementation("com.google.android.ump:user-messaging-platform:2.2.0")
 
     debugImplementation("androidx.compose.ui:ui-tooling")
 

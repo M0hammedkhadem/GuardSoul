@@ -1,15 +1,16 @@
 package com.agon.app.utils
 
+import android.app.AlarmManager
 import android.app.AppOpsManager
 import android.app.admin.DevicePolicyManager
 import android.content.ComponentName
 import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
+import android.os.PowerManager
 import android.os.Process
 import android.provider.Settings
-import com.agon.app.utils.AccessibilityUtils
-import com.agon.app.FacebookBlockerService
+import com.agon.app.services.GuardianAccessibilityService
 import com.agon.app.GuardianDeviceAdminReceiver
 import com.agon.app.data.settings.AppSettings
 import kotlinx.coroutines.CoroutineScope
@@ -27,12 +28,12 @@ object PermissionUtils {
                 isDeviceAdminGranted(context) &&
                 isOverlayGranted(context) &&
                 isUsageAccessGranted(context) &&
-                isNotificationGranted(context)
+                isNotificationGranted(context) &&
+                isBatteryOptimizationIgnored(context) &&
+                isWriteSettingsGranted(context) &&
+                isExactAlarmGranted(context)
     }
 
-    /**
-     * Synchronizes the actual system permission status with the internal AppSettings cache.
-     */
     fun syncPermissionsWithCache(context: Context, appSettings: AppSettings) {
         syncScope.launch {
             appSettings.setPermAccessibility(isAccessibilityGranted(context))
@@ -45,11 +46,10 @@ object PermissionUtils {
     }
 
     fun isAccessibilityGranted(context: Context): Boolean =
-        AccessibilityUtils.isServiceEnabled(context, FacebookBlockerService::class.java)
+        AccessibilityUtils.isServiceEnabled(context, GuardianAccessibilityService::class.java)
 
     fun isVpnGranted(context: Context): Boolean {
         return try {
-            // On some newer Android versions, we check the app op for VPN binding
             if (Build.VERSION.SDK_INT >= 34) {
                 val appOps = context.getSystemService(Context.APP_OPS_SERVICE) as AppOpsManager
                 val mode = appOps.checkOpNoThrow("android:bind_vpn", Process.myUid(), context.packageName)
@@ -97,6 +97,24 @@ object PermissionUtils {
     fun isNotificationGranted(context: Context): Boolean {
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             context.checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
+        } else {
+            true
+        }
+    }
+
+    fun isBatteryOptimizationIgnored(context: Context): Boolean {
+        val pm = context.getSystemService(Context.POWER_SERVICE) as PowerManager
+        return pm.isIgnoringBatteryOptimizations(context.packageName)
+    }
+
+    fun isWriteSettingsGranted(context: Context): Boolean {
+        return Settings.System.canWrite(context)
+    }
+
+    fun isExactAlarmGranted(context: Context): Boolean {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+            alarmManager.canScheduleExactAlarms()
         } else {
             true
         }

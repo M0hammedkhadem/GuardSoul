@@ -6,7 +6,7 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface BlockEventDao {
-    @Query("SELECT * FROM block_events ORDER BY timestamp DESC")
+    @Query("SELECT * FROM block_events ORDER BY timestamp DESC LIMIT 1000")
     fun getAllFlow(): Flow<List<BlockEventEntity>>
 
     @Query("SELECT * FROM block_events ORDER BY timestamp DESC LIMIT :limit")
@@ -18,17 +18,23 @@ interface BlockEventDao {
     @Query("SELECT COUNT(*) FROM block_events WHERE timestamp >= :since")
     fun blocksSinceFlow(since: Long): Flow<Int>
 
-    @Query("SELECT packageName, appLabel, COUNT(*) as count FROM block_events GROUP BY packageName ORDER BY count DESC LIMIT 1")
+    // Issue #179 & #228: Explicit aggregation and column mapping
+    @Query("SELECT packageName, MAX(appLabel) as appLabel, COUNT(*) as count FROM block_events GROUP BY packageName ORDER BY count DESC LIMIT 1")
     fun mostBlockedAppFlow(): Flow<MostBlockedApp?>
 
-    @Query("SELECT packageName, appLabel, COUNT(*) as count FROM block_events WHERE timestamp >= :since GROUP BY packageName ORDER BY count DESC")
+    @Query("SELECT packageName, MAX(appLabel) as appLabel, COUNT(*) as count FROM block_events WHERE timestamp >= :since GROUP BY packageName ORDER BY count DESC LIMIT 100")
     fun blocksPerAppSince(since: Long): Flow<List<MostBlockedApp>>
 
-    @Query("SELECT * FROM block_events WHERE timestamp >= :since ORDER BY timestamp DESC")
+    // Issue #230: Added safety limit to prevent OOM
+    @Query("SELECT * FROM block_events WHERE timestamp >= :since ORDER BY timestamp DESC LIMIT 500")
     fun blocksSince(since: Long): List<BlockEventEntity>
 
-    @Query("SELECT * FROM block_events WHERE timestamp >= :start AND timestamp <= :end ORDER BY timestamp DESC")
+    @Query("SELECT * FROM block_events WHERE timestamp >= :start AND timestamp < :end ORDER BY timestamp DESC")
     fun getByDateRange(start: Long, end: Long): Flow<List<BlockEventEntity>>
+
+    // Helper for Firebase sync to avoid Flows in workers
+    @Query("SELECT packageName, MAX(appLabel) as appLabel, COUNT(*) as count FROM block_events GROUP BY packageName ORDER BY count DESC LIMIT 1")
+    suspend fun getMostBlockedApp(): MostBlockedApp?
 
     @Query("SELECT COUNT(*) FROM block_events")
     suspend fun getCount(): Int
@@ -44,7 +50,7 @@ interface BlockEventDao {
 }
 
 data class MostBlockedApp(
-    val packageName: String,
-    val appLabel: String,
-    val count: Int
+    @ColumnInfo(name = "packageName") val packageName: String,
+    @ColumnInfo(name = "appLabel") val appLabel: String,
+    @ColumnInfo(name = "count") val count: Int
 )

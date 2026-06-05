@@ -3,6 +3,7 @@ package com.agon.app.receivers
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import com.agon.app.guardianApp
 import com.agon.app.GuardianApp
 import com.agon.app.utils.AppLogger
 import com.agon.app.utils.ScheduleEnforcer
@@ -18,7 +19,7 @@ class ScheduleReceiver : BroadcastReceiver() {
         val transitionType = intent.getStringExtra("TRANSITION_TYPE") ?: "unknown"
         AppLogger.i("ScheduleReceiver: Schedule transition ($transitionType) at $transitionTime")
         
-        val app = context.applicationContext as GuardianApp
+        val app = context.guardianApp() ?: return
         val repository = app.repository
         CoroutineScope(Dispatchers.Default + SupervisorJob()).launch {
             try {

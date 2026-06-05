@@ -38,6 +38,20 @@ for %%i in ("%APP_HOME%") do set APP_HOME=%%~fi
 @rem Add default JVM options here. You can also use JAVA_OPTS and GRADLE_OPTS to pass JVM options to this script.
 set DEFAULT_JVM_OPTS="-Xmx64m" "-Xms64m"
 
+@rem Find java.exe from gradle.properties org.gradle.java.home first
+if exist "%APP_HOME%\gradle.properties" (
+    for /f "tokens=2,* delims==" %%a in ('findstr /b "org.gradle.java.home" "%APP_HOME%\gradle.properties"') do (
+        set "GRADLE_JAVA_HOME=%%b"
+    )
+)
+if defined GRADLE_JAVA_HOME (
+    set "GRADLE_JAVA_HOME=%GRADLE_JAVA_HOME:\\=\%"
+    if exist "%GRADLE_JAVA_HOME%\bin\java.exe" (
+        set "JAVA_EXE=%GRADLE_JAVA_HOME%\bin\java.exe"
+        goto execute
+    )
+)
+
 @rem Find java.exe
 if defined JAVA_HOME goto findJavaFromJavaHome
 

@@ -14,6 +14,8 @@
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.MEDIA_PROJECTION" />
     <uses-permission android:name="android.permission.REBOOT" />
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
 
     <uses-permission android:name="android.permission.BIND_DEVICE_ADMIN" />
     <uses-permission android:name="android.permission.MANAGE_USERS" />
@@ -25,7 +27,7 @@
 
     <application
         android:name=".GuardianApp"
-        android:allowBackup="true"
+        android:allowBackup="false"
         android:label="@string/app_name"
         android:supportsRtl="true"
         android:icon="@mipmap/ic_launcher"
@@ -50,18 +52,6 @@
             android:turnScreenOn="true" />
 
         <service
-            android:name=".FacebookBlockerService"
-            android:exported="true"
-            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
-            <intent-filter>
-                <action android:name="android.accessibilityservice.AccessibilityService" />
-            </intent-filter>
-            <meta-data
-                android:name="android.accessibilityservice"
-                android:resource="@xml/accessibility_service_config" />
-        </service>
-
-        <service
             android:name=".services.GuardianAccessibilityService"
             android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE"
             android:exported="false">
@@ -73,17 +63,39 @@
                 android:resource="@xml/guardianservice" />
         </service>
 
+        <!--
+            ShortstopAccessibilityService (Shortstop Strategy)
+            Surgical blocking: detects FB Reels / YT Shorts / IG Reels /
+            TikTok FYP / Snapchat Spotlight via UI tree pattern matching
+            and injects an overlay on the offending surface only —
+            keeping the rest of the app functional.
+        -->
         <service
-            android:name=".DnsVpnService"
-            android:exported="false"
-            android:foregroundServiceType="specialUse"
-            android:permission="android.permission.BIND_VPN_SERVICE">
+            android:name=".blocking.ShortstopAccessibilityService"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE"
+            android:exported="false">
             <intent-filter>
-                <action android:name="android.net.VpnService" />
+                <action android:name="android.accessibilityservice.AccessibilityService" />
             </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/shortstop_service_config" />
+        </service>
+
+        <service
+            android:name=".PornBlockerService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
             <property
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
                 android:value="dns_content_filtering" />
+        </service>
+
+        <service
+            android:name=".DnsVpnService"
+            android:exported="false"
+            android:permission="android.permission.BIND_VPN_SERVICE"
+            android:foregroundServiceType="systemExempted">
         </service>
 
         <service
@@ -122,6 +134,40 @@
             android:name=".receivers.ScheduleReceiver"
             android:exported="false" />
 
+        <!--
+            TimeTamperReceiver: detects manual clock changes that would
+            bypass deactivation-delay countdowns. Exported=true because
+            Android delivers these broadcasts to any registered listener;
+            we only act on a positive tamper signal (no false-positive
+            risk from external callers).
+        -->
+        <receiver
+            android:name=".receivers.TimeTamperReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.TIME_SET" />
+                <action android:name="android.intent.action.TIMEZONE_CHANGED" />
+                <action android:name="android.intent.action.DATE_CHANGED" />
+            </intent-filter>
+        </receiver>
+
+        <!--
+            UserSwitchReceiver: detects when a second user / guest profile
+            becomes foreground or is created. The system delivers these
+            broadcasts to any registered listener so we keep exported=true;
+            we only act on multi-user state (no false-positive risk).
+        -->
+        <receiver
+            android:name=".receivers.UserSwitchReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.USER_FOREGROUND" />
+                <action android:name="android.intent.action.USER_INFO_CHANGED" />
+                <action android:name="android.intent.action.USER_ADDED" />
+                <action android:name="android.intent.action.USER_REMOVED" />
+            </intent-filter>
+        </receiver>
+
         <receiver
             android:name=".GuardianDeviceAdminReceiver"
             android:exported="true"
@@ -135,14 +181,16 @@
             </intent-filter>
         </receiver>
 
+        <!-- Issue #141: AdbReceiver should be private if possible, or protected -->
         <receiver
             android:name=".receivers.AdbReceiver"
-            android:exported="true">
+            android:exported="false">
             <intent-filter>
                 <action android:name="android.hardware.usb.action.USB_STATE" />
             </intent-filter>
         </receiver>
 
+        <!-- Issue #142: Split IntentFilters to require data scheme for package events -->
         <receiver
             android:name=".receivers.CloneReceiver"
             android:exported="true">
@@ -153,6 +201,26 @@
             </intent-filter>
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
+            </intent-filter>
+        </receiver>
+
+        <!--
+            ShortsIntentReceiver: intercepts Shorts/Reels deep links from
+            browsers, chat apps, etc. and rewrites them to the host app's
+            main launcher activity. Exported because we must receive
+            VIEW intents from other apps; the receiver itself only acts
+            on literal Shorts/Reels URL paths (0 false positives).
+        -->
+        <receiver
+            android:name=".receivers.ShortsIntentReceiver"
+            android:exported="true">
+            <intent-filter android:priority="1000">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" />
+                <data android:scheme="http" />
+                <data android:scheme="vnd.youtube" />
             </intent-filter>
         </receiver>
 

@@ -6,13 +6,10 @@ import android.app.admin.DevicePolicyManager
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
-import android.content.pm.PackageManager
 import android.os.Build
 import android.os.UserHandle
-import android.os.UserManager
-import kotlinx.coroutines.flow.first
+import android.widget.Toast
 import androidx.core.app.NotificationCompat
-import com.agon.app.data.settings.AppSettings
 import com.agon.app.data.settings.EncryptedPrefs
 import com.agon.app.utils.KnoxManager
 import com.agon.app.utils.SecurityUtils
@@ -20,31 +17,21 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
 import timber.log.Timber
-import android.widget.Toast
 
 class GuardianDeviceAdminReceiver : DeviceAdminReceiver() {
 
+    // Issue #169: Use a dedicated scope for the receiver
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
     companion object {
-        private const val PREFS_NAME = "guardianship"
-        private const val KEY_PROTECTION_ENABLED = "protection_enabled"
-        private const val KEY_BLOCK_SAFE_MODE = "block_safe_mode"
-
+        // Issue #138: All protection states now reside in EncryptedPrefs
         fun isProtectionEnabled(context: Context): Boolean {
-            return try {
-                context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-                    .getBoolean(KEY_PROTECTION_ENABLED, false)
-            } catch (_: Exception) { false }
+            return EncryptedPrefs(context).isProtectionEnabled()
         }
 
         fun setProtectionEnabled(context: Context, enabled: Boolean) {
-            context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-                .edit()
-                .putBoolean(KEY_PROTECTION_ENABLED, enabled)
-                .apply()
+            EncryptedPrefs(context).setProtectionEnabled(enabled)
         }
 
         fun isAdminActive(context: Context): Boolean {
@@ -54,130 +41,75 @@ class GuardianDeviceAdminReceiver : DeviceAdminReceiver() {
                 dpm.isAdminActive(component)
             } catch (_: Exception) { false }
         }
+
+        fun verifyPinBeforeDisable(context: Context, pin: String): Boolean {
+            val storedHash = EncryptedPrefs(context).getPinHash()
+            if (storedHash.isBlank()) return true
+            return SecurityUtils.verifyPinAgainstHash(pin, storedHash)
+        }
     }
 
     override fun onEnabled(context: Context, intent: Intent) {
         super.onEnabled(context, intent)
         setProtectionEnabled(context, true)
+        
+        val app = context.applicationContext.guardianApp()
         scope.launch {
             try {
-                val app = context.applicationContext as GuardianApp
-                app.repository.getAppSettings().setPermAdmin(true)
+                app?.repository?.getAppSettings()?.setPermAdmin(true)
                 KnoxManager.activateKnoxLicense(context)
             } catch (e: Exception) {
-                Timber.w(e, "GuardianDeviceAdminReceiver: post-enable setup failed")
+                Timber.w(e, "GuardianDeviceAdminReceiver: setup failed")
             }
         }
-        Toast.makeText(context, R.string.device_admin_enabled_toast, Toast.LENGTH_SHORT).show()
-        Timber.d("GuardianDeviceAdminReceiver: enabled")
+        Toast.makeText(context, R.string.tamper_admin_enabled_toast, Toast.LENGTH_SHORT).show()
     }
 
     override fun onDisabled(context: Context, intent: Intent) {
-        scope.launch {
-            try {
-                val app = context.applicationContext as GuardianApp
-                val settings = app.repository.getAppSettings()
-                val encryptedPrefs = EncryptedPrefs(context)
-                val hasPin = encryptedPrefs.hasPin()
-                val protectionEnabled = isProtectionEnabled(context)
-                val isStrongProtection = try { context.getSharedPreferences("guardianship", Context.MODE_PRIVATE).getBoolean("protection_enabled", false) } catch (_: Exception) { false }
-                if (protectionEnabled || isStrongProtection) {
-                    recordTamperAlert(context, "device_admin_disabled",
-                        "Device Admin was disabled while protection was active. hasPin=$hasPin strongProtection=$isStrongProtection")
+        val encryptedPrefs = EncryptedPrefs(context)
+        val protectionActive = encryptedPrefs.isProtectionEnabled() || encryptedPrefs.isStrongProtection()
 
-                    showTamperNotification(context, "device_admin_disabled")
-
-                    if (hasPin) {
-                        Toast.makeText(context, R.string.tamper_admin_re_enable_hint, Toast.LENGTH_LONG).show()
-                    }
-
-                    Timber.w("GuardianDeviceAdminReceiver: disabled while protected! hasPin=$hasPin")
-                }
-                settings.setPermAdmin(false)
-            } catch (e: Exception) {
-                Timber.w(e, "GuardianDeviceAdminReceiver: onDisabled error")
-            }
+        if (protectionActive) {
+            recordTamperAlert(context, "device_admin_disabled", 
+                "Critical: Device Admin disabled while protection was active.")
+            showTamperNotification(context, "device_admin_disabled")
         }
-        setProtectionEnabled(context, false)
-        Toast.makeText(context, R.string.device_admin_disabled_toast, Toast.LENGTH_SHORT).show()
-        Timber.w("GuardianDeviceAdminReceiver: disabled")
+        
+        val app = context.applicationContext.guardianApp()
+        scope.launch {
+            app?.repository?.getAppSettings()?.setPermAdmin(false)
+        }
+        
+        encryptedPrefs.setProtectionEnabled(false)
+        Toast.makeText(context, R.string.tamper_admin_disabled_toast, Toast.LENGTH_SHORT).show()
     }
 
     override fun onDisableRequested(context: Context, intent: Intent): CharSequence {
-        val app = context.applicationContext as GuardianApp
-        val result = runBlocking {
-            try {
-                val settings = app.repository.getAppSettings()
-                val encryptedPrefs = EncryptedPrefs(context)
-                val hasPin = encryptedPrefs.hasPin()
-                val isStrongProtection = try { context.getSharedPreferences("guardianship", Context.MODE_PRIVATE).getBoolean("protection_enabled", false) } catch (_: Exception) { false }
-
-                if (isStrongProtection) {
-                    recordTamperAlert(context, "disable_attempt",
-                        "Attempt to disable Device Admin while strong protection is enabled. hasPin=$hasPin")
-                    showTamperNotification(context, "disable_attempt")
-                }
-
-                if (hasPin) {
-                    context.getString(R.string.device_admin_disable_pin_warning)
-                } else {
-                    context.getString(R.string.device_admin_disable_warning)
-                }
-            } catch (_: Exception) {
-                context.getString(R.string.device_admin_disable_warning)
-            }
-        }
-        return result
-    }
-
-    fun verifyPinBeforeDisable(context: Context, pin: String): Boolean {
+        // Issue #128 & #173: Direct synchronous read from encryptedPrefs (Thread-safe)
         val encryptedPrefs = EncryptedPrefs(context)
-        return SecurityUtils.verifyPin(pin, encryptedPrefs)
-    }
-
-    private fun isPackageUser401(context: Context, packageName: String): Boolean {
-        return try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                val pm = context.packageManager
-                val app = pm.getApplicationInfo(packageName, 0)
-                app.uid % 100000 == 401
-            } else {
-                false
-            }
-        } catch (_: Exception) {
-            false
+        val hasPin = encryptedPrefs.hasPin()
+        
+        if (encryptedPrefs.isStrongProtection()) {
+            recordTamperAlert(context, "disable_attempt", "Unauthorized attempt to disable Admin.")
+            showTamperNotification(context, "disable_attempt")
         }
-    }
 
-    private fun isAdminUser(context: Context): Boolean {
-        return try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                val um = context.getSystemService(Context.USER_SERVICE) as UserManager
-                um.isAdminUser()
-            } else {
-                @Suppress("DEPRECATION")
-                val um = context.getSystemService(Context.USER_SERVICE) as UserManager
-                um.isAdminUser()
-            }
-        } catch (_: Exception) {
-            true
+        return if (hasPin) {
+            context.getString(R.string.device_admin_disable_pin_warning)
+        } else {
+            context.getString(R.string.device_admin_disable_warning)
         }
     }
 
     private fun recordTamperAlert(context: Context, type: String, detail: String) {
+        val app = context.applicationContext.guardianApp()
         scope.launch {
             try {
-                val app = context.applicationContext as GuardianApp
-                app.repository.recordTamperAlert(
-                    type = type,
-                    detail = "$detail (timestamp=${System.currentTimeMillis()})"
-                )
-                if (app.repository.getAppSettings().isRemoteMonitoringEnabled()) {
+                app?.repository?.recordTamperAlert(type, detail)
+                if (app?.repository?.getAppSettings()?.isRemoteMonitoringEnabled() == true) {
                     app.repository.sendAlert("tamper", detail)
                 }
-            } catch (e: Exception) {
-                Timber.w(e, "GuardianDeviceAdminReceiver: failed to record tamper alert")
-            }
+            } catch (_: Exception) {}
         }
     }
 
@@ -186,68 +118,18 @@ class GuardianDeviceAdminReceiver : DeviceAdminReceiver() {
         val title = when (reason) {
             "disable_attempt" -> context.getString(R.string.tamper_disable_attempt_title)
             "device_admin_disabled" -> context.getString(R.string.tamper_admin_disabled_title)
-            "pin_failed" -> context.getString(R.string.tamper_pin_failed_title)
             else -> context.getString(R.string.tamper_admin_disabled_title)
         }
-        val text = when (reason) {
-            "disable_attempt" -> context.getString(R.string.tamper_disable_attempt_text)
-            "device_admin_disabled" -> context.getString(R.string.tamper_admin_disabled_text)
-            "pin_failed" -> context.getString(R.string.tamper_pin_failed_text)
-            else -> context.getString(R.string.tamper_admin_disabled_text)
-        }
-        val notification = NotificationCompat.Builder(context, AppNotificationChannels.TAMPER_ALERT)
-            .setSmallIcon(android.R.drawable.ic_lock_lock)
+        
+        val notification = NotificationCompat.Builder(context, "tamper_alerts")
+            .setSmallIcon(android.R.drawable.ic_dialog_alert)
             .setContentTitle(title)
-            .setContentText(text)
-            .setAutoCancel(true)
+            .setContentText(context.getString(R.string.tamper_admin_disabled_text))
             .setPriority(NotificationCompat.PRIORITY_MAX)
+            .setAutoCancel(true)
             .build()
-        manager.notify(9005, notification)
-    }
-
-    override fun onUserAdded(context: Context, intent: Intent, userHandle: UserHandle) {
-        super.onUserAdded(context, intent, userHandle)
-        scope.launch {
-            try {
-                val hasPin = EncryptedPrefs(context).hasPin()
-                val protectionEnabled = isProtectionEnabled(context)
-                if (protectionEnabled && hasPin) {
-                    recordTamperAlert(context, "user_added",
-                        "A new user was added to the device while protection is active")
-                    showTamperNotification(context, "user_added")
-                }
-            } catch (e: Exception) {
-                Timber.w(e, "GuardianDeviceAdminReceiver: onUserAdded error")
-            }
-        }
-    }
-
-    override fun onProfileProvisioningComplete(context: Context, intent: Intent) {
-        super.onProfileProvisioningComplete(context, intent)
-        Timber.d("GuardianDeviceAdminReceiver: profile provisioning complete")
-    }
-
-    override fun onPasswordChanged(context: Context, intent: Intent) {
-        super.onPasswordChanged(context, intent)
-        Timber.d("GuardianDeviceAdminReceiver: password changed")
-    }
-
-    override fun onPasswordFailed(context: Context, intent: Intent) {
-        super.onPasswordFailed(context, intent)
-        scope.launch {
-            try {
-                val encryptedPrefs = EncryptedPrefs(context)
-                if (encryptedPrefs.hasPin() && isProtectionEnabled(context)) {
-                    recordTamperAlert(context, "password_failed",
-                        "Device password failed while protection is active")
-                }
-            } catch (e: Exception) {
-                Timber.w(e, "GuardianDeviceAdminReceiver: onPasswordFailed error")
-            }
-        }
-    }
-
-    override fun onPasswordSucceeded(context: Context, intent: Intent) {
-        super.onPasswordSucceeded(context, intent)
+            
+        // Issue #248: Use unique IDs to prevent notification overwriting
+        manager.notify(System.currentTimeMillis().toInt(), notification)
     }
 }

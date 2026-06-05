@@ -9,11 +9,22 @@ import java.util.Locale
 
 object AppLogger {
     private const val LOGS_PATH = "app_logs"
-    private val formatter = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US)
+    
+    // Issue #187: ThreadLocal for SimpleDateFormat to ensure thread safety
+    private val threadLocalFormatter = object : ThreadLocal<SimpleDateFormat>() {
+        override fun initialValue(): SimpleDateFormat {
+            return SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US)
+        }
+    }
 
     fun d(message: String, vararg args: Any) = Timber.d(message, *args)
     fun i(message: String, vararg args: Any) = Timber.i(message, *args)
-    fun w(message: String, vararg args: Any) = Timber.w(message, *args)
+    
+    // Issue #191: Only log WARNING and above to Firebase in release builds
+    fun w(message: String, vararg args: Any) {
+        Timber.w(message, *args)
+        logToFirebase("WARN", message, null)
+    }
 
     fun w(t: Throwable, message: String, vararg args: Any) {
         Timber.w(t, message, *args)
@@ -31,18 +42,21 @@ object AppLogger {
     }
 
     private fun logToFirebase(level: String, message: String, t: Throwable?) {
+        // Issue #186: Log exceptions properly but don't crash if Firebase fails
         if (BuildConfig.IS_DEBUG_BUILD) return
         try {
             val ref = FirebaseDatabase.getInstance().getReference(LOGS_PATH).push()
             val entry = mapOf(
                 "level" to level,
                 "message" to message,
-                "error" to (t?.message ?: ""),
-                "timestamp" to formatter.format(Date()),
+                "error" to (t?.stackTraceToString() ?: ""),
+                "timestamp" to (threadLocalFormatter.get()?.format(Date()) ?: ""),
                 "ts" to System.currentTimeMillis()
             )
             ref.setValue(entry)
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            // Fallback to local log if Firebase fails
+            Timber.tag("AppLogger").e(e, "Failed to log to Firebase")
         }
     }
 }

@@ -44,12 +44,9 @@ fun ListsScreen(vm: ListsViewModel) {
     val keywordsCount by vm.keywordsCount.collectAsStateWithLifecycle()
     val websitesCount by vm.websitesCount.collectAsStateWithLifecycle()
     val appsCount by vm.appsCount.collectAsStateWithLifecycle()
-    val searchQuery by vm.searchQuery.collectAsStateWithLifecycle()
 
     var inputText by remember { mutableStateOf("") }
     var showAppPicker by remember { mutableStateOf(false) }
-    var regexEnabled by remember { mutableStateOf(false) }
-    var sensitivityLevel by remember { mutableStateOf("medium") }
     var urlInputError by remember { mutableStateOf(false) }
 
     val accentColor = if (selectedList == "blacklist") danger else success
@@ -66,7 +63,7 @@ fun ListsScreen(vm: ListsViewModel) {
             // Header: Title "Lists" aligned to the end (right)
             Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.CenterEnd) {
                 Text(
-                    text = "Lists",
+                    text = stringResource(R.string.lists_title),
                     color = text,
                     fontSize = 28.sp,
                     fontWeight = FontWeight.Bold,
@@ -86,7 +83,7 @@ fun ListsScreen(vm: ListsViewModel) {
             ) {
                 Row(modifier = Modifier.padding(4.dp)) {
                     ListToggleButton(
-                        label = "Whitelist",
+                        label = stringResource(R.string.lists_whitelist),
                         icon = Icons.Default.CheckCircle,
                         selected = selectedList == "whitelist",
                         activeColor = success,
@@ -94,7 +91,7 @@ fun ListsScreen(vm: ListsViewModel) {
                         onClick = { vm.setListType("whitelist") }
                     )
                     ListToggleButton(
-                        label = "Blacklist",
+                        label = stringResource(R.string.lists_blacklist),
                         icon = Icons.Default.Block,
                         selected = selectedList == "blacklist",
                         activeColor = danger,
@@ -112,7 +109,7 @@ fun ListsScreen(vm: ListsViewModel) {
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 CategoryCard(
-                    label = "Apps",
+                    label = stringResource(R.string.lists_category_apps),
                     icon = Icons.Default.GridView,
                     count = appsCount,
                     selected = selectedCategory == "apps",
@@ -121,7 +118,7 @@ fun ListsScreen(vm: ListsViewModel) {
                     onClick = { vm.setCategory("apps") }
                 )
                 CategoryCard(
-                    label = "Websites",
+                    label = stringResource(R.string.lists_category_websites),
                     icon = Icons.Default.Language,
                     count = websitesCount,
                     selected = selectedCategory == "websites",
@@ -130,7 +127,7 @@ fun ListsScreen(vm: ListsViewModel) {
                     onClick = { vm.setCategory("websites") }
                 )
                 CategoryCard(
-                    label = "Keywords",
+                    label = stringResource(R.string.lists_category_keywords),
                     icon = Icons.Default.TextFields,
                     count = keywordsCount,
                     selected = selectedCategory == "keywords",
@@ -187,7 +184,10 @@ fun ListsScreen(vm: ListsViewModel) {
                         horizontalArrangement = Arrangement.Center
                     ) {
                         Text(
-                            text = if (selectedList == "blacklist") "Add App to blacklist" else "Add App to whitelist",
+                            text = if (selectedList == "blacklist")
+                                stringResource(R.string.lists_add_to_blacklist)
+                            else
+                                stringResource(R.string.lists_add_to_whitelist),
                             color = accentColor,
                             fontWeight = FontWeight.Bold,
                             fontSize = 16.sp
@@ -226,7 +226,7 @@ fun ListsScreen(vm: ListsViewModel) {
                                     urlInputError = true
                                 } else {
                                     urlInputError = false
-                                    vm.addItem(trimmed, regexEnabled = regexEnabled, sensitivityLevel = sensitivityLevel)
+                                    vm.addItem(trimmed)
                                     inputText = ""
                                 }
                             }
@@ -251,14 +251,14 @@ fun ListsScreen(vm: ListsViewModel) {
                         )
                         Spacer(Modifier.height(20.dp))
                         Text(
-                            text = "No items yet",
+                            text = stringResource(R.string.lists_empty_title),
                             color = text,
                             fontSize = 18.sp,
                             fontWeight = FontWeight.Bold
                         )
                         Spacer(Modifier.height(6.dp))
                         Text(
-                            text = "Add items above to populate this list.",
+                            text = stringResource(R.string.lists_empty_desc),
                             color = textSecondary,
                             fontSize = 14.sp
                         )
@@ -281,7 +281,7 @@ fun ListsScreen(vm: ListsViewModel) {
         AppPickerDialog(
             onDismiss = { showAppPicker = false },
             onSelect = { pkg, label ->
-                vm.addItem(BlocklistItem(listType = selectedList, category = "apps", value = pkg, label = label))
+                vm.addItem(BlocklistItem.create(listType = selectedList, category = "apps", value = pkg, label = label))
                 showAppPicker = false
             }
         )
@@ -465,13 +465,13 @@ private fun AppPickerDialog(onDismiss: () -> Unit, onSelect: (String, String) ->
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Select App", color = text) },
+        title = { Text(stringResource(R.string.lists_picker_title), color = text) },
         containerColor = Color(0xFF111827),
         text = {
             Column {
                 OutlinedTextField(
                     value = search, onValueChange = { search = it },
-                    placeholder = { Text("Search apps…", color = textMuted) },
+                    placeholder = { Text(stringResource(R.string.lists_picker_search_hint), color = textMuted) },
                     singleLine = true, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp),
                     colors = OutlinedTextFieldDefaults.colors(focusedTextColor = text, unfocusedTextColor = text)
                 )
@@ -491,30 +491,33 @@ private fun AppPickerDialog(onDismiss: () -> Unit, onSelect: (String, String) ->
                 }
             }
         },
-        confirmButton = { TextButton(onClick = onDismiss) { Text("Cancel", color = primary) } }
+        confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.btn_cancel), color = primary) } }
     )
 }
 
-@Composable
-private fun SensitivitySelector(selected: String, onChange: (String) -> Unit) {
-    val options = listOf("low" to "Low", "medium" to "Med", "high" to "High")
-    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-        Text("Sensitivity", fontSize = 13.sp, color = textSecondary)
-        options.forEach { (value, label) ->
-            FilterChip(
-                selected = selected == value,
-                onClick = { onChange(value) },
-                label = { Text(label, fontSize = 12.sp) },
-                colors = FilterChipDefaults.filterChipColors(
-                    selectedContainerColor = primary.copy(alpha = 0.15f),
-                    selectedLabelColor = primary
-                )
-            )
-        }
-    }
-}
-
 private fun isValidUrl(url: String): Boolean {
-    return url.matches(Regex("^([a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?\\.)+[a-zA-Z]{2,}(/.*)?$"))
-        || url.matches(Regex("^https?://([a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?\\.)+[a-zA-Z]{2,}(/.*)?$"))
+    val candidate = url.trim()
+    if (candidate.isEmpty()) return false
+
+    // Strip optional scheme (http/https) before matching the host.
+    val host = candidate
+        .removePrefix("https://")
+        .removePrefix("http://")
+        .substringBefore('/')
+        .substringBefore(':')
+    if (host.isEmpty()) return false
+
+    // Accept IPv4 addresses and "localhost".
+    if (host == "localhost") return true
+    if (host.matches(Regex("^(\\d{1,3}\\.){3}\\d{1,3}$"))) {
+        return host.split('.').all { it.toIntOrNull() in 0..255 }
+    }
+
+    // Accept hostnames that contain at least one dot, and where every label
+    // is non-empty. We deliberately use \p{L} so IDN labels (Arabic, etc.)
+    // are accepted.
+    val labelRegex = Regex("^[\\p{L}\\p{N}]([\\p{L}\\p{N}-]*[\\p{L}\\p{N}])?$")
+    val labels = host.split('.')
+    if (labels.size < 2) return false
+    return labels.all { labelRegex.matches(it) }
 }

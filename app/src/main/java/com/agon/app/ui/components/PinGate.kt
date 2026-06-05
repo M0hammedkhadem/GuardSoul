@@ -8,10 +8,9 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.*
-import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.automirrored.filled.Backspace
+import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -21,14 +20,16 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.agon.app.R
 import com.agon.app.utils.SecurityUtils
 import com.agon.app.ui.theme.*
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlin.math.pow
 import kotlin.math.roundToInt
 
 @Composable
@@ -60,6 +61,10 @@ fun PinEntryScreen(
 ) {
     var pin by remember { mutableStateOf("") }
     var error by remember { mutableStateOf(false) }
+    var failedAttempts by remember { mutableIntStateOf(0) }
+    var isLockedByDelay by remember { mutableStateOf(false) }
+    var remainingDelaySeconds by remember { mutableIntStateOf(0) }
+    
     val shakeOffset = remember { Animatable(0f) }
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
@@ -69,6 +74,9 @@ fun PinEntryScreen(
         window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
         onDispose { window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE) }
     }
+
+    // Issue #195: Use a single job to manage backoff to avoid race conditions
+    var backoffJob by remember { mutableStateOf<Job?>(null) }
 
     val startShake: () -> Unit = {
         scope.launch {
@@ -82,24 +90,41 @@ fun PinEntryScreen(
     }
 
     val onDigit: (Char) -> Unit = { digit ->
-        if (pin.length < 4) {
+        if (pin.length < 4 && !isLockedByDelay) {
             pin += digit
             error = false
             if (pin.length == 4) {
-                val hashed = SecurityUtils.hashPin(pin)
-                if (hashed == storedHash) {
+                if (SecurityUtils.verifyPinAgainstHash(pin, storedHash)) {
                     onPinVerified()
                 } else {
                     error = true
                     pin = ""
+                    failedAttempts++
                     startShake()
+                    
+                    // Issue #194: Implement Hard Cap (Max 10 attempts before long lockout)
+                    if (failedAttempts >= 3) {
+                        backoffJob?.cancel()
+                        backoffJob = scope.launch {
+                            isLockedByDelay = true
+                            val delaySec = if (failedAttempts >= 10) 300 // 5 minutes hard lock
+                            else (2.0.pow((failedAttempts - 2).toDouble())).toInt().coerceAtMost(30)
+                            
+                            remainingDelaySeconds = delaySec
+                            while (remainingDelaySeconds > 0) {
+                                delay(1000)
+                                remainingDelaySeconds--
+                            }
+                            isLockedByDelay = false
+                        }
+                    }
                 }
             }
         }
     }
 
     val onDelete: () -> Unit = {
-        if (pin.isNotEmpty()) {
+        if (pin.isNotEmpty() && !isLockedByDelay) {
             pin = pin.dropLast(1)
             error = false
         }
@@ -128,9 +153,13 @@ fun PinEntryScreen(
         )
         Spacer(Modifier.height(4.dp))
         Text(
-            stringResource(R.string.pin_gate_desc),
+            if (isLockedByDelay) {
+                if (failedAttempts >= 10) "تم القفل بشكل دائم مؤقتاً. حاول بعد 5 دقائق"
+                else stringResource(R.string.pin_locked_retry_in, remainingDelaySeconds)
+            } else stringResource(R.string.pin_gate_desc),
             fontSize = 14.sp,
-            color = textSecondary
+            color = if (isLockedByDelay) danger else textSecondary,
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center
         )
         Spacer(Modifier.height(32.dp))
 
@@ -156,7 +185,7 @@ fun PinEntryScreen(
             }
         }
 
-        if (error) {
+        if (error && !isLockedByDelay) {
             Spacer(Modifier.height(8.dp))
             Text(
                 stringResource(R.string.pin_wrong),
@@ -169,7 +198,8 @@ fun PinEntryScreen(
 
         NumericKeypad(
             onDigit = onDigit,
-            onDelete = onDelete
+            onDelete = onDelete,
+            enabled = !isLockedByDelay
         )
     }
 }
@@ -177,7 +207,8 @@ fun PinEntryScreen(
 @Composable
 private fun NumericKeypad(
     onDigit: (Char) -> Unit,
-    onDelete: () -> Unit
+    onDelete: () -> Unit,
+    enabled: Boolean
 ) {
     Column(
         verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -189,7 +220,7 @@ private fun NumericKeypad(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 row.forEach { digit ->
-                    KeyButton(digit.toString(), onClick = { onDigit(digit) })
+                    KeyButton(digit.toString(), onClick = { onDigit(digit) }, enabled = enabled)
                 }
             }
         }
@@ -198,18 +229,19 @@ private fun NumericKeypad(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Spacer(Modifier.size(72.dp))
-            KeyButton("0", onClick = { onDigit('0') })
+            KeyButton("0", onClick = { onDigit('0') }, enabled = enabled)
             IconButton(
                 onClick = onDelete,
+                enabled = enabled,
                 modifier = Modifier
                     .size(72.dp)
                     .clip(CircleShape)
-                    .background(surfaceLight)
+                    .background(if (enabled) surfaceLight else surfaceLight.copy(alpha = 0.5f))
             ) {
                 Icon(
                     Icons.AutoMirrored.Filled.Backspace,
                     contentDescription = stringResource(R.string.contentdesc_remove),
-                    tint = text
+                    tint = if (enabled) text else textMuted
                 )
             }
         }
@@ -217,20 +249,20 @@ private fun NumericKeypad(
 }
 
 @Composable
-private fun KeyButton(label: String, onClick: () -> Unit) {
+private fun KeyButton(label: String, onClick: () -> Unit, enabled: Boolean) {
     Box(
         modifier = Modifier
             .size(72.dp)
             .clip(CircleShape)
-            .background(surfaceLight)
-            .clickable(onClick = onClick),
+            .background(if (enabled) surfaceLight else surfaceLight.copy(alpha = 0.5f))
+            .then(if (enabled) Modifier.clickable(onClick = onClick) else Modifier),
         contentAlignment = Alignment.Center
     ) {
         Text(
             text = label,
             fontSize = 24.sp,
             fontWeight = FontWeight.Medium,
-            color = text
+            color = if (enabled) text else textMuted
         )
     }
 }

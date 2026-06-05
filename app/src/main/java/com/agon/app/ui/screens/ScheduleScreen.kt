@@ -21,6 +21,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.agon.app.R
+import com.agon.app.blocking.DayOfWeekUtil
 import com.agon.app.data.local.entity.ScheduleRuleEntity
 import com.agon.app.ui.theme.*
 import com.agon.app.viewmodel.ScheduleViewModel
@@ -90,7 +91,7 @@ private fun ScheduleRuleCard(rule: ScheduleRuleEntity, onToggle: () -> Unit, onD
         stringResource(R.string.day_mon), stringResource(R.string.day_tue), stringResource(R.string.day_wed),
         stringResource(R.string.day_thu), stringResource(R.string.day_fri), stringResource(R.string.day_sat), stringResource(R.string.day_sun)
     )
-    val days = rule.daysOfWeek.split(",").filter { it.isNotBlank() }.mapNotNull { it.toIntOrNull() }
+    val days = DayOfWeekUtil.decode(rule.daysOfWeek)
     val selectedDays = days.map { dayNames.getOrElse(it - 1) { "?" } }
 
     Card(colors = CardDefaults.cardColors(containerColor = card), shape = RoundedCornerShape(16.dp), border = BorderStroke(1.dp, cardBorder)) {

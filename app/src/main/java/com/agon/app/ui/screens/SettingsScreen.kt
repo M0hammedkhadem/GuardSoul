@@ -24,6 +24,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.agon.app.R
 import com.agon.app.ui.theme.*
+import com.agon.app.guardianApp
 import com.agon.app.GuardianApp
 import com.agon.app.data.local.entity.AppLimitEntity
 import com.agon.app.data.local.entity.BlocklistItemEntity
@@ -43,7 +44,12 @@ fun SettingsScreen(
     onNavigateToSchedule: () -> Unit = {},
     onNavigateToTimeLimits: () -> Unit = {},
     onNavigateToStatistics: () -> Unit = {},
+    onNavigateToLearner: () -> Unit = {},
     onNavigateToExportImport: () -> Unit = {},
+    onNavigateToAccount: () -> Unit = {},
+    onNavigateToUpgrade: () -> Unit = {},
+    onNavigateToPrivacy: () -> Unit = {},
+    onNavigateToTerms: () -> Unit = {},
     onBack: () -> Unit,
     vm: SettingsViewModel? = null
 ) {
@@ -56,12 +62,13 @@ fun SettingsScreen(
     val pornBlockerActive by settings.pornBlockerFlow.collectAsState(initial = false)
     val aiScannerActive by settings.aiScannerFlow.collectAsState(initial = false)
     val uninstallProtectionActive by settings.uninstallProtectionFlow.collectAsState(initial = false)
-    val instagramBlocked by settings.socialInstagramFlow.collectAsState(initial = false)
     val snapchatBlocked by settings.socialSnapchatFlow.collectAsState(initial = false)
     val twitterBlocked by settings.socialTwitterFlow.collectAsState(initial = false)
     val tiktokBlocked by settings.socialTiktokFlow.collectAsState(initial = false)
+    val instagramMode by settings.instagramModeFlow.collectAsState(initial = "off")
     val youtubeMode by settings.youtubeModeFlow.collectAsState(initial = "off")
     val facebookMode by settings.facebookModeFlow.collectAsState(initial = "off")
+    val instagramBlocked = instagramMode != "off"
 
     val timeLimitedApps by app.repository.getAllAppLimits().collectAsState(initial = emptyList())
     val blacklistedApps by app.repository.getBlocklistFlow("blacklist", "apps").collectAsState(initial = emptyList())
@@ -107,6 +114,10 @@ fun SettingsScreen(
                     HorizontalDivider(color = cardBorder)
                     SettingsRow(icon = Icons.Default.Person, title = stringResource(R.string.profile_title), onClick = onNavigateToProfile)
                     HorizontalDivider(color = cardBorder)
+                    SettingsRow(icon = Icons.Default.AccountCircle, title = stringResource(R.string.account_title), onClick = onNavigateToAccount)
+                    HorizontalDivider(color = cardBorder)
+                    SettingsRow(icon = Icons.Default.Star, title = stringResource(R.string.upgrade_title), onClick = onNavigateToUpgrade)
+                    HorizontalDivider(color = cardBorder)
                     SettingsRow(icon = Icons.Default.Lock, title = stringResource(R.string.profile_pin_protection), onClick = onNavigateToPinSetup)
                     HorizontalDivider(color = cardBorder)
                     SettingsRow(icon = Icons.Default.Schedule, title = stringResource(R.string.schedule_title), onClick = onNavigateToSchedule)
@@ -115,7 +126,13 @@ fun SettingsScreen(
                     HorizontalDivider(color = cardBorder)
                     SettingsRow(icon = Icons.Default.BarChart, title = stringResource(R.string.statistics_title), onClick = onNavigateToStatistics)
                     HorizontalDivider(color = cardBorder)
+                    SettingsRow(icon = Icons.Default.Psychology, title = stringResource(R.string.learner_title), onClick = onNavigateToLearner)
+                    HorizontalDivider(color = cardBorder)
                     SettingsRow(icon = Icons.Default.FileUpload, title = stringResource(R.string.export_title), onClick = onNavigateToExportImport)
+                    HorizontalDivider(color = cardBorder)
+                    SettingsRow(icon = Icons.Default.Description, title = stringResource(R.string.privacy_title), onClick = onNavigateToPrivacy)
+                    HorizontalDivider(color = cardBorder)
+                    SettingsRow(icon = Icons.Default.Article, title = stringResource(R.string.terms_title), onClick = onNavigateToTerms)
                 }
             }
 

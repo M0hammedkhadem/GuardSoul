@@ -4,6 +4,7 @@ import android.app.Activity
 import android.app.admin.DevicePolicyManager
 import android.content.ComponentName
 import android.content.Intent
+import android.net.Uri
 import android.net.VpnService
 import android.os.Build
 import android.provider.Settings
@@ -48,6 +49,7 @@ import com.agon.app.ui.theme.*
 import com.agon.app.utils.AccessibilityUtils
 import com.agon.app.viewmodel.PermissionsViewModel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
@@ -62,23 +64,21 @@ fun PermissionsScreen(
     val scope = rememberCoroutineScope()
     val scrollState = rememberScrollState()
 
-    LaunchedEffect(Unit) {
-        while (true) {
-            viewModel.refreshPermissionStates()
-            delay(2000)
-        }
+    // Issue #135: Removed the infinite poll loop. 
+    // We now rely on the LifecycleEventObserver below to refresh states when the user returns to the app.
+
+    val requestNotificationLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        viewModel.refreshPermissionStates()
+        if (isGranted) viewModel.advanceGrantAll()
     }
 
     val vpnLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult()
-    ) { result ->
-        if (result.resultCode == Activity.RESULT_OK) {
-            viewModel.refreshPermissionStates()
-            viewModel.advanceGrantAll()
-        } else {
-            viewModel.refreshPermissionStates()
-            viewModel.advanceGrantAll()
-        }
+    ) {
+        viewModel.refreshPermissionStates()
+        viewModel.advanceGrantAll()
     }
 
     val adminLauncher = rememberLauncherForActivityResult(
@@ -91,9 +91,16 @@ fun PermissionsScreen(
     LaunchedEffect(uiState.currentGrantingPermission) {
         val permission = uiState.currentGrantingPermission ?: return@LaunchedEffect
         when (permission) {
+            "notifications" -> {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    requestNotificationLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+                } else {
+                    viewModel.advanceGrantAll()
+                }
+            }
             "overlay" -> {
                 Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION).apply {
-                    data = android.net.Uri.parse("package:${context.packageName}")
+                    data = Uri.parse("package:${context.packageName}")
                     addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                     context.startActivity(this)
                 }
@@ -104,10 +111,24 @@ fun PermissionsScreen(
                     context.startActivity(this)
                 }
             }
-            "notifications" -> {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                    Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).apply {
-                        putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
+            "battery" -> {
+                Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
+                    data = Uri.parse("package:${context.packageName}")
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    context.startActivity(this)
+                }
+            }
+            "write_settings" -> {
+                Intent(Settings.ACTION_MANAGE_WRITE_SETTINGS).apply {
+                    data = Uri.parse("package:${context.packageName}")
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    context.startActivity(this)
+                }
+            }
+            "exact_alarm" -> {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                    Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM).apply {
+                        data = Uri.parse("package:${context.packageName}")
                         addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                         context.startActivity(this)
                     }
@@ -120,9 +141,8 @@ fun PermissionsScreen(
             }
             "vpn" -> {
                 val intent = VpnService.prepare(context)
-                if (intent != null) {
-                    vpnLauncher.launch(intent)
-                } else {
+                if (intent != null) vpnLauncher.launch(intent)
+                else {
                     viewModel.refreshPermissionStates()
                     viewModel.advanceGrantAll()
                 }
@@ -148,14 +168,17 @@ fun PermissionsScreen(
             }
     }
 
-    val totalPermissions = 6
+    val totalPermissions = 9
     val grantedCount = listOf(
-        uiState.accessibilityGranted,
-        uiState.vpnGranted,
-        uiState.deviceAdminGranted,
+        uiState.notificationGranted,
         uiState.overlayGranted,
         uiState.usageAccessGranted,
-        uiState.notificationGranted
+        uiState.batteryOptimizationIgnored,
+        uiState.writeSettingsGranted,
+        uiState.exactAlarmGranted,
+        uiState.accessibilityGranted,
+        uiState.vpnGranted,
+        uiState.deviceAdminGranted
     ).count { it }
 
     Scaffold(
@@ -193,7 +216,7 @@ fun PermissionsScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(stringResource(R.string.card_permission_status), fontWeight = FontWeight.Bold, color = text, fontSize = 16.sp)
-                        Text(stringResource(R.string.permissions_progress, grantedCount), color = if (grantedCount == totalPermissions) success else warning, fontWeight = FontWeight.Bold)
+                        Text(stringResource(R.string.permissions_progress, grantedCount, totalPermissions), color = if (grantedCount == totalPermissions) success else warning, fontWeight = FontWeight.Bold)
                     }
                     Spacer(modifier = Modifier.height(12.dp))
                     LinearProgressIndicator(
@@ -230,7 +253,6 @@ fun PermissionsScreen(
                     grantedCount = grantedCount,
                     totalCount = totalPermissions,
                     isGrantingAll = uiState.isGrantingAll,
-                    currentGranting = uiState.currentGrantingPermission,
                     grantAllProgress = uiState.grantAllProgress,
                     grantAllTotal = uiState.grantAllTotal,
                     onStartGrantAll = { viewModel.startGrantAll() },
@@ -238,105 +260,7 @@ fun PermissionsScreen(
                 Spacer(modifier = Modifier.height(16.dp))
             }
 
-            PermissionCard(
-                title = stringResource(R.string.perm_accessibility),
-                desc = stringResource(R.string.desc_accessibility),
-                instruction = stringResource(R.string.instruction_accessibility),
-                color = primary,
-                icon = Icons.Default.Accessibility,
-                isGranted = uiState.accessibilityGranted,
-                isCurrentInGrantAll = uiState.isGrantingAll && uiState.currentGrantingPermission == "accessibility",
-                onGrant = {
-                    if (!uiState.accessibilityGranted) {
-                        AccessibilityUtils.openAccessibilitySettings(context)
-                    }
-                }
-            )
-            Spacer(modifier = Modifier.height(16.dp))
-
-            PermissionCard(
-                title = stringResource(R.string.perm_vpn),
-                desc = stringResource(R.string.desc_vpn),
-                instruction = stringResource(R.string.instruction_vpn),
-                color = success,
-                icon = Icons.Default.VpnKey,
-                isGranted = uiState.vpnGranted,
-                isCurrentInGrantAll = uiState.isGrantingAll && uiState.currentGrantingPermission == "vpn",
-                onGrant = {
-                    if (!uiState.vpnGranted) {
-                        val intent = VpnService.prepare(context)
-                        if (intent != null) {
-                            vpnLauncher.launch(intent)
-                        } else {
-                            viewModel.refreshPermissionStates()
-                        }
-                    }
-                }
-            )
-            Spacer(modifier = Modifier.height(16.dp))
-
-            PermissionCard(
-                title = stringResource(R.string.perm_device_admin),
-                desc = stringResource(R.string.desc_device_admin),
-                instruction = stringResource(R.string.instruction_device_admin),
-                color = danger,
-                icon = Icons.Default.Security,
-                isGranted = uiState.deviceAdminGranted,
-                isCurrentInGrantAll = uiState.isGrantingAll && uiState.currentGrantingPermission == "device_admin",
-                onGrant = {
-                    if (!uiState.deviceAdminGranted) {
-                        val intent = Intent(DevicePolicyManager.ACTION_ADD_DEVICE_ADMIN).apply {
-                            putExtra(DevicePolicyManager.EXTRA_DEVICE_ADMIN, ComponentName(context, GuardianDeviceAdminReceiver::class.java))
-                            putExtra(DevicePolicyManager.EXTRA_ADD_EXPLANATION, context.getString(R.string.device_admin_explanation))
-                        }
-                        adminLauncher.launch(intent)
-                    }
-                }
-            )
-            Spacer(modifier = Modifier.height(16.dp))
-
-            PermissionCard(
-                title = stringResource(R.string.perm_overlay),
-                desc = stringResource(R.string.desc_overlay),
-                instruction = stringResource(R.string.instruction_overlay),
-                color = warning,
-                icon = Icons.Default.Layers,
-                isGranted = uiState.overlayGranted,
-                isCurrentInGrantAll = uiState.isGrantingAll && uiState.currentGrantingPermission == "overlay",
-                onGrant = {
-                    if (!uiState.overlayGranted) {
-                        val intent = Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION).apply {
-                            data = android.net.Uri.parse("package:${context.packageName}")
-                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                        }
-                        context.startActivity(intent)
-                    }
-                }
-            )
-            Spacer(modifier = Modifier.height(16.dp))
-
-            PermissionCard(
-                title = stringResource(R.string.perm_usage),
-                desc = stringResource(R.string.desc_usage),
-                instruction = stringResource(R.string.instruction_usage),
-                color = accent,
-                icon = Icons.Default.DataUsage,
-                isGranted = uiState.usageAccessGranted,
-                isCurrentInGrantAll = uiState.isGrantingAll && uiState.currentGrantingPermission == "usage_access",
-                onGrant = {
-                    if (!uiState.usageAccessGranted) {
-                        val intent = Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS).apply {
-                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                        }
-                        try {
-                            context.startActivity(intent)
-                        } catch (e: Exception) {
-                            context.startActivity(Intent(Settings.ACTION_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-                        }
-                    }
-                }
-            )
-            Spacer(modifier = Modifier.height(16.dp))
+            // --- List of Permissions ---
 
             PermissionCard(
                 title = stringResource(R.string.perm_notifications),
@@ -347,14 +271,140 @@ fun PermissionsScreen(
                 isGranted = uiState.notificationGranted,
                 isCurrentInGrantAll = uiState.isGrantingAll && uiState.currentGrantingPermission == "notifications",
                 onGrant = {
-                    if (!uiState.notificationGranted) {
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                            Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).apply {
-                                putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
-                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                                context.startActivity(this)
-                            }
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                        requestNotificationLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+                    }
+                }
+            )
+            Spacer(modifier = Modifier.height(12.dp))
+
+            PermissionCard(
+                title = stringResource(R.string.perm_overlay),
+                desc = stringResource(R.string.desc_overlay),
+                instruction = stringResource(R.string.instruction_overlay),
+                color = warning,
+                icon = Icons.Default.Layers,
+                isGranted = uiState.overlayGranted,
+                isCurrentInGrantAll = uiState.isGrantingAll && uiState.currentGrantingPermission == "overlay",
+                onGrant = {
+                    Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION).apply {
+                        data = Uri.parse("package:${context.packageName}")
+                        context.startActivity(this)
+                    }
+                }
+            )
+            Spacer(modifier = Modifier.height(12.dp))
+
+            PermissionCard(
+                title = stringResource(R.string.perm_usage),
+                desc = stringResource(R.string.desc_usage),
+                instruction = stringResource(R.string.instruction_usage),
+                color = primary,
+                icon = Icons.Default.DataUsage,
+                isGranted = uiState.usageAccessGranted,
+                isCurrentInGrantAll = uiState.isGrantingAll && uiState.currentGrantingPermission == "usage_access",
+                onGrant = {
+                    context.startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS))
+                }
+            )
+            Spacer(modifier = Modifier.height(12.dp))
+
+            PermissionCard(
+                title = stringResource(R.string.perm_battery),
+                desc = stringResource(R.string.desc_battery),
+                instruction = stringResource(R.string.instruction_battery),
+                color = success,
+                icon = Icons.Default.BatteryChargingFull,
+                isGranted = uiState.batteryOptimizationIgnored,
+                isCurrentInGrantAll = uiState.isGrantingAll && uiState.currentGrantingPermission == "battery",
+                onGrant = {
+                    Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
+                        data = Uri.parse("package:${context.packageName}")
+                        context.startActivity(this)
+                    }
+                }
+            )
+            Spacer(modifier = Modifier.height(12.dp))
+
+            PermissionCard(
+                title = stringResource(R.string.perm_write_settings),
+                desc = stringResource(R.string.desc_write_settings),
+                instruction = stringResource(R.string.instruction_write_settings),
+                color = danger,
+                icon = Icons.Default.Settings,
+                isGranted = uiState.writeSettingsGranted,
+                isCurrentInGrantAll = uiState.isGrantingAll && uiState.currentGrantingPermission == "write_settings",
+                onGrant = {
+                    Intent(Settings.ACTION_MANAGE_WRITE_SETTINGS).apply {
+                        data = Uri.parse("package:${context.packageName}")
+                        context.startActivity(this)
+                    }
+                }
+            )
+            Spacer(modifier = Modifier.height(12.dp))
+
+            PermissionCard(
+                title = stringResource(R.string.perm_exact_alarm),
+                desc = stringResource(R.string.desc_exact_alarm),
+                instruction = stringResource(R.string.instruction_exact_alarm),
+                color = warning,
+                icon = Icons.Default.Alarm,
+                isGranted = uiState.exactAlarmGranted,
+                isCurrentInGrantAll = uiState.isGrantingAll && uiState.currentGrantingPermission == "exact_alarm",
+                onGrant = {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                        Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM).apply {
+                            data = Uri.parse("package:${context.packageName}")
+                            context.startActivity(this)
                         }
+                    }
+                }
+            )
+            Spacer(modifier = Modifier.height(12.dp))
+
+            PermissionCard(
+                title = stringResource(R.string.perm_accessibility),
+                desc = stringResource(R.string.desc_accessibility),
+                instruction = stringResource(R.string.instruction_accessibility),
+                color = primary,
+                icon = Icons.Default.Accessibility,
+                isGranted = uiState.accessibilityGranted,
+                isCurrentInGrantAll = uiState.isGrantingAll && uiState.currentGrantingPermission == "accessibility",
+                onGrant = {
+                    AccessibilityUtils.openAccessibilitySettings(context)
+                }
+            )
+            Spacer(modifier = Modifier.height(12.dp))
+
+            PermissionCard(
+                title = stringResource(R.string.perm_vpn),
+                desc = stringResource(R.string.desc_vpn),
+                instruction = stringResource(R.string.instruction_vpn),
+                color = accent,
+                icon = Icons.Default.VpnKey,
+                isGranted = uiState.vpnGranted,
+                isCurrentInGrantAll = uiState.isGrantingAll && uiState.currentGrantingPermission == "vpn",
+                onGrant = {
+                    val intent = VpnService.prepare(context)
+                    if (intent != null) vpnLauncher.launch(intent)
+                    else viewModel.refreshPermissionStates()
+                }
+            )
+            Spacer(modifier = Modifier.height(12.dp))
+
+            PermissionCard(
+                title = stringResource(R.string.perm_device_admin),
+                desc = stringResource(R.string.desc_device_admin),
+                instruction = stringResource(R.string.instruction_device_admin),
+                color = danger,
+                icon = Icons.Default.Security,
+                isGranted = uiState.deviceAdminGranted,
+                isCurrentInGrantAll = uiState.isGrantingAll && uiState.currentGrantingPermission == "device_admin",
+                onGrant = {
+                    Intent(DevicePolicyManager.ACTION_ADD_DEVICE_ADMIN).apply {
+                        putExtra(DevicePolicyManager.EXTRA_DEVICE_ADMIN, ComponentName(context, GuardianDeviceAdminReceiver::class.java))
+                        putExtra(DevicePolicyManager.EXTRA_ADD_EXPLANATION, context.getString(R.string.device_admin_explanation))
+                        adminLauncher.launch(this)
                     }
                 }
             )
@@ -380,7 +430,6 @@ private fun GrantAllButton(
     grantedCount: Int,
     totalCount: Int,
     isGrantingAll: Boolean,
-    currentGranting: String?,
     grantAllProgress: Int,
     grantAllTotal: Int,
     onStartGrantAll: () -> Unit,
