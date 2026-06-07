@@ -9,7 +9,7 @@ import android.provider.Settings
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.agon.app.utils.AccessibilityUtils
-import com.agon.app.blocking.ShortstopAccessibilityService
+import com.agon.app.services.GuardSoulAccessibilityService
 import com.agon.app.guardianApp
 import com.agon.app.data.local.dao.MostBlockedApp
 import kotlinx.coroutines.flow.*
@@ -64,10 +64,10 @@ class SocialViewModel(application: Application) : AndroidViewModel(application) 
 
     private val accessibilityObserver = object : ContentObserver(Handler(Looper.getMainLooper())) {
         override fun onChange(selfChange: Boolean) {
-            _blockerServiceRunning.value = AccessibilityUtils.isServiceEnabled(context, ShortstopAccessibilityService::class.java)
+            _blockerServiceRunning.value = AccessibilityUtils.isServiceEnabled(context, GuardSoulAccessibilityService::class.java)
         }
         override fun onChange(selfChange: Boolean, uri: Uri?) {
-            _blockerServiceRunning.value = AccessibilityUtils.isServiceEnabled(context, ShortstopAccessibilityService::class.java)
+            _blockerServiceRunning.value = AccessibilityUtils.isServiceEnabled(context, GuardSoulAccessibilityService::class.java)
         }
     }
 
@@ -77,7 +77,7 @@ class SocialViewModel(application: Application) : AndroidViewModel(application) 
             false,
             accessibilityObserver
         )
-        _blockerServiceRunning.value = AccessibilityUtils.isServiceEnabled(context, ShortstopAccessibilityService::class.java)
+        _blockerServiceRunning.value = AccessibilityUtils.isServiceEnabled(context, GuardSoulAccessibilityService::class.java)
     }
 
     val accessibilityServiceRunning: StateFlow<Boolean> = _blockerServiceRunning.asStateFlow()
@@ -123,20 +123,27 @@ class SocialViewModel(application: Application) : AndroidViewModel(application) 
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0L)
 
     fun setShortstopDailyQuota(minutes: Int) = viewModelScope.launch {
-        try { settings.setShortstopDailyQuotaMinutes(minutes.coerceIn(0, 240)) } catch (_: Exception) {}
+        try { settings.setShortstopDailyQuotaMinutes(minutes.coerceIn(0, 240)) }
+        catch (e: Exception) { timber.log.Timber.w(e, "SocialViewModel: setShortstopDailyQuota failed") }
     }
     fun setShortstopBreakInterval(minutes: Int) = viewModelScope.launch {
-        try { settings.setShortstopBreakIntervalMinutes(minutes.coerceIn(0, 120)) } catch (_: Exception) {}
+        try { settings.setShortstopBreakIntervalMinutes(minutes.coerceIn(0, 120)) }
+        catch (e: Exception) { timber.log.Timber.w(e, "SocialViewModel: setShortstopBreakInterval failed") }
     }
     fun setShortstopBreakLength(minutes: Int) = viewModelScope.launch {
-        try { settings.setShortstopBreakLengthMinutes(minutes.coerceIn(0, 60)) } catch (_: Exception) {}
+        try { settings.setShortstopBreakLengthMinutes(minutes.coerceIn(0, 60)) }
+        catch (e: Exception) { timber.log.Timber.w(e, "SocialViewModel: setShortstopBreakLength failed") }
     }
 
     override fun onCleared() {
         super.onCleared()
         try {
             context.contentResolver.unregisterContentObserver(accessibilityObserver)
-        } catch (_: Exception) {}
+        } catch (e: Exception) {
+            // unregisterContentObserver can throw IllegalArgumentException
+            // if the observer was already detached. Log and swallow.
+            timber.log.Timber.w(e, "SocialViewModel: unregisterContentObserver failed")
+        }
     }
 
     fun dismissError() {

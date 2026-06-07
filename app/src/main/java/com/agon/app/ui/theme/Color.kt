@@ -28,3 +28,14 @@ val surfaceCardElevated = Color(0xFF151D2E)
 val gradientStart = Color(0xFF0B1120)
 val gradientEnd = Color(0xFF111827)
 val connected = Color(0xFF059669)
+
+// COLOR-LITERALS: tokens for ad-hoc literal colors that
+// previously appeared inline in screens. Centralizing them here
+// makes the dark palette auditable from one file.
+val activityAccent = Color(0xFF4F8EF7)
+val activityRed = Color(0xFFFF4444)
+val activityRedMuted = Color(0xFFAAAAAA)
+val bedtimeBackground = Color(0xFF1A1A1A)
+val engineKeyword = Color(0xFFFFB020)
+val engineStatusOff = mutedSwitchThumb
+val successLight = Color(0xFF22C55E)

@@ -28,6 +28,8 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.platform.LocalContext
 import com.agon.app.R
 import com.agon.app.LanguageManager
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class BlockActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -64,8 +66,45 @@ class BlockActivity : ComponentActivity() {
                 isKeyword = isKeyword,
                 isAiTemp = isAiTemp,
                 isBedtime = isBedtime,
-                onGoBack = { goToHome() }
+                onGoBack = { goToHome() },
+                onBonusTime = { grantBonusTimeAndDismiss() }
             )
+        }
+    }
+
+    /**
+     * BONUS-TIME: the "Get 5 more minutes" button on the
+     * block screen is now wired to a real call to
+     * [com.agon.app.utils.BonusTime.spend] so the bonus-time
+     * cap is actually decremented. Previously the button was
+     * a no-op that just called `onGoBack`, so the user could
+     * burn their bonus by spam-pressing the button (it was
+     * accepted every time) and the cap was never decremented.
+     *
+     * We launch a coroutine off the main thread to write the
+     * DataStore values (the spend + grantedAt + the schedule
+     * release), then dismiss to home.
+     */
+    private fun grantBonusTimeAndDismiss() {
+        val app = application as? com.agon.app.GuardianApp ?: return goToHome()
+        val settings = app.repository.getAppSettings()
+        val scheduler = com.agon.app.utils.ScheduleEnforcer
+        kotlinx.coroutines.GlobalScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            try {
+                if (com.agon.app.utils.BonusTime.canGrant(settings)) {
+                    com.agon.app.utils.BonusTime.spend(settings, com.agon.app.utils.BonusTime.DEFAULT_GRANT_MINUTES)
+                    settings.setBonusTimeGrantedAt(System.currentTimeMillis())
+                    // Reschedule the schedule rules so the bonus
+                    // window is honored. The user's normal
+                    // schedule resumes after the bonus window
+                    // ends.
+                    scheduler.rescheduleAll(this@BlockActivity, app.repository)
+                }
+            } catch (e: Exception) {
+                com.agon.app.utils.AppLogger.w("BlockActivity: grant bonus time failed: ${e.message}")
+            } finally {
+                withContext(kotlinx.coroutines.Dispatchers.Main) { goToHome() }
+            }
         }
     }
 
@@ -91,7 +130,8 @@ private fun BlockScreen(
     isKeyword: Boolean = false,
     isAiTemp: Boolean = false,
     isBedtime: Boolean = false,
-    onGoBack: () -> Unit
+    onGoBack: () -> Unit,
+    onBonusTime: () -> Unit = onGoBack
 ) {
     val context = LocalContext.current
     // Bedtime grayscale: desaturate the whole screen. Mirrors the
@@ -169,7 +209,7 @@ private fun BlockScreen(
             // blocks (not on content blocks like porn).
             if (isTimeLimit || isBedtime) {
                 OutlinedButton(
-                    onClick = onGoBack,
+                    onClick = onBonusTime,
                     colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFAAAAAA)),
                     border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFAAAAAA)),
                     shape = RoundedCornerShape(12.dp)

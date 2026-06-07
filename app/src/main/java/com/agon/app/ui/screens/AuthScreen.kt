@@ -40,7 +40,7 @@ fun AuthScreen(
     onSignIn: suspend (String, String) -> Result<Unit>,
     onSignUp: suspend (String, String, String?) -> Result<Unit>,
     onSignInWithGoogle: suspend () -> Result<Unit>,
-    onContinueAnonymously: suspend () -> Unit
+    onContinueAnonymously: suspend () -> Result<Unit>
 ) {
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
@@ -48,6 +48,12 @@ fun AuthScreen(
     var passwordVisible by remember { mutableStateOf(false) }
     var isLoading by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
+    // Scoped to the composition so cancelled-by-disposal jobs unwind
+    // cleanly when the user navigates back during a pending request.
+    // GlobalScope.launch is a long-standing anti-pattern in Compose
+    // (see AGP-8 lifecycle audit) and was leaving zombie coroutines
+    // that outlived the screen and could double-fire onAuthSuccess.
+    val scope = rememberCoroutineScope()
 
     Scaffold(
         topBar = {
@@ -180,9 +186,7 @@ fun AuthScreen(
                 onClick = {
                     errorMessage = null
                     isLoading = true
-                    kotlinx.coroutines.GlobalScope.launch(
-                        kotlinx.coroutines.Dispatchers.Main
-                    ) {
+                    scope.launch {
                         val result = if (mode == AuthMode.SignIn) {
                             onSignIn(email, password)
                         } else {
@@ -235,7 +239,7 @@ fun AuthScreen(
             OutlinedButton(
                 onClick = {
                     isLoading = true
-                    kotlinx.coroutines.GlobalScope.launch(Dispatchers.Main) {
+                    scope.launch {
                         onSignInWithGoogle()
                             .onSuccess { onAuthSuccess() }
                             .onFailure { errorMessage = it.message ?: "Google sign-in failed" }
@@ -252,9 +256,20 @@ fun AuthScreen(
             Spacer(Modifier.height(8.dp))
             TextButton(
                 onClick = {
-                    kotlinx.coroutines.GlobalScope.launch(Dispatchers.Main) {
-                        onContinueAnonymously()
-                        onAuthSuccess()
+                    isLoading = true
+                    scope.launch {
+                        // Wait for the anonymous sign-in to actually
+                        // complete (and report failure) before
+                        // navigating. The previous implementation
+                        // navigated unconditionally, so a thrown
+                        // exception (e.g. Storage quota exceeded
+                        // for the anonymous profile key) was swallowed
+                        // and the user landed on Home with no account
+                        // record.
+                        val result = onContinueAnonymously()
+                        isLoading = false
+                        result.onSuccess { onAuthSuccess() }
+                            .onFailure { errorMessage = it.message ?: "Could not continue anonymously" }
                     }
                 },
                 modifier = Modifier.fillMaxWidth()

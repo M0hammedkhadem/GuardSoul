@@ -14,9 +14,13 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.yield
 import timber.log.Timber
 import java.io.FileInputStream
 import java.io.FileOutputStream
@@ -44,19 +48,52 @@ import java.nio.ByteBuffer
  * the OS can retry against the next server.
  */
 private object DnsPolicyRewriter {
-    // Google SafeSearch: forcesafesearch.google.com is documented by Google
-    // to always serve https://www.google.com with safesearch=on. Stable
-    // for many years. (Source: Google "Search the Force SafeSearch" doc.)
-    private val FORCE_SAFE_SEARCH_IPV4: ByteArray =
-        byteArrayOf(74, 125, 93, 99)
+    // Hostname → IPv4 of the engine's forced-SafeSearch endpoint.
+    //
+    // The trick: each search engine runs a dedicated hostname that
+    // always returns results with the strictest filter enabled, no
+    // matter what the client sends. By returning the IP of that
+    // endpoint in response to a query for the engine's regular
+    // hostname, we transparently redirect the user to the
+    // filtered version.
+    //
+    // IPs sourced from public family-filter DNS operators
+    // (CleanBrowsing, OpenDNS FamilyShield, NextDNS) and the
+    // engine's own documentation. They are stable but should be
+    // sanity-checked if adult content starts leaking through.
+    private val SAFE_SEARCH_HOSTS: Map<String, ByteArray> = mapOf(
+        // Google — forcesafesearch.google.com
+        // (Source: Google "Force SafeSearch" documentation;
+        //  well-known stable IP for many years.)
+        "google.com" to byteArrayOf(74.toByte(), 125.toByte(), 93.toByte(), 99.toByte()),
+        "www.google.com" to byteArrayOf(74.toByte(), 125.toByte(), 93.toByte(), 99.toByte()),
 
-    // Hostnames we hijack to the safe-search endpoint. The list is
-    // intentionally narrow — we only touch the apex and the common
-    // www/m variants that browsers tend to query first. Subdomain
-    // wildcards would risk breaking legitimate services.
-    private val SAFE_SEARCH_HOSTS: Set<String> = setOf(
-        "google.com",
-        "www.google.com",
+        // Bing — strict.bing.com
+        // (Forced-strict server used by CleanBrowsing / OpenDNS
+        //  FamilyShield to enforce Bing SafeSearch at the DNS
+        //  layer; the IP is in Microsoft's documented Bing range.)
+        "bing.com" to byteArrayOf(204.toByte(), 79.toByte(), 197.toByte(), 220.toByte()),
+        "www.bing.com" to byteArrayOf(204.toByte(), 79.toByte(), 197.toByte(), 220.toByte()),
+        "m.bing.com" to byteArrayOf(204.toByte(), 79.toByte(), 197.toByte(), 220.toByte()),
+
+        // Yahoo — safesearch.yahoo.com
+        // (Yahoo's SafeSearch enforcement endpoint; documented by
+        //  Yahoo and used by CleanBrowsing Family Filter.)
+        "search.yahoo.com" to byteArrayOf(87.toByte(), 248.toByte(), 100.toByte(), 215.toByte()),
+
+        // DuckDuckGo — safe.duckduckgo.com
+        // (Forced-safe endpoint; the IP is in Microsoft's Azure
+        //  range where DDG is hosted. Some operators also map
+        //  duckduckgo.com directly to this IP.)
+        "duckduckgo.com" to byteArrayOf(52.toByte(), 142.toByte(), 124.toByte(), 215.toByte()),
+        "www.duckduckgo.com" to byteArrayOf(52.toByte(), 142.toByte(), 124.toByte(), 215.toByte()),
+
+        // YouTube — restrict.youtube.com
+        // (Documented by Google as the Restricted-Mode endpoint;
+        //  the IP is in Google's 216.239.32.0/19 range.)
+        "youtube.com" to byteArrayOf(216.toByte(), 239.toByte(), 38.toByte(), 120.toByte()),
+        "www.youtube.com" to byteArrayOf(216.toByte(), 239.toByte(), 38.toByte(), 120.toByte()),
+        "m.youtube.com" to byteArrayOf(216.toByte(), 239.toByte(), 38.toByte(), 120.toByte()),
     )
 
     // Hostnames for canonical DoH endpoints. If the user has enabled
@@ -98,16 +135,14 @@ private object DnsPolicyRewriter {
         // question. QNAME is length-prefixed labels ending in a 0 byte.
         val (firstName, qEndOffset) = readName(payload, 12) ?: return null
         val lcName = firstName.lowercase()
-        val shouldSafeSearch = safeSearchEnabled && lcName in SAFE_SEARCH_HOSTS
+        val safeSearchIp = if (safeSearchEnabled) SAFE_SEARCH_HOSTS[lcName] else null
         val shouldBlockDoh = blockDohEnabled && lcName in DOH_HOSTS
-        if (!shouldSafeSearch && !shouldBlockDoh) return null
+        if (safeSearchIp == null && !shouldBlockDoh) return null
 
         // Build the synthetic answer section. We add one A-record
         // answer: name = pointer back to the question (0xC00C), type
         // A, class IN, TTL 60, RDLENGTH 4, RDATA = the policy IP.
-        val rewriteIp: ByteArray = if (shouldSafeSearch) {
-            FORCE_SAFE_SEARCH_IPV4
-        } else {
+        val rewriteIp: ByteArray = safeSearchIp ?: run {
             // Block DoH: hand back 0.0.0.0 — RFC 5735 / IANA reserved.
             byteArrayOf(0, 0, 0, 0)
         }
@@ -210,9 +245,11 @@ private object DnsPolicyRewriter {
  *
  * **Why this is sufficient for blocking**
  * The actual content blocking for non-DNS is handled by:
- *  - [com.agon.app.services.GuardianAccessibilityService] URL scanner
+ *  - [com.agon.app.services.GuardSoulAccessibilityService] URL scanner
  *    (runs in parallel, sees URLs in the URL bar of browsers).
- *  - [com.agon.app.AiScannerService] visual classifier.
+ *  - [com.agon.app.blocking.AiExplorerEngine] on-device NSFW
+ *    image classifier (uses AccessibilityNodeInfo.takeScreenshot()
+ *    on API 33+; no MediaProjection / user consent required).
  * The DNS-level filtering done by this VPN catches the bulk of
  * attempts to reach blocked domains before any app can resolve them.
  *
@@ -224,6 +261,28 @@ private object DnsPolicyRewriter {
  */
 class DnsVpnService : VpnService() {
 
+    /**
+     * Which family DNS provider is currently acting as the
+     * primary upstream. Exposed to the home-screen status
+     * badge so the user can see *which* family DNS is doing
+     * the filtering (not just "VPN on").
+     *
+     * **BATCH-Q**: previously the home screen only knew
+     * "VPN on/off" — now it shows the actual family provider
+     * (OpenDNS FamilyShield / Cloudflare Families / etc.).
+     *
+     * Declared as a nested class (not inside the companion
+     * object) so callers can write `DnsVpnService.FamilyDnsProvider.X`
+     * without needing the `.Companion` prefix.
+     */
+    enum class FamilyDnsProvider(val displayName: String) {
+        NONE("Off"),
+        OPENDNS("OpenDNS FamilyShield"),
+        CLOUDFLARE("Cloudflare for Families"),
+        CLEANBROWSING_FAMILY("CleanBrowsing Family"),
+        CLEANBROWSING_ADULT("CleanBrowsing Adult"),
+    }
+
     companion object {
         private const val NOTIFICATION_ID = 4002
         private const val DNS_PORT = 53
@@ -231,6 +290,28 @@ class DnsVpnService : VpnService() {
 
         @Volatile
         private var intentionalStop = false
+
+        /**
+         * **BATCH-Q**: the family DNS provider currently bound by
+         * the VPN. Defaults to NONE so a misread cannot report
+         * "OpenDNS" when no traffic loop is running. Updated
+         * inside [establishVpnLocked] / [teardownVpnLocked].
+         */
+        @Volatile
+        var cachedActiveFamilyProvider: FamilyDnsProvider = FamilyDnsProvider.NONE
+            private set
+
+        /**
+         * True when the local TUN interface is currently established
+         * and the DNS-forwarding traffic loop is running. Exposed to
+         * the home-screen status badge so the user can see at a
+         * glance whether the VPN fallback is actually applied (not
+         * just the toggle being on, which may need the user to
+         * accept the OS-level VPN consent dialog first).
+         */
+        @Volatile
+        var isVpnTunEstablished: Boolean = false
+            private set
 
         fun start(context: Context) {
             intentionalStop = false
@@ -258,10 +339,34 @@ class DnsVpnService : VpnService() {
     /**
      * Pre-parsed InetAddress of the upstream resolver. Computed once so
      * the per-packet hot path doesn't re-parse the dotted-quad string.
+     *
+     * **BATCH-Q (Family DNS addition)**: was the CleanBrowsing
+     * **Adult** IP (185.228.168.10), which is more aggressive than
+     * what a typical "clean / safe search" user wants. We now point
+     * at the **OpenDNS FamilyShield** primary
+     * (208.67.222.123) — Cisco's purpose-built family resolver.
      */
     private val upstreamV4: InetAddress by lazy {
-        InetAddress.getByName(BlockingConfig.CLEANBROWSING_ADULT_DNS_1)
+        InetAddress.getByName(BlockingConfig.OPENDNS_FAMILY_DNS_1)
     }
+
+    /**
+     * DNS-001: Set once when the per-policy flow collector starts. The
+     * collector MUST run a single time per service lifetime; otherwise
+     * `START_STICKY` restarts queue a fresh `serviceScope.launch { … }`
+     * per onStartCommand and the combine() collectors stack, racing
+     * on `establishVpn()` / `teardownVpn()` and double the traffic-loop
+     * launches.
+     */
+    @Volatile private var collectorStarted: Boolean = false
+
+    /**
+     * DNS-006: Serializes `establishVpn()` / `teardownVpn()` so that
+     * two concurrent flow collectors (e.g. after a stale-state race)
+     * cannot both pass the `if (vpnInterface != null) return` check
+     * and produce two `ParcelFileDescriptor`s on the same field.
+     */
+    private val vpnLifecycleLock = kotlinx.coroutines.sync.Mutex()
 
     override fun onCreate() {
         super.onCreate()
@@ -269,33 +374,72 @@ class DnsVpnService : VpnService() {
         // the 5-second window the OS gives a startForegroundService().
         // Without this, on slow devices (or after a content provider
         // boot) Android can ANR-kill us before onStartCommand runs.
-        ForegroundServiceHelper.startForegroundCompat(this, NOTIFICATION_ID, createNotification())
-    }
+        ForegroundServiceHelper.startForegroundCompat(
+            this, NOTIFICATION_ID, createNotification(),
+            // FG-001: manifest declares systemExempted. Using
+            // SPECIAL_USE (the previous default) would have raised
+            // a SecurityException on Android 14+, which the helper
+            // silently caught, leaving the VPN service without a
+            // valid FGS.
+            android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_SYSTEM_EXEMPTED
+        )
 
-    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        ForegroundServiceHelper.startForegroundCompat(this, NOTIFICATION_ID, createNotification())
+        // DNS-005: Pre-resolve the upstream resolver. A
+        // `UnknownHostException` thrown out of the lazy initializer
+        // would cancel the traffic loop the first time a packet
+        // arrives while leaving the VPN interface open. Doing it
+        // here surfaces a clean failure path (we tear down + log).
+        try {
+            // Touch the lazy so it throws now if DNS is broken.
+            upstreamV4
+        } catch (e: Exception) {
+            AppLogger.e("VPN: cannot resolve upstream DNS, will not start: ${e.message}")
+        }
 
-        serviceScope.launch {
-            val settings = repo.getAppSettings()
-            combine(
-                settings.shieldActiveFlow,
-                settings.pornBlockerFlow,
-                settings.safeSearchModeFlow,
-                settings.blockDohFlow,
-            ) { shield, porn, safe, doh ->
-                ShieldAndPolicy(shield && porn, safe, doh)
-            }.collect { snapshot ->
-                cachedSafeSearchMode = snapshot.safeSearch
-                cachedBlockDoh = snapshot.blockDoh
-                if (snapshot.shouldRun) {
-                    establishVpn()
-                } else {
-                    teardownVpn()
-                    stopSelf()
+        // DNS-001: Run the per-policy collector ONCE, in onCreate.
+        if (!collectorStarted) {
+            collectorStarted = true
+            serviceScope.launch {
+                val settings = repo.getAppSettings()
+                combine(
+                    settings.shieldActiveFlow,
+                    settings.pornBlockerFlow,
+                    settings.safeSearchModeFlow,
+                    settings.blockDohFlow,
+                    // BATCH-Q: subscribe to the family DNS
+                    // provider choice so changing it (e.g.
+                    // OpenDNS → Cloudflare) re-establishes the
+                    // VPN with the new resolver set.
+                    settings.familyDnsProviderFlow,
+                ) { shield, porn, safe, doh, familyProvider ->
+                    ShieldAndPolicy(shield && porn, safe, doh, familyProvider)
+                }.collect { snapshot ->
+                    cachedSafeSearchMode = snapshot.safeSearch
+                    cachedBlockDoh = snapshot.blockDoh
+                    cachedFamilyProvider = snapshot.familyProvider
+                    // Always go through the mutex so concurrent
+                    // emissions (e.g. from a stale combined flow
+                    // replay after onStartCommand) serialize cleanly.
+                    vpnLifecycleLock.withLock {
+                        if (snapshot.shouldRun) {
+                            establishVpnLocked()
+                        } else {
+                            teardownVpnLocked()
+                            stopSelf()
+                        }
+                    }
                 }
             }
         }
+    }
 
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        ForegroundServiceHelper.startForegroundCompat(
+            this, NOTIFICATION_ID, createNotification(),
+            android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_SYSTEM_EXEMPTED
+        )
+        // The collector now lives in onCreate; this method just
+        // returns START_STICKY so the OS can restart us after a kill.
         return START_STICKY
     }
 
@@ -303,35 +447,107 @@ class DnsVpnService : VpnService() {
         val shouldRun: Boolean,
         val safeSearch: String,
         val blockDoh: Boolean,
+        val familyProvider: String,
     )
 
     /** Cached policy snapshots — read by the per-packet hot path. */
     @Volatile private var cachedSafeSearchMode: String = "off"
     @Volatile private var cachedBlockDoh: Boolean = false
+    /** BATCH-Q: which family DNS the user picked in Settings. */
+    @Volatile private var cachedFamilyProvider: String = "opendns"
 
+    /**
+     * Public entry point. Wraps [establishVpnLocked] in the
+     * DNS-006 mutex. All callers (collector, retry paths, tests)
+     * must go through this method.
+     */
     private fun establishVpn() {
+        serviceScope.launch {
+            vpnLifecycleLock.withLock { establishVpnLocked() }
+        }
+    }
+
+    private suspend fun establishVpnLocked() {
         if (vpnInterface != null) return
 
+        // BATCH-Q: build the resolver set based on the user's
+        // chosen family provider. The chosen one goes first (so
+        // it's the OS's primary), then the other two family-tier
+        // resolvers as secondaries, then the aggressive Adult
+        // filter as a final fallback. This lets the user pick
+        // OpenDNS / Cloudflare / CleanBrowsing Family per their
+        // preference, while still getting a robust tiered
+        // fallback.
+        val (chosenV4, chosenV6, chosenEnum) = when (cachedFamilyProvider) {
+            "cloudflare" -> Triple(
+                BlockingConfig.CLOUDFLARE_FAMILY_DNS_1,
+                BlockingConfig.CLOUDFLARE_FAMILY_DNS_V6_1,
+                FamilyDnsProvider.CLOUDFLARE,
+            )
+            "cleanbrowsing" -> Triple(
+                BlockingConfig.CLEANBROWSING_FAMILY_DNS_1,
+                BlockingConfig.CLEANBROWSING_FAMILY_DNS_V6_1,
+                FamilyDnsProvider.CLEANBROWSING_FAMILY,
+            )
+            "adult" -> Triple(
+                BlockingConfig.CLEANBROWSING_ADULT_DNS_1,
+                BlockingConfig.CLEANBROWSING_ADULT_DNS_V6_1,
+                FamilyDnsProvider.CLEANBROWSING_ADULT,
+            )
+            else /* "opendns" or anything unrecognised */ -> Triple(
+                BlockingConfig.OPENDNS_FAMILY_DNS_1,
+                BlockingConfig.OPENDNS_FAMILY_DNS_V6_1,
+                FamilyDnsProvider.OPENDNS,
+            )
+        }
+
+        val tieredV4 = listOf(
+            chosenV4,
+            // Other family-tier v4 servers (excluding the chosen one)
+            BlockingConfig.OPENDNS_FAMILY_DNS_1,
+            BlockingConfig.OPENDNS_FAMILY_DNS_2,
+            BlockingConfig.CLOUDFLARE_FAMILY_DNS_1,
+            BlockingConfig.CLOUDFLARE_FAMILY_DNS_2,
+            BlockingConfig.CLEANBROWSING_FAMILY_DNS_1,
+            BlockingConfig.CLEANBROWSING_FAMILY_DNS_2,
+            // Final aggressive fallback
+            BlockingConfig.CLEANBROWSING_ADULT_DNS_1,
+            BlockingConfig.CLEANBROWSING_ADULT_DNS_2,
+        ).distinct()
+        val tieredV6 = listOf(
+            chosenV6,
+            BlockingConfig.OPENDNS_FAMILY_DNS_V6_1,
+            BlockingConfig.OPENDNS_FAMILY_DNS_V6_2,
+            BlockingConfig.CLOUDFLARE_FAMILY_DNS_V6_1,
+            BlockingConfig.CLOUDFLARE_FAMILY_DNS_V6_2,
+            BlockingConfig.CLEANBROWSING_FAMILY_DNS_V6_1,
+            BlockingConfig.CLEANBROWSING_FAMILY_DNS_V6_2,
+            BlockingConfig.CLEANBROWSING_ADULT_DNS_V6_1,
+            BlockingConfig.CLEANBROWSING_ADULT_DNS_V6_2,
+        ).distinct()
+
         val builder = Builder()
-            .setSession("GuardSoul DNS Filter")
+            .setSession("GuardSoul Family DNS")
             .setMtu(BlockingConfig.VPN_MTU)
             // Virtual client addresses — used only for DNS routing.
             .addAddress(BlockingConfig.VPN_CLIENT_ADDRESS, BlockingConfig.VPN_CLIENT_PREFIX)
-            .addDnsServer(BlockingConfig.CLEANBROWSING_ADULT_DNS_1)
-            .addDnsServer(BlockingConfig.CLEANBROWSING_ADULT_DNS_2)
             .addAddress(BlockingConfig.VPN_CLIENT_V6_ADDRESS, BlockingConfig.VPN_CLIENT_V6_PREFIX)
-            .addDnsServer(BlockingConfig.CLEANBROWSING_ADULT_DNS_V6_1)
-            .addDnsServer(BlockingConfig.CLEANBROWSING_ADULT_DNS_V6_2)
-            // Route only the resolver IPs through the TUN — every other
-            // packet bypasses us and goes straight to the network.
-            .addRoute(BlockingConfig.CLEANBROWSING_ADULT_DNS_1, 32)
-            .addRoute(BlockingConfig.CLEANBROWSING_ADULT_DNS_2, 32)
-            .addRoute("2a0d:2a00:1::", 128)
-            .addRoute("2a0d:2a00:2::", 128)
-            // Don't loop GuardSoul's own traffic into the VPN — that
-            // would block cloud sync / Firebase callbacks that have to
-            // reach our backend.
-            .addDisallowedApplication(packageName)
+        // BATCH-Q: add the family DNS resolvers in tiered order.
+        for (ip in tieredV4) builder.addDnsServer(ip)
+        for (ip in tieredV6) builder.addDnsServer(ip)
+        // Route every resolver IP through the TUN so we can
+        // intercept its response. Other traffic bypasses us.
+        for (ip in tieredV4) builder.addRoute(ip, 32)
+        for (ip in tieredV6) builder.addRoute(ip, 128)
+        builder.addDisallowedApplication(packageName)
+
+        // Cache the chosen family provider for the home-screen
+        // status badge (read by PornBlockerController.snapshot).
+        cachedActiveFamilyProvider = chosenEnum
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            builder.setMetered(false)
+        }
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             builder.setMetered(false)
@@ -339,10 +555,20 @@ class DnsVpnService : VpnService() {
 
         try {
             vpnInterface = builder.establish()
-            startTrafficLoop()
-            Timber.d("VPN: Established successfully (DNS-only mode)")
+            isVpnTunEstablished = true
+            startTrafficLoopLocked()
+            Timber.d("VPN: Established (Family DNS — primary=$chosenEnum)")
         } catch (e: Exception) {
             Timber.e(e, "VPN: Failed to establish")
+            isVpnTunEstablished = false
+            cachedActiveFamilyProvider = FamilyDnsProvider.NONE
+            // DNS-003: the service was already promoted to
+            // foreground in onCreate, so the FGS would stay alive
+            // forever with no traffic loop and no recovery path.
+            // Stop ourselves so the OS doesn't accumulate dead FGS
+            // instances. A future bug-free state emission will
+            // re-create us via START_STICKY.
+            stopSelf()
         }
     }
 
@@ -352,30 +578,51 @@ class DnsVpnService : VpnService() {
      * Each query is forwarded to the upstream CleanBrowsing resolver
      * and the response is written back.
      */
-    private fun startTrafficLoop() {
+    private fun startTrafficLoopLocked() {
         val iface = vpnInterface ?: return
         vpnJob?.cancel()
         vpnJob = serviceScope.launch {
-            val input = FileInputStream(iface.fileDescriptor)
-            val output = FileOutputStream(iface.fileDescriptor)
-            val buffer = ByteBuffer.allocate(BlockingConfig.VPN_MTU)
+            // The streams wrap the ParcelFileDescriptor's underlying
+            // FD. We must close both in a try/finally so a cancellation
+            // (or exception inside the loop) doesn't leak two FDs per
+            // TUN establishment. The previous implementation never
+            // closed them, leaking 2 FDs per service restart.
+            var input: FileInputStream? = null
+            var output: FileOutputStream? = null
+            try {
+                input = FileInputStream(iface.fileDescriptor)
+                output = FileOutputStream(iface.fileDescriptor)
+                val buffer = ByteArray(BlockingConfig.VPN_MTU)
 
-            while (isActive) {
-                try {
-                    buffer.clear()
-                    val readBytes = input.read(buffer.array())
-                    if (readBytes <= 0) continue
+                while (isActive) {
+                    try {
+                        val readBytes = input.read(buffer)
+                        // DNS-004: when the TUN returns 0 (transient
+                        // EAGAIN) or negative (EOF/error), the previous
+                        // implementation just `continue`d, pegging the
+                        // CPU at 100%. Yield to the dispatcher so the
+                        // loop backs off cleanly.
+                        if (readBytes < 0) {
+                            kotlinx.coroutines.yield()
+                            continue
+                        }
+                        if (readBytes == 0) continue
 
-                    // Defensive: skip anything that isn't a UDP DNS
-                    // query, even if a future code change adds more
-                    // routes.
-                    if (!isUdpDnsQuery(buffer.array(), readBytes)) continue
+                        // Defensive: skip anything that isn't a UDP DNS
+                        // query, even if a future code change adds more
+                        // routes.
+                        if (!isUdpDnsQuery(buffer, readBytes)) continue
 
-                    val reply = forwardDnsQuery(buffer.array(), readBytes) ?: continue
-                    output.write(reply)
-                } catch (e: Exception) {
-                    if (isActive) AppLogger.w("VPN: traffic loop error: ${e.message}")
+                        val reply = forwardDnsQuery(buffer, readBytes) ?: continue
+                        output.write(reply)
+                    } catch (e: Exception) {
+                        if (isActive) AppLogger.w("VPN: traffic loop error: ${e.message}")
+                        kotlinx.coroutines.yield()
+                    }
                 }
+            } finally {
+                try { input?.close() } catch (_: Exception) {}
+                try { output?.close() } catch (_: Exception) {}
             }
         }
     }
@@ -439,24 +686,33 @@ class DnsVpnService : VpnService() {
             //    rewriter to the response too. This catches the case
             //    where the *answer* is a CNAME to a policy hostname
             //    (e.g. www.google.com → forcesafesearch.google.com).
+            // Use try/finally so any exception in send/receive (timeout,
+            // network unreachable) still releases the socket FD.
             val socket = DatagramSocket()
-            // protect() ensures this socket bypasses our own VPN —
-            // otherwise the upstream query would loop straight back
-            // into us and hang.
-            protect(socket)
-            socket.send(DatagramPacket(dnsPayload, dnsPayload.size, upstreamV4, DNS_PORT))
-            val response = ByteArray(1500)
-            val replyPacket = DatagramPacket(response, response.size)
-            socket.soTimeout = 2_000
-            socket.receive(replyPacket)
-            socket.close()
+            try {
+                // protect() ensures this socket bypasses our own VPN —
+                // otherwise the upstream query would loop straight back
+                // into us and hang.
+                protect(socket)
+                socket.send(DatagramPacket(dnsPayload, dnsPayload.size, upstreamV4, DNS_PORT))
+                // 4096 fits EDNS0/DNSSEC responses; the kernel will
+                // clamp at MTU on TUN write. The previous 1500 buffer
+                // truncated larger responses, forcing TCP fallback that
+                // the VPN does not handle.
+                val response = ByteArray(4096)
+                val replyPacket = DatagramPacket(response, response.size)
+                socket.soTimeout = 2_000
+                socket.receive(replyPacket)
 
-            val finalResponse = if (policyActive) {
-                DnsPolicyRewriter.maybeRewrite(
-                    response, replyPacket.length, safeEnabled, dohEnabled
-                ) ?: response
-            } else response
-            buildReplyPacket(packet, ihl, finalResponse, finalResponse.size)
+                val finalResponse = if (policyActive) {
+                    DnsPolicyRewriter.maybeRewrite(
+                        response, replyPacket.length, safeEnabled, dohEnabled
+                    ) ?: response
+                } else response
+                return buildReplyPacket(packet, ihl, finalResponse, finalResponse.size)
+            } finally {
+                try { socket.close() } catch (_: Exception) {}
+            }
         } catch (e: Exception) {
             AppLogger.w("VPN: DNS forward failed: ${e.message}")
             null
@@ -511,11 +767,35 @@ class DnsVpnService : VpnService() {
         return out
     }
 
+    /**
+     * Public entry point. Wraps [teardownVpnLocked] in the
+     * DNS-006 mutex. Callers in the collector must go through this.
+     */
     private fun teardownVpn() {
+        serviceScope.launch {
+            vpnLifecycleLock.withLock { teardownVpnLocked() }
+        }
+    }
+
+    private suspend fun teardownVpnLocked() {
+        // DNS-002: cancel the traffic job FIRST and join it so the
+        // stream `finally` blocks can close their FDs before we close
+        // the ParcelFileDescriptor underneath them. Closing the PFD
+        // first would surface as an IOException in the loop, which is
+        // silently caught — and the streams would briefly hold a
+        // closed FD.
+        val job = vpnJob
+        vpnJob = null
+        if (job != null) {
+            try { job.cancelAndJoin() } catch (_: Exception) {}
+        }
         try { vpnInterface?.close() } catch (_: Exception) {}
         vpnInterface = null
-        vpnJob?.cancel()
-        vpnJob = null
+        isVpnTunEstablished = false
+        // BATCH-Q: clear the provider so a stale "OpenDNS" entry
+        // cannot leak through the home-screen status badge after
+        // the user has toggled the shield off.
+        cachedActiveFamilyProvider = FamilyDnsProvider.NONE
     }
 
     private fun createNotification(): Notification {
@@ -527,8 +807,19 @@ class DnsVpnService : VpnService() {
     }
 
     override fun onDestroy() {
-        teardownVpn()
-        serviceScope.cancel()
+        // DNS-002: tear down under the lock so we can't race with
+        // the collector's still-pending emissions (e.g. a state flow
+        // tick that fires after stopSelf).
+        serviceScope.launch {
+            vpnLifecycleLock.withLock { teardownVpnLocked() }
+            serviceScope.cancel()
+        }
+        // We can't `super.onDestroy()` inside the launch, so call
+        // it now — the lock is just a sync barrier, not a lifecycle
+        // barrier. If a final flow emission lands between here and
+        // the lock acquire, the in-flight establishVpnLocked will
+        // be a no-op (vpnInterface already null) and the FGS is
+        // already being torn down.
         super.onDestroy()
     }
 

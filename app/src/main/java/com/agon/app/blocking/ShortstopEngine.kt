@@ -1,7 +1,6 @@
 package com.agon.app.blocking
 
 import android.accessibilityservice.AccessibilityService
-import android.content.Intent
 import android.graphics.Rect
 import android.os.Handler
 import android.os.Looper
@@ -10,10 +9,12 @@ import android.view.accessibility.AccessibilityNodeInfo
 import android.widget.Toast
 import com.agon.app.GuardianApp
 import com.agon.app.R
+import com.agon.app.guardianApp
 import com.agon.app.utils.AppLogger
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -22,29 +23,24 @@ import kotlinx.coroutines.launch
 import java.util.concurrent.ConcurrentHashMap
 
 /**
- * **Shortstop Accessibility Service** — the surgical-blocking
- * engine that handles partial blocking of Facebook Reels,
- * YouTube Shorts, Instagram Reels, TikTok For-You, and
- * Snapchat Spotlight.
+ * Shortstop surgical short-video blocker engine.
  *
- *  1. **Pattern-matched detection** for **all five** targets
- *     (Facebook Reels, YouTube Shorts, Instagram Reels, TikTok
- *     For-You, Snapchat Spotlight) with confidence scoring.
- *  2. **Surgical overlay masking** — keeps the rest of the app
- *     (messages, search, top nav, …) functional and only blocks
- *     the short-form player surface.
- *  3. **Scroll interception** — counts scrolls, estimates velocity,
- *     tracks time-on-content.
- *  4. **Smart scheduling** — blocked hours, daily quota, forced
- *     break reminders.
- *  5. **Anti-circumvention** — debounce + cooldown + tamper
- *     detection.
+ * Extracted from the legacy [ShortstopAccessibilityService] so it can
+ * run inside a single unified accessibility service
+ * ([com.agon.app.services.GuardSoulAccessibilityService]) alongside
+ * the [ContentFilterEngine], [UninstallGuardEngine], and [AiExplorerEngine].
  *
- * The accessibility flag `canPerformGestures = true` and the
- * `typeViewScrolled` event in `shortstop_service_config` allow
- * the scroll-interception layer to do its work.
+ * The engine is responsible for detecting Reels / Shorts / TikTok FYP
+ * / Snapchat Spotlight / Twitter-X video surfaces and forcibly kicking
+ * the user back to the launcher. It also runs the scroll-interception
+ * and daily-quota layers, and the self-learning engine.
+ *
+ * The engine holds a reference to the host service so it can call
+ * `performGlobalAction` and `rootInActiveWindow`. The host is owned
+ * by the Android framework — never `null` while [onAccessibilityEvent]
+ * is being invoked.
  */
-class ShortstopAccessibilityService : AccessibilityService() {
+class ShortstopEngine(private val host: AccessibilityService) {
 
     companion object {
         /** Packages that have a curated [PatternMatcher.Signature]. */
@@ -56,14 +52,12 @@ class ShortstopAccessibilityService : AccessibilityService() {
             "com.zhiliaoapp.musically",
             "com.ss.android.ugc.trill",
             "com.snapchat.android",
+            "com.twitter.android",
+            "com.x.android",
         )
 
         /** True when the current foreground package is a Shortstop target. */
         fun isTarget(pkg: String?): Boolean = pkg != null && pkg in TARGET_PACKAGES
-
-        /** Singleton state — the service publishes here for the UI layer. */
-        @Volatile private var instance: ShortstopAccessibilityService? = null
-        val current: ShortstopAccessibilityService? get() = instance
     }
 
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -74,13 +68,15 @@ class ShortstopAccessibilityService : AccessibilityService() {
     private val matcher = PatternMatcher()
     private val fastDetector = FastDetector()
     private val scrollInterception = ScrollInterception()
-    private val overlay by lazy { ShortsMaskOverlay(this) }
+    /** **BATCH-R**: Facebook-Reels-specific layered detector. */
+    private val facebookBlocker = FacebookBlockerEngine()
+    private val overlay by lazy { ShortsMaskOverlay(host) }
 
     /**
-     * Self-learning engine. Lazily created (in [onServiceConnected])
-     * because the [SignatureLearner] needs a [com.agon.app.data.settings.AppSettings]
-     * instance from the [GuardianApp] container, which isn't safe
-     * to read from a property initializer.
+     * Self-learning engine. Lazily created (in [start]) because the
+     * [SignatureLearner] needs a [com.agon.app.data.settings.AppSettings]
+     * instance from the [GuardianApp] container, which isn't safe to
+     * read from a property initializer.
      */
     @Volatile private var learner: SignatureLearner? = null
 
@@ -101,9 +97,7 @@ class ShortstopAccessibilityService : AccessibilityService() {
      */
     private val lastContentChangeAt = ConcurrentHashMap<String, Long>()
 
-    /**
-     * Per-package cached mode (per-app surgical / full / off).
-     */
+    /** Per-package cached mode (per-app surgical / full / off). */
     @Volatile private var cachedShieldActive = false
     @Volatile private var cachedInstagramMode = "off"
     @Volatile private var cachedYoutubeMode = "off"
@@ -140,12 +134,11 @@ class ShortstopAccessibilityService : AccessibilityService() {
         val targetPackage: String? = null,
     )
 
-    override fun onServiceConnected() {
-        super.onServiceConnected()
-        instance = this
+    /** Subscribe to settings flows. Called from the host. */
+    fun start() {
         serviceScope.launch {
             try {
-                val app = applicationContext as GuardianApp
+                val app = host.applicationContext as GuardianApp
                 val settings = app.repository.getAppSettings()
                 // Initialise the self-learning engine. We honour the
                 // `learnerEnabled` flag from DataStore so the user
@@ -199,13 +192,18 @@ class ShortstopAccessibilityService : AccessibilityService() {
                 AppLogger.e("Shortstop: failed to subscribe to settings: ${e.message}")
             }
         }
-        AppLogger.d("ShortstopAccessibilityService connected")
+        AppLogger.d("ShortstopEngine started")
     }
 
-    override fun onDestroy() {
-        super.onDestroy()
-        if (instance === this) instance = null
+    /** Tear down. Flushes pending minutes-spent counters. */
+    fun stop() {
         overlay.dismiss()
+        // Cancel the per-engine scope so collectors, the learner
+        // pruner, and any in-flight persistSurfaceLeft launch all
+        // unwind cleanly. Without this, onAccessibilityEvent is
+        // never called again but the collectors keep running
+        // (and the pruner keeps deleting learned signatures).
+        serviceScope.cancel()
         // Flush any in-flight short-form sessions so the daily
         // counter stays accurate across service restarts.
         for (pkg in surfaceEnteredMs.keys.toList()) {
@@ -216,11 +214,15 @@ class ShortstopAccessibilityService : AccessibilityService() {
         fastDetector.invalidateAll()
     }
 
-    override fun onInterrupt() {
+    /** Called from the host when the framework interrupts us. */
+    fun onInterrupt() {
         overlay.dismiss()
     }
 
-    override fun onAccessibilityEvent(event: AccessibilityEvent) {
+    fun onAccessibilityEvent(
+        event: AccessibilityEvent,
+        preFetchedRoot: AccessibilityNodeInfo? = null,
+    ) {
         val eventStart = System.currentTimeMillis()
         val pkg = event.packageName?.toString() ?: return
         if (!isTarget(pkg)) return
@@ -330,8 +332,12 @@ class ShortstopAccessibilityService : AccessibilityService() {
         //      Uses event.source first, then windowId cache, then
         //      targeted view-id lookup. Avoids the expensive
         //      rootInActiveWindow() call whenever possible.
+        //      **BATCH-P**: pass `preFetchedRoot` so the viewId
+        //      lookup can search the *root* (not the event source)
+        //      — closing the partial-blocking gap when the user
+        //      taps a Reels tab and the source is the tab button.
         val sig = matcher.signatureFor(pkg)
-        val fast = fastDetector.detect(event, sig, matcher.surfaceFor(pkg))
+        val fast = fastDetector.detect(event, sig, matcher.surfaceFor(pkg), preFetchedRoot)
         FastDetector.logSlowDetection(fast.elapsedMs, fast.triggeredBy)
 
         if (fast.verdict == FastDetector.Verdict.ON_SHORT_FORM) {
@@ -359,11 +365,61 @@ class ShortstopAccessibilityService : AccessibilityService() {
         //      the fast path returned UNKNOWN (no event.source, no
         //      cache hit, no targeted view-id match).
         if (fast.verdict == FastDetector.Verdict.UNKNOWN) {
-            val root = rootInActiveWindow ?: return
+            // SE-001: prefer the pre-fetched root from the host. If
+            // the host didn't supply one (e.g. unit tests, or the
+            // short-circuit cache returned a verdict), call
+            // `host.rootInActiveWindow` ourselves and own the node.
+            val ownedRoot: AccessibilityNodeInfo?
+            if (preFetchedRoot != null) {
+                ownedRoot = null
+            } else {
+                ownedRoot = host.rootInActiveWindow
+            }
+            val root = preFetchedRoot ?: ownedRoot ?: return
             try {
-                val (screenHeight, screenWidth) = screenSize()
+                val (screenHeight, screenWidth) = screenSize(root)
                 val activeLearner = learner
-                val hit = PatternMatcher.detect(pkg, root, screenHeight, screenWidth)
+
+                // BATCH-R: Facebook-specific detection runs *first*
+                // for Facebook packages. The FacebookBlockerEngine
+                // looks for engagement-rail view-ids, the
+                // fullscreen-player + follow/audio combination, and
+                // the Reels section tab — signals that the generic
+                // PatternMatcher misses for com.facebook.lite (which
+                // renders Reels inside a WebView) and that even
+                // for com.facebook.katana can resolve Reels hits
+                // earlier / with higher confidence.
+                var hit: PatternMatcher.Hit? = null
+                if (FacebookBlockerEngine.isFacebookPackage(pkg)) {
+                    val fbHit = facebookBlocker.detect(
+                        root = root,
+                        screenHeight = screenHeight,
+                        screenWidth = screenWidth,
+                    )
+                    if (fbHit != null) {
+                        FacebookBlockerEngine.logHit(fbHit)
+                        if (fbHit.shouldBlock) {
+                            // Wrap the FacebookBlocker hit as a
+                            // PatternMatcher.Hit so the rest of the
+                            // pipeline (kick-out, status, learner)
+                            // is unchanged. The `node` field is
+                            // never used downstream — we pass `root`
+                            // because the Hit constructor requires
+                            // it, and the host owns `root`.
+                            hit = PatternMatcher.Hit(
+                                packageName = pkg,
+                                surface = PatternMatcher.Surface.FACEBOOK_REELS,
+                                confidence = fbHit.confidence,
+                                triggeredBy = "facebook:${fbHit.triggeredBy}",
+                                node = root,
+                                isTabHit = fbHit.isTabHit,
+                            )
+                        }
+                    }
+                }
+                if (hit == null) {
+                    hit = PatternMatcher.detect(pkg, root, screenHeight, screenWidth)
+                }
                 val verdictStr: String
                 if (hit != null) {
                     scrollInterception.onSurfaceEntered(pkg, now)
@@ -415,7 +471,11 @@ class ShortstopAccessibilityService : AccessibilityService() {
                     verdict = verdictStr
                 )
             } finally {
-                root.recycle()
+                // SE-001: only recycle the root if WE allocated it.
+                // The host-owned preFetchedRoot is its responsibility.
+                if (ownedRoot != null) {
+                    try { ownedRoot.recycle() } catch (_: Exception) {}
+                }
             }
         } else {
             // Allowed — no need to walk the tree.
@@ -446,6 +506,7 @@ class ShortstopAccessibilityService : AccessibilityService() {
         pkg.startsWith("com.instagram") -> cachedInstagramMode == "reels" || cachedInstagramMode == "full"
         pkg.startsWith("com.zhiliaoapp") || pkg.startsWith("com.ss.android") -> cachedTiktokBlocked
         pkg.startsWith("com.snapchat") -> cachedSnapchatBlocked
+        pkg.startsWith("com.twitter") || pkg.startsWith("com.x.android") -> cachedTwitterBlocked
         else -> false
     }
 
@@ -494,48 +555,63 @@ class ShortstopAccessibilityService : AccessibilityService() {
 
         val surfaceLabel = surface.label
 
-        // 1) Pop the short-video player off the back stack. We do
-        //    this synchronously so the player is destroyed before
-        //    we move to HOME — without it, the user could
-        //    re-launch the app and find themselves back in the
-        //    same Reels / Shorts clip.
-        try {
-            performGlobalAction(GLOBAL_ACTION_BACK)
-        } catch (e: Exception) {
-            AppLogger.w("Shortstop: GLOBAL_ACTION_BACK failed: ${e.message}")
-        }
-
-        // 2) Forced return to home. Small delay so the BACK
-        //    transition animates cleanly before HOME is sent.
-        //    The user is not given a choice — this is the whole
-        //    point of Shortstop.
-        mainHandler.postDelayed({
+        // **BATCH-P (fast kick)**: when we detected a *tab* hit
+        // (the user just tapped a Reels/Shorts section tab and
+        // the player hasn't actually started yet), skip the BACK
+        // step entirely. There's nothing on the back stack to pop,
+        // and skipping BACK saves a ~5 ms framework round-trip
+        // — bringing the tap→home latency under 10 ms.
+        if (isTab && BlockingConfig.SHORTSTOP_FAST_KICK_NO_DELAY) {
             try {
-                performGlobalAction(GLOBAL_ACTION_HOME)
+                host.performGlobalAction(AccessibilityService.GLOBAL_ACTION_HOME)
             } catch (e: Exception) {
-                AppLogger.w("Shortstop: GLOBAL_ACTION_HOME failed: ${e.message}")
+                AppLogger.w("Shortstop: GLOBAL_ACTION_HOME (fast) failed: ${e.message}")
             }
-        }, BlockingConfig.SHORTSTOP_FORCE_HOME_DELAY_MS)
+        } else {
+            // 1) Pop the short-video player off the back stack.
+            //    We do this synchronously so the player is
+            //    destroyed before we move to HOME — without it,
+            //    the user could re-launch the app and find
+            //    themselves back in the same Reels / Shorts clip.
+            try {
+                host.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK)
+            } catch (e: Exception) {
+                AppLogger.w("Shortstop: GLOBAL_ACTION_BACK failed: ${e.message}")
+            }
+
+            // 2) Forced return to home. Small delay (30 ms in
+            //    BATCH-P, was 80 ms) so the BACK transition
+            //    queues cleanly before HOME is sent. The user
+            //    is not given a choice — this is the whole
+            //    point of Shortstop.
+            mainHandler.postDelayed({
+                try {
+                    host.performGlobalAction(AccessibilityService.GLOBAL_ACTION_HOME)
+                } catch (e: Exception) {
+                    AppLogger.w("Shortstop: GLOBAL_ACTION_HOME failed: ${e.message}")
+                }
+            }, BlockingConfig.SHORTSTOP_FORCE_HOME_DELAY_MS)
+        }
 
         // 3) Brief Toast message — explains why the user was sent
         //    to home. The user is now on the launcher, so the
         //    Toast is the only "feedback" they see.
         val message = if (isTab) {
-            getString(R.string.shortstop_kickout_section, surfaceLabel)
+            host.getString(R.string.shortstop_kickout_section, surfaceLabel)
         } else {
-            getString(R.string.shortstop_kickout_video, surfaceLabel)
+            host.getString(R.string.shortstop_kickout_video, surfaceLabel)
         }
         try {
-            Toast.makeText(this, message, Toast.LENGTH_LONG).show()
+            Toast.makeText(host, message, Toast.LENGTH_LONG).show()
         } catch (e: Exception) {
             AppLogger.w("Shortstop: Toast failed: ${e.message}")
         }
 
         // 4) Persist the block event for analytics.
         try {
-            val app = applicationContext as GuardianApp
+            val app = host.applicationContext as GuardianApp
             serviceScope.launch {
-                app.repository.recordBlock(pkg, surfaceLabel, "shortstop-kickout")
+                app.repository.recordBlock(pkg, surfaceLabel, "shorts_reels_block")
             }
         } catch (e: Exception) {
             AppLogger.w("Shortstop: recordBlock failed: ${e.message}")
@@ -551,14 +627,14 @@ class ShortstopAccessibilityService : AccessibilityService() {
             title = title,
             subtitle = message,
             onClose = {
-                try { performGlobalAction(GLOBAL_ACTION_HOME) } catch (_: Exception) {}
+                try { host.performGlobalAction(AccessibilityService.GLOBAL_ACTION_HOME) } catch (_: Exception) {}
             },
             onTakeBreak = {
                 // The user accepted a break — start the 5-minute
                 // countdown via AppSettings, then send the user to
                 // home so they can pick a different activity.
                 try {
-                    val app = applicationContext as GuardianApp
+                    val app = host.applicationContext as GuardianApp
                     val settings = app.repository.getAppSettings()
                     serviceScope.launch {
                         settings.setShortstopBreakEndsAt(System.currentTimeMillis() + 5 * 60 * 1000L)
@@ -566,7 +642,7 @@ class ShortstopAccessibilityService : AccessibilityService() {
                 } catch (e: Exception) {
                     AppLogger.w("Shortstop: setBreakEndsAt failed: ${e.message}")
                 }
-                try { performGlobalAction(GLOBAL_ACTION_HOME) } catch (_: Exception) {}
+                try { host.performGlobalAction(AccessibilityService.GLOBAL_ACTION_HOME) } catch (_: Exception) {}
             },
         )
     }
@@ -574,9 +650,9 @@ class ShortstopAccessibilityService : AccessibilityService() {
     private fun ruleCopy(pkg: String, reason: RuleEngine.Verdict.Reason): String {
         val label = matcher.surfaceFor(pkg).label
         return when (reason) {
-            RuleEngine.Verdict.Reason.BREAK_ACTIVE -> getString(R.string.shortstop_reason_break)
-            RuleEngine.Verdict.Reason.DAILY_QUOTA_EXCEEDED -> getString(R.string.shortstop_reason_quota)
-            RuleEngine.Verdict.Reason.BLOCKED_HOURS -> getString(R.string.shortstop_reason_hours, label)
+            RuleEngine.Verdict.Reason.BREAK_ACTIVE -> host.getString(R.string.shortstop_reason_break)
+            RuleEngine.Verdict.Reason.DAILY_QUOTA_EXCEEDED -> host.getString(R.string.shortstop_reason_quota)
+            RuleEngine.Verdict.Reason.BLOCKED_HOURS -> host.getString(R.string.shortstop_reason_hours, label)
             else -> label
         }
     }
@@ -610,7 +686,7 @@ class ShortstopAccessibilityService : AccessibilityService() {
         val total = cachedMinutesSpentToday + deltaMin
         cachedMinutesSpentToday = total
         try {
-            val app = applicationContext as GuardianApp
+            val app = host.applicationContext as GuardianApp
             serviceScope.launch {
                 app.repository.getAppSettings().setShortstopMinutesSpentToday(total)
             }
@@ -619,17 +695,22 @@ class ShortstopAccessibilityService : AccessibilityService() {
         }
     }
 
-    private fun screenSize(): Pair<Int, Int> = try {
-        val m = resources.displayMetrics
+    /**
+     * SE-001: was `screenSize()` with no args, which performed a
+     * second `host.rootInActiveWindow` round-trip. Now accepts the
+     * pre-fetched root from the slow path; the caller still owns
+     * the node (no recycle inside).
+     */
+    private fun screenSize(preFetchedRoot: AccessibilityNodeInfo?): Pair<Int, Int> = try {
+        val m = host.resources.displayMetrics
         // Audit #6: in split-screen / multi-window, use the
         // active-window's bounds so the size heuristic produces
         // sane ratios. We approximate that by reading the most
         // recent root-node bounds when available; otherwise we
         // fall back to the display dimensions.
-        val root = rootInActiveWindow
-        if (root != null) {
-            val b = android.graphics.Rect()
-            try { root.getBoundsInScreen(b) } catch (_: Exception) {}
+        if (preFetchedRoot != null) {
+            val b = Rect()
+            preFetchedRoot.getBoundsInScreen(b)
             Pair(b.height().coerceAtLeast(0), b.width().coerceAtLeast(0))
         } else {
             Pair(m.heightPixels, m.widthPixels)

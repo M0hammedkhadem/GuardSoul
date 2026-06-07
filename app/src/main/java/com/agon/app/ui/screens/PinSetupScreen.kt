@@ -1,6 +1,5 @@
 package com.agon.app.ui.screens
 
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
@@ -17,7 +16,6 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
-import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.agon.app.R
@@ -130,7 +128,14 @@ fun PinSetupScreen(
                     modifier = Modifier.size(80.dp)
                 )
                 Spacer(modifier = Modifier.height(16.dp))
-                LaunchedEffect(Unit) { delay(1500); onPinSet(pin) }
+                // PIN-DUP-CALL: onPinSet is already invoked from the
+                // step-1 "Confirm" button. The original code also
+                // fired it here after a 1.5 s delay, which caused
+                // double-navigation (and in some setups double
+                // hash-store). The success Icon stays for 1.5 s
+                // and the caller is expected to navigate away on
+                // its own; do not re-invoke onPinSet.
+                LaunchedEffect(Unit) { delay(1500) }
             }
         }
     }

@@ -101,13 +101,20 @@ class AuthRepository(
         return sessionOf(user)
     }
 
-    fun signOut(): UserSession {
+    /**
+     * Sign the user out and clear the local mirror in [AppSettings].
+     *
+     * `suspend` so callers must be in a coroutine — the previous
+     * version used `runBlocking` to write the three DataStore
+     * fields, which throws `IllegalStateException` if invoked from
+     * a UI thread that is already dispatching a frame (the
+     * DataStore dispatcher re-enters the main looper).
+     */
+    suspend fun signOut(): UserSession {
         auth.signOut()
-        kotlinx.coroutines.runBlocking {
-            settings.setAuthUserId("")
-            settings.setAuthProvider("anonymous")
-            settings.setAuthAnonymous(true)
-        }
+        settings.setAuthUserId("")
+        settings.setAuthProvider("anonymous")
+        settings.setAuthAnonymous(true)
         return UserSession.SignedOut
     }
 

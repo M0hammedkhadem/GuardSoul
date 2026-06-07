@@ -25,13 +25,18 @@ class GuardianDeviceAdminReceiver : DeviceAdminReceiver() {
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
     companion object {
-        // Issue #138: All protection states now reside in EncryptedPrefs
+        // Issue #138: All protection states now reside in EncryptedPrefs.
+        // Call sites route through [guardianEncryptedPrefs] so they
+        // share the same singleton instance that `pinHashFlow` listeners
+        // registered against. Constructing a fresh `EncryptedPrefs(context)`
+        // would mutate a different SharedPreferences handle and leave
+        // the listener registry stale.
         fun isProtectionEnabled(context: Context): Boolean {
-            return EncryptedPrefs(context).isProtectionEnabled()
+            return context.guardianEncryptedPrefs()?.isProtectionEnabled() ?: false
         }
 
         fun setProtectionEnabled(context: Context, enabled: Boolean) {
-            EncryptedPrefs(context).setProtectionEnabled(enabled)
+            context.guardianEncryptedPrefs()?.setProtectionEnabled(enabled)
         }
 
         fun isAdminActive(context: Context): Boolean {
@@ -43,7 +48,7 @@ class GuardianDeviceAdminReceiver : DeviceAdminReceiver() {
         }
 
         fun verifyPinBeforeDisable(context: Context, pin: String): Boolean {
-            val storedHash = EncryptedPrefs(context).getPinHash()
+            val storedHash = context.guardianEncryptedPrefs()?.getPinHash().orEmpty()
             if (storedHash.isBlank()) return true
             return SecurityUtils.verifyPinAgainstHash(pin, storedHash)
         }
@@ -52,7 +57,7 @@ class GuardianDeviceAdminReceiver : DeviceAdminReceiver() {
     override fun onEnabled(context: Context, intent: Intent) {
         super.onEnabled(context, intent)
         setProtectionEnabled(context, true)
-        
+
         val app = context.applicationContext.guardianApp()
         scope.launch {
             try {
@@ -66,30 +71,31 @@ class GuardianDeviceAdminReceiver : DeviceAdminReceiver() {
     }
 
     override fun onDisabled(context: Context, intent: Intent) {
-        val encryptedPrefs = EncryptedPrefs(context)
-        val protectionActive = encryptedPrefs.isProtectionEnabled() || encryptedPrefs.isStrongProtection()
+        val encryptedPrefs = context.guardianEncryptedPrefs()
+        val protectionActive = encryptedPrefs?.isProtectionEnabled() == true ||
+            encryptedPrefs?.isStrongProtection() == true
 
         if (protectionActive) {
-            recordTamperAlert(context, "device_admin_disabled", 
+            recordTamperAlert(context, "device_admin_disabled",
                 "Critical: Device Admin disabled while protection was active.")
             showTamperNotification(context, "device_admin_disabled")
         }
-        
+
         val app = context.applicationContext.guardianApp()
         scope.launch {
             app?.repository?.getAppSettings()?.setPermAdmin(false)
         }
-        
-        encryptedPrefs.setProtectionEnabled(false)
+
+        encryptedPrefs?.setProtectionEnabled(false)
         Toast.makeText(context, R.string.tamper_admin_disabled_toast, Toast.LENGTH_SHORT).show()
     }
 
     override fun onDisableRequested(context: Context, intent: Intent): CharSequence {
         // Issue #128 & #173: Direct synchronous read from encryptedPrefs (Thread-safe)
-        val encryptedPrefs = EncryptedPrefs(context)
-        val hasPin = encryptedPrefs.hasPin()
-        
-        if (encryptedPrefs.isStrongProtection()) {
+        val encryptedPrefs = context.guardianEncryptedPrefs()
+        val hasPin = encryptedPrefs?.hasPin() == true
+
+        if (encryptedPrefs?.isStrongProtection() == true) {
             recordTamperAlert(context, "disable_attempt", "Unauthorized attempt to disable Admin.")
             showTamperNotification(context, "disable_attempt")
         }

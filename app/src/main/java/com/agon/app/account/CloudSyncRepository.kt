@@ -17,6 +17,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.tasks.await
 
 /**
@@ -37,26 +39,41 @@ class CloudSyncRepository(
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val firestore: FirebaseFirestore = FirebaseFirestore.getInstance()
 
+    /**
+     * SYNC-MUTEX: serializes push / pull / enable operations so
+     * the [state] StateFlow doesn't get re-ordered updates from
+     * overlapping coroutines. Previously, a fast push followed
+     * by a pull could end up emitting:
+     *   Idle -> Syncing(push) -> Syncing(pull) -> Success(push) -> Error(pull)
+     * which the UI interpreted as "push succeeded, then a pull
+     * failed", but the actual ordering on the wire was different.
+     * With the mutex, the operations are strictly sequential and
+     * the StateFlow reflects the last-finished operation.
+     */
+    private val syncMutex = Mutex()
+
     private val _state = MutableStateFlow<SyncState>(SyncState.Idle)
     val state: StateFlow<SyncState> = _state.asStateFlow()
 
     /** Push a snapshot of the user-owned state to Firestore. */
     fun pushAsync() {
         scope.launch {
-            if (!settings.cloudSyncEnabledFlow.first()) return@launch
-            val uid = FirebaseAuth.getInstance().currentUser?.uid ?: return@launch
-            _state.value = SyncState.Syncing
-            try {
-                val snapshot = buildSnapshot()
-                firestore.collection("users").document(uid)
-                    .set(snapshot, SetOptions.merge())
-                    .await()
-                settings.setCloudLastSyncAt(System.currentTimeMillis())
-                _state.value = SyncState.Success(System.currentTimeMillis())
-                AppLogger.i("CloudSyncRepository: push ok")
-            } catch (e: Exception) {
-                _state.value = SyncState.Error(e.message ?: "unknown")
-                AppLogger.w("CloudSyncRepository: push failed: ${e.message}")
+            syncMutex.withLock {
+                if (!settings.cloudSyncEnabledFlow.first()) return@withLock
+                val uid = FirebaseAuth.getInstance().currentUser?.uid ?: return@withLock
+                _state.value = SyncState.Syncing
+                try {
+                    val snapshot = buildSnapshot()
+                    firestore.collection("users").document(uid)
+                        .set(snapshot, SetOptions.merge())
+                        .await()
+                    settings.setCloudLastSyncAt(System.currentTimeMillis())
+                    _state.value = SyncState.Success(System.currentTimeMillis())
+                    AppLogger.i("CloudSyncRepository: push ok")
+                } catch (e: Exception) {
+                    _state.value = SyncState.Error(e.message ?: "unknown")
+                    AppLogger.w("CloudSyncRepository: push failed: ${e.message}")
+                }
             }
         }
     }
@@ -64,20 +81,22 @@ class CloudSyncRepository(
     /** Pull a snapshot from Firestore. */
     fun pullAsync() {
         scope.launch {
-            if (!settings.cloudSyncEnabledFlow.first()) return@launch
-            val uid = FirebaseAuth.getInstance().currentUser?.uid ?: return@launch
-            _state.value = SyncState.Syncing
-            try {
-                val snap = firestore.collection("users").document(uid).get().await()
-                @Suppress("UNCHECKED_CAST")
-                val data = snap.data as? Map<String, Any> ?: emptyMap()
-                applySnapshot(data)
-                settings.setCloudLastSyncAt(System.currentTimeMillis())
-                _state.value = SyncState.Success(System.currentTimeMillis())
-                AppLogger.i("CloudSyncRepository: pull ok")
-            } catch (e: Exception) {
-                _state.value = SyncState.Error(e.message ?: "unknown")
-                AppLogger.w("CloudSyncRepository: pull failed: ${e.message}")
+            syncMutex.withLock {
+                if (!settings.cloudSyncEnabledFlow.first()) return@withLock
+                val uid = FirebaseAuth.getInstance().currentUser?.uid ?: return@withLock
+                _state.value = SyncState.Syncing
+                try {
+                    val snap = firestore.collection("users").document(uid).get().await()
+                    @Suppress("UNCHECKED_CAST")
+                    val data = snap.data as? Map<String, Any> ?: emptyMap()
+                    applySnapshot(data)
+                    settings.setCloudLastSyncAt(System.currentTimeMillis())
+                    _state.value = SyncState.Success(System.currentTimeMillis())
+                    AppLogger.i("CloudSyncRepository: pull ok")
+                } catch (e: Exception) {
+                    _state.value = SyncState.Error(e.message ?: "unknown")
+                    AppLogger.w("CloudSyncRepository: pull failed: ${e.message}")
+                }
             }
         }
     }
@@ -153,8 +172,17 @@ class CloudSyncRepository(
     }
 
     suspend fun enable(enabled: Boolean) {
-        settings.setCloudSyncEnabled(enabled)
-        if (enabled) pushAsync() else _state.value = SyncState.Idle
+        // SYNC-MUTEX: take the same lock as push/pull so a
+        // disable can't race with an in-flight push. Otherwise
+        // the UI might show "syncing" forever (the push sees
+        // cloudSyncEnabledFlow=false after we set it, but the
+        // push had already passed that check and is now
+        // mid-flight).
+        syncMutex.withLock {
+            settings.setCloudSyncEnabled(enabled)
+            if (!enabled) _state.value = SyncState.Idle
+        }
+        if (enabled) pushAsync()
     }
 }
 

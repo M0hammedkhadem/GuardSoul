@@ -16,12 +16,26 @@ import kotlinx.coroutines.launch
 import org.koin.android.ext.koin.androidContext
 import org.koin.core.context.startKoin
 import com.agon.app.logging.ReleaseTree
+import com.agon.app.consent.ConsentCache
 import com.agon.app.consent.ConsentManager
 import com.agon.app.account.CloudSyncRepository
+import com.agon.app.blocking.AiBlockTracker
 import timber.log.Timber
 
 fun Context.guardianApp(): GuardianApp? {
     return applicationContext as? GuardianApp
+}
+
+/**
+ * Returns the Koin-managed [com.agon.app.data.settings.EncryptedPrefs]
+ * singleton for this process. Call sites that previously wrote
+ * `EncryptedPrefs(context)` ad-hoc should use this helper instead —
+ * constructing a fresh instance mutates a different SharedPreferences
+ * handle and bypasses the listener registry (so `pinHashFlow` never
+ * hears the change).
+ */
+fun Context.guardianEncryptedPrefs(): com.agon.app.data.settings.EncryptedPrefs? {
+    return guardianApp()?.repository?.getAppSettings()?.encryptedPrefs
 }
 
 class GuardianApp : Application() {
@@ -29,7 +43,9 @@ class GuardianApp : Application() {
     val billingManager: BillingManager by inject()
     val crashReporter: CrashReporter by inject()
     val consentManager: ConsentManager by inject()
+    val consentCache: ConsentCache by inject()
     val cloudSync: CloudSyncRepository by inject()
+    val aiBlockTracker: AiBlockTracker by inject()
 
     val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
@@ -56,6 +72,11 @@ class GuardianApp : Application() {
 
         // Apply persisted GDPR consent decisions to the SDKs.
         consentManager.applyPersistedDecisions()
+
+        // Start observing the consent flows so the (synchronous)
+        // AnalyticsManager / CrashReporter guards can read the
+        // current values without blocking on DataStore.
+        consentCache.start(applicationScope, repository.getAppSettings())
 
         // Start the billing client lazily — connects on first product
         // query. We just prime the in-memory state.

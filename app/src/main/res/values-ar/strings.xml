@@ -351,6 +351,8 @@
     <string name="statistics_today">اليوم</string>
     <string name="statistics_streak">سلسلة الأيام</string>
     <string name="statistics_today_breakdown">تفصيل اليوم</string>
+    <string name="statistics_longest">الأطول</string>
+    <string name="statistics_today_apps">تطبيقات اليوم</string>
     <string name="statistics_most_blocked">التطبيق الأكثر حظرًا</string>
     <string name="statistics_recent">أحداث الحظر الأخيرة</string>
     <string name="statistics_empty">لم يتم تسجيل أي أحداث حظر بعد</string>
@@ -639,4 +641,11 @@
     <string name="mode_strict">صارم</string>
     <string name="mode_strict_desc">تصفية DNS كاملة — قد يعطل بعض الخدمات غير البحثية</string>
     <string name="label_block_doh">حظر DNS المشفر (DoH/DoT)</string>
+    <string name="test_blocker_toggle_state">حالة مانع الإباحية: %1$s</string>
+
+    <!-- BATCH-Q: Family DNS provider display names (home badge) -->
+    <string name="family_dns_opendns">OpenDNS FamilyShield</string>
+    <string name="family_dns_cloudflare">Cloudflare للعائلات</string>
+    <string name="family_dns_cleanbrowsing_family">CleanBrowsing العائلي</string>
+    <string name="family_dns_cleanbrowsing_adult">CleanBrowsing للبالغين</string>
 </resources>

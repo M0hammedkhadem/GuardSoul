@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Combined configuration for the unified GuardSoulAccessibilityService.
+
+    Event types — union of both legacy services:
+      * typeWindowStateChanged    — Guardian uninstall protection + Shortstop surface entry
+      * typeWindowContentChanged  — Guardian keyword/domain scan + Shortstop pattern matcher
+      * typeViewScrolled          — Shortstop scroll interception + velocity heuristic
+      * typeViewClicked           — Shortstop deep-link / Reels-tab entry point (was a no-op in Guardian)
+
+    Flags — union of both legacy services:
+      * flagDefault                       — required
+      * flagRetrieveInteractiveWindows    — needed for Shortstop overlay anchoring
+      * flagIncludeNotImportantViews      — needed for Shortstop view-id fast path
+      * flagReportViewIds                 — needed for Shortstop to read resource-id strings
+
+    canPerformGestures = true    — Shortstop may need gesture injection in future revisions
+    canRetrieveWindowContent     — required for all engines to walk the tree
+    notificationTimeout = 50     — tighter than Guardian's 500 ms to keep Shortstop snappy
+
+    (No canTakeScreenshot — AI Explorer uses the public
+     AccessibilityService.takeScreenshot() API which doesn't
+     require that flag. The hidden AccessibilityNodeInfo.takeScreenshot
+     API does require it but is @SystemApi and not in the public SDK.)
+-->
+<accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
+    android:accessibilityEventTypes="typeWindowStateChanged|typeWindowContentChanged|typeViewScrolled|typeViewClicked"
+    android:accessibilityFeedbackType="feedbackGeneric"
+    android:accessibilityFlags="flagDefault|flagRetrieveInteractiveWindows|flagIncludeNotImportantViews|flagReportViewIds"
+    android:canRetrieveWindowContent="true"
+    android:canPerformGestures="true"
+    android:notificationTimeout="50"
+    android:description="@string/accessibility_service_desc" />

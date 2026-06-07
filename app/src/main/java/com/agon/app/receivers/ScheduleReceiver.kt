@@ -17,9 +17,22 @@ class ScheduleReceiver : BroadcastReceiver() {
         val pendingResult = goAsync()
         val transitionTime = intent.getLongExtra("TRANSITION_TIME", 0L)
         val transitionType = intent.getStringExtra("TRANSITION_TYPE") ?: "unknown"
-        AppLogger.i("ScheduleReceiver: Schedule transition ($transitionType) at $transitionTime")
-        
-        val app = context.guardianApp() ?: return
+        when (intent.action) {
+            Intent.ACTION_MY_PACKAGE_REPLACED ->
+                AppLogger.i("ScheduleReceiver: self-rescuing after app update (alarms were wiped by the system)")
+            else ->
+                AppLogger.i("ScheduleReceiver: Schedule transition ($transitionType) at $transitionTime")
+        }
+
+        val app = context.guardianApp()
+        if (app == null) {
+            // Critical: if we early-return after goAsync() without
+            // finish(), the BroadcastReceiver is held for ~10 s
+            // before the system gives up. Always finish before any
+            // unconditional return.
+            pendingResult.finish()
+            return
+        }
         val repository = app.repository
         CoroutineScope(Dispatchers.Default + SupervisorJob()).launch {
             try {

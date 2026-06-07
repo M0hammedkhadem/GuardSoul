@@ -48,8 +48,16 @@ class StatisticsViewModel(application: Application) : AndroidViewModel(applicati
     }.distinctUntilChanged()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
 
-    val currentStreak: StateFlow<Int> = repo.getAllBlockEvents().map { events ->
-        calculateCleanStreak(events)
+    val currentStreak: StateFlow<Int> = combine(
+        repo.getAllBlockEvents(),
+        settings.lastShieldEnabledDayFlow
+    ) { events, lastShieldEnabledDay ->
+        // STALE-SHIELD-CHECK: pass the last shield-enabled day
+        // to the streak calculator so days where the shield
+        // was off don't count as "clean" (a user who had
+        // unfiltered access to blocked content shouldn't be
+        // rewarded with a streak).
+        calculateCleanStreak(events, lastShieldEnabledDay)
     }.distinctUntilChanged()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
 
@@ -210,11 +218,32 @@ class StatisticsViewModel(application: Application) : AndroidViewModel(applicati
         }
     }
 
-    private fun calculateCleanStreak(events: List<BlockEventEntity>): Int {
+    private fun calculateCleanStreak(
+        events: List<BlockEventEntity>,
+        lastShieldEnabledDay: Long = 0L
+    ): Int {
         if (events.isEmpty()) return 0
         var streak = 0
         var currentDate = LocalDate.now()
+        // STALE-SHIELD-CHECK: the floor for the streak walk.
+        // Any day earlier than `lastShieldEnabledDay` had no
+        // active shield, so it must not be credited as a clean
+        // day. Default 0L preserves the legacy behavior for
+        // tests / first-run users.
+        val floorDay: LocalDate = if (lastShieldEnabledDay > 0L) {
+            java.time.Instant.ofEpochMilli(lastShieldEnabledDay)
+                .atZone(ZoneId.systemDefault())
+                .toLocalDate()
+        } else {
+            // No shield-on recorded — credit nothing until the
+            // user has actually enabled the shield at least
+            // once.
+            return 0
+        }
         while (true) {
+            // Don't count days before the shield was last
+            // turned on.
+            if (currentDate.isBefore(floorDay)) break
             val dayStart = currentDate.atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
             val dayEnd = currentDate.plusDays(1).atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
             val dayEvents = events.filter { it.timestamp in dayStart until dayEnd }

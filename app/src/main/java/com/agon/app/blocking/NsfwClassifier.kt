@@ -32,9 +32,9 @@ import java.nio.channels.FileChannel
  *
  * **Threading**
  * The [Interpreter] is **not** thread-safe — callers must serialise
- * access. The owning [com.agon.app.AiScannerService] already runs its
- * scan loop on a single coroutine so this is fine; if you need to use
- * the classifier from multiple threads, wrap calls in a Mutex.
+ * access. The owning [com.agon.app.blocking.AiExplorerEngine] wraps
+ * `classify()` in a Mutex so this is fine; if you want to use the
+ * classifier from multiple threads yourself, wrap calls in a Mutex.
  *
  * **Memory**
  * The interpreter's memory budget is set to 4 MB, which is more than
@@ -98,14 +98,20 @@ class NsfwClassifier(private val context: Context) {
     }
 
     private fun loadModelFile(): MappedByteBuffer {
+        // AssetFileDescriptor + FileInputStream must be explicitly
+        // closed; the previous implementation leaked the FD on every
+        // instantiation of the classifier. The mapped ByteBuffer
+        // remains valid after the channels close.
         val assetFd = context.assets.openFd(MODEL_ASSET_PATH)
-        val inputStream = FileInputStream(assetFd.fileDescriptor)
-        val fileChannel = inputStream.channel
-        return fileChannel.map(
-            FileChannel.MapMode.READ_ONLY,
-            assetFd.startOffset,
-            assetFd.declaredLength
-        )
+        return assetFd.use { fd ->
+            FileInputStream(fd.fileDescriptor).use { fis ->
+                fis.channel.map(
+                    FileChannel.MapMode.READ_ONLY,
+                    fd.startOffset,
+                    fd.declaredLength
+                )
+            }
+        }
     }
 
     /**
@@ -170,6 +176,14 @@ class NsfwClassifier(private val context: Context) {
         } else {
             Bitmap.createScaledBitmap(bitmap, INPUT_SIZE, INPUT_SIZE, true)
         }
+        // NC-001: createScaledBitmap allocates a fresh Bitmap when
+        // the input dimensions don't match. Without recycling here
+        // we leak ~1.9 MB per scanned frame (224*224*4 bytes) on the
+        // AI Explorer's 1.5 s cadence. We recycle the resized bitmap
+        // below, but ONLY if it is not the input — recycling the
+        // input would corrupt the caller's frame. The input was
+        // allocated and is owned by AiExplorerEngine.
+        val resizedIsAllocated = resized !== bitmap
         val byteBuffer = ByteBuffer.allocateDirect(
             1 * INPUT_SIZE * INPUT_SIZE * 3 * 4
         ).order(ByteOrder.nativeOrder())
@@ -182,6 +196,11 @@ class NsfwClassifier(private val context: Context) {
             byteBuffer.putFloat((r - PIXEL_MEAN) / PIXEL_STD)
             byteBuffer.putFloat((g - PIXEL_MEAN) / PIXEL_STD)
             byteBuffer.putFloat((b - PIXEL_MEAN) / PIXEL_STD)
+        }
+        if (resizedIsAllocated) {
+            // The IntArray copy is the only thing still using the
+            // underlying pixel buffer; safe to recycle now.
+            resized.recycle()
         }
         return byteBuffer
     }

@@ -24,6 +24,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -41,6 +43,7 @@ import com.agon.app.GuardianDeviceAdminReceiver
 import com.agon.app.R
 import com.agon.app.ui.theme.*
 import com.agon.app.viewmodel.ContentViewModel
+import com.agon.app.viewmodel.PornBlockerDiagnostics
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -60,26 +63,15 @@ fun ContentScreen(vm: ContentViewModel) {
     var strongPinInput by remember { mutableStateOf("") }
     var strongPinError by remember { mutableStateOf(false) }
     var showStrongWarningDialog by remember { mutableStateOf(false) }
+    var showDiagnosticsDialog by remember { mutableStateOf(false) }
+    var diagnostics by remember { mutableStateOf<PornBlockerDiagnostics?>(null) }
+    val diagnosticsScope = rememberCoroutineScope()
 
     val adminLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult()
     ) { result ->
         if (result.resultCode == Activity.RESULT_OK) {
             vm.setUninstallProtection(true)
-        }
-    }
-
-    // MediaProjection consent: required for AI Explorer to actually capture
-    // frames. Without this intent the service starts but the scan loop stays
-    // dormant (the user has to re-grant to make the feature useful).
-    val projectionLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.StartActivityForResult()
-    ) { result ->
-        if (result.resultCode == Activity.RESULT_OK && result.data != null) {
-            vm.startAiScannerWithProjection(result.data!!)
-        } else {
-            // User cancelled — roll back the toggle.
-            vm.setAiScanner(false)
         }
     }
 
@@ -130,6 +122,36 @@ fun ContentScreen(vm: ContentViewModel) {
                         color = warning,
                     )
                 }
+                Spacer(Modifier.height(10.dp))
+                // "Test filter" affordance — opens a diagnostics
+                // dialog with the live state of every component in
+                // the porn-blocker stack (DNS / VPN / A11y / blocklist
+                // counts). Helps the user verify the filter is
+                // actually engaged, not just the toggle.
+                OutlinedButton(
+                    onClick = {
+                        diagnosticsScope.launch {
+                            diagnostics = vm.runDiagnostics()
+                            showDiagnosticsDialog = true
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(10.dp),
+                ) {
+                    Icon(
+                        Icons.Default.BugReport,
+                        null,
+                        modifier = Modifier.size(16.dp),
+                        tint = primary,
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        stringResource(R.string.test_blocker_run),
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = primary,
+                    )
+                }
             }
 
             FeatureToggleCard(
@@ -140,18 +162,13 @@ fun ContentScreen(vm: ContentViewModel) {
                 icon = Icons.Default.Visibility,
                 color = accent,
                 onToggle = { active ->
-                    if (active) {
-                        // Enable the flag first, then ask for screen-capture
-                        // consent. If the user denies, the onCancel handler
-                        // flips it back to false.
-                        vm.setAiScanner(true)
-                        val mpManager = context.getSystemService(
-                            android.content.Context.MEDIA_PROJECTION_SERVICE
-                        ) as android.media.projection.MediaProjectionManager
-                        projectionLauncher.launch(mpManager.createScreenCaptureIntent())
-                    } else {
-                        vm.setAiScanner(false)
-                    }
+                    // The actual classification runs inside
+                    // [com.agon.app.blocking.AiExplorerEngine], driven
+                    // by the accessibility service. No MediaProjection
+                    // consent is required — the engine uses
+                    // AccessibilityNodeInfo.takeScreenshot() (API 33+)
+                    // which is system-granted, not user-granted.
+                    vm.setAiScanner(active)
                 }
             ) {
                 Text(stringResource(R.string.privacy_ai_note), fontSize = 12.sp, color = textSecondary)
@@ -304,6 +321,18 @@ fun ContentScreen(vm: ContentViewModel) {
         }
     )
 
+    if (showDiagnosticsDialog) {
+        diagnostics?.let { d ->
+            DiagnosticsDialog(
+                d = d,
+                onDismiss = {
+                    showDiagnosticsDialog = false
+                    diagnostics = null
+                },
+            )
+        }
+    }
+
 }
 
 @Composable
@@ -361,6 +390,113 @@ private fun ChecklistItem(text: String) {
         Icon(Icons.Default.CheckCircle, null, tint = success, modifier = Modifier.size(16.dp))
         Spacer(Modifier.width(8.dp))
         Text(text, fontSize = 13.sp, color = textSecondary)
+    }
+}
+
+/**
+ * "Filter diagnostics" dialog. Renders the [PornBlockerDiagnostics]
+ * snapshot as a coloured checklist: green for ✓, orange for
+ * ⚠, red for ✗. Tells the user exactly which layer of the filter
+ * stack is (or isn't) working — so they don't have to guess whether
+ * the toggle being on actually means the filter is engaged.
+ */
+@Composable
+private fun DiagnosticsDialog(d: PornBlockerDiagnostics, onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    Icons.Default.HealthAndSafety,
+                    null,
+                    tint = primary,
+                    modifier = Modifier.size(20.dp),
+                )
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    stringResource(R.string.test_blocker_title),
+                    fontWeight = FontWeight.Bold,
+                )
+            }
+        },
+        text = {
+            Column {
+                DiagnosticRow(
+                    ok = d.shieldActive,
+                    label = stringResource(
+                        if (d.shieldActive) R.string.test_blocker_shield_ok
+                        else R.string.test_blocker_shield_off
+                    ),
+                )
+                DiagnosticRow(
+                    ok = d.pornBlockerActive,
+                    // PIN-STRING-EQ: previously the "on" branch
+                    // returned a hardcoded English string and the
+                    // "off" branch used the resource. The hardcoded
+                    // string was not localized and (more importantly)
+                    // not aligned with the resource entry. We now use
+                    // a single resource with a %1$s placeholder.
+                    label = stringResource(R.string.test_blocker_toggle_state, if (d.pornBlockerActive) "on" else "off"),
+                )
+                if (d.pornBlockerActive) {
+                    DiagnosticRow(
+                        ok = d.privateDnsConfigured,
+                        label = stringResource(
+                            if (d.privateDnsConfigured) R.string.test_blocker_dns_ok
+                            else R.string.test_blocker_dns_pending
+                        ),
+                    )
+                    DiagnosticRow(
+                        ok = d.vpnEstablished,
+                        label = stringResource(
+                            if (d.vpnEstablished) R.string.test_blocker_vpn_ok
+                            else R.string.test_blocker_vpn_pending
+                        ),
+                    )
+                }
+                DiagnosticRow(
+                    ok = d.a11yServiceBound,
+                    label = stringResource(
+                        if (d.a11yServiceBound) R.string.test_blocker_a11y_ok
+                        else R.string.test_blocker_a11y_missing
+                    ),
+                )
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    stringResource(R.string.test_blocker_keyword_count, d.keywordCount),
+                    fontSize = 12.sp,
+                    color = textMuted,
+                )
+                Text(
+                    stringResource(R.string.test_blocker_domain_count, d.domainCount),
+                    fontSize = 12.sp,
+                    color = textMuted,
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.btn_confirm), fontWeight = FontWeight.Bold)
+            }
+        },
+        containerColor = surface,
+        shape = RoundedCornerShape(20.dp),
+    )
+}
+
+@Composable
+private fun DiagnosticRow(ok: Boolean, label: String) {
+    val (icon, color) = when {
+        ok -> Icons.Default.CheckCircle to success
+        else -> Icons.Default.Warning to warning
+    }
+    Row(
+        Modifier.fillMaxWidth().padding(vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(icon, null, tint = color, modifier = Modifier.size(18.dp))
+        Spacer(Modifier.width(10.dp))
+        Text(label, fontSize = 13.sp, color = text, modifier = Modifier.weight(1f))
     }
 }
 

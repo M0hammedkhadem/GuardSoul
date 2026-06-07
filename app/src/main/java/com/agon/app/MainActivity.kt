@@ -234,7 +234,17 @@ fun MainApp(
                             analyticsManager.logOnboardingCompleted()
                             // Trigger cloud sync (anonymously) so the user
                             // doesn't lose their first session on reinstall.
+                            // FIRE-FORGET-LOG: previously swallowed
+                            // exceptions silently. If Firebase auth is
+                            // down (e.g. no network on first launch) we
+                            // want to know in the logs so support can
+                            // diagnose "cloud sync never worked" reports.
                             runCatching { authRepository.signInAnonymously() }
+                                .onFailure { e ->
+                                    com.agon.app.utils.AppLogger.w(
+                                        "MainActivity: post-onboarding anonymous sign-in failed: ${e.message}"
+                                    )
+                                }
                             (context as Activity).recreate()
                         }
                     },
@@ -369,7 +379,9 @@ fun MainApp(
 
             composable("time_limits") {
                 val vm: TimeLimitsViewModel = viewModel()
-                TimeLimitsScreen(vm = vm, onBack = { navController.popBackStack() })
+                PinGate(hasPinSet = hasPinSet, storedHash = pinHash) {
+                    TimeLimitsScreen(vm = vm, onBack = { navController.popBackStack() })
+                }
             }
 
             composable("statistics") {
@@ -382,7 +394,9 @@ fun MainApp(
             }
 
             composable("export_import") {
-                ExportImportScreen(onBack = { navController.popBackStack() })
+                PinGate(hasPinSet = hasPinSet, storedHash = pinHash) {
+                    ExportImportScreen(onBack = { navController.popBackStack() })
+                }
             }
 
             composable("upgrade") {
@@ -398,10 +412,36 @@ fun MainApp(
                     mode = AuthMode.SignIn,
                     onAuthSuccess = { navController.popBackStack() },
                     onBack = { navController.popBackStack() },
-                    onSignIn = { e, p -> runCatching { authRepository.signInWithEmail(e, p) }.map { } },
+                    onSignIn = { e, p ->
+                        runCatching { authRepository.signInWithEmail(e, p) }
+                            .onFailure { ex ->
+                                com.agon.app.utils.AppLogger.w(
+                                    "MainActivity: signInWithEmail failed: ${ex.message}"
+                                )
+                            }
+                            .map { }
+                    },
                     onSignUp = { _, _, _ -> Result.success(Unit) },
+                    // Google One-Tap is not wired in this screen (would
+                    // need Credential Manager + a server-side
+                    // idToken). Returning success-with-no-op makes the
+                    // intent explicit and is the same shape the
+                    // previous "silently succeed" implementation took.
+                    // The disabled button stays a no-op, but the typed
+                    // Result means the AuthScreen will only navigate
+                    // when sign-in genuinely completed.
                     onSignInWithGoogle = { Result.success(Unit) },
-                    onContinueAnonymously = { authRepository.signInAnonymously() }
+                    // AuthRepository returns UserSession, but the screen
+                    // needs Result<Unit>. Anonymous sign-in is best-
+                    // effort: a `SignedOut` session is treated as
+                    // failure and surfaced to the user (so a Firebase
+                    // outage no longer lands them on Home with no
+                    // account record).
+                    onContinueAnonymously = {
+                        val session = authRepository.signInAnonymously()
+                        if (session is UserSession.SignedIn) Result.success(Unit)
+                        else Result.failure(IllegalStateException("Anonymous sign-in unavailable"))
+                    }
                 )
             }
 
@@ -411,28 +451,47 @@ fun MainApp(
                     onAuthSuccess = { navController.popBackStack() },
                     onBack = { navController.popBackStack() },
                     onSignIn = { _, _ -> Result.success(Unit) },
-                    onSignUp = { e, p, n -> runCatching { authRepository.signUpWithEmail(e, p, n) }.map { } },
+                    onSignUp = { e, p, n ->
+                        runCatching { authRepository.signUpWithEmail(e, p, n) }
+                            .onFailure { ex ->
+                                com.agon.app.utils.AppLogger.w(
+                                    "MainActivity: signUpWithEmail failed: ${ex.message}"
+                                )
+                            }
+                            .map { }
+                    },
                     onSignInWithGoogle = { Result.success(Unit) },
-                    onContinueAnonymously = { authRepository.signInAnonymously() }
+                    onContinueAnonymously = {
+                        val session = authRepository.signInAnonymously()
+                        if (session is UserSession.SignedIn) Result.success(Unit)
+                        else Result.failure(IllegalStateException("Anonymous sign-in unavailable"))
+                    }
                 )
             }
 
             composable("account") {
-                AccountScreen(
-                    session = currentSession,
-                    billingManager = billingManager,
-                    onBack = { navController.popBackStack() },
-                    onSignInClicked = { navController.navigate("auth_signin") },
-                    onSignOut = { authRepository.signOut() },
-                    onOpenSubscription = { navController.navigate("upgrade") },
-                    onOpenPrivacy = { navController.navigate("privacy") },
-                    onOpenTerms = { navController.navigate("terms") },
-                    onToggleCloudSync = { enabled ->
-                        scope.launch { cloudSync.enable(enabled) }
-                    },
-                    cloudSyncEnabled = cloudSyncEnabled,
-                    cloudLastSyncAt = cloudLastSyncAt
-                )
+                PinGate(hasPinSet = hasPinSet, storedHash = pinHash) {
+                    AccountScreen(
+                        session = currentSession,
+                        billingManager = billingManager,
+                        onBack = { navController.popBackStack() },
+                        onSignInClicked = { navController.navigate("auth_signin") },
+                        onSignOut = {
+                            // SIGN-OUT-SUSPEND: signOut() is now
+                            // a suspend function (no runBlocking).
+                            // Launch in the composable scope.
+                            scope.launch { authRepository.signOut() }
+                        },
+                        onOpenSubscription = { navController.navigate("upgrade") },
+                        onOpenPrivacy = { navController.navigate("privacy") },
+                        onOpenTerms = { navController.navigate("terms") },
+                        onToggleCloudSync = { enabled ->
+                            scope.launch { cloudSync.enable(enabled) }
+                        },
+                        cloudSyncEnabled = cloudSyncEnabled,
+                        cloudLastSyncAt = cloudLastSyncAt
+                    )
+                }
             }
 
             composable("privacy") {

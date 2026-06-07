@@ -116,6 +116,7 @@ class PatternMatcher(
         INSTAGRAM_REELS("Instagram Reels"),
         TIKTOK_FYP("TikTok For You"),
         SNAPCHAT_SPOTLIGHT("Snapchat Spotlight"),
+        TWITTER_VIDEO("Twitter / X video"),
         UNKNOWN("Unknown"),
     }
 
@@ -205,6 +206,42 @@ class PatternMatcher(
             ),
             surfaceClassNameTokens = listOf("SpotlightFeed"),
         ),
+        // Twitter / X video surfaces. Twitter/X don't have a dedicated
+        // "Reels" tab — videos play inline in the main timeline or in
+        // the immersive full-screen player reached by tapping a tweet's
+        // video. The view-id set below targets both. The tab list
+        // intentionally stays empty: there is no stable bottom-bar tab
+        // id for "Videos" across all builds/regions.
+        "com.twitter.android" to Signature(
+            surfaceViewIdTokens = listOf(
+                "immersive_video_player_view",
+                "video_player_view",
+                "tweet_video_container",
+                "video_tweet_player",
+                "player_video_view",
+            ),
+            surfaceClassNameTokens = listOf(
+                "ImmersiveVideoPlayerView",
+                "VideoPlayerView",
+                "VideoTweetView",
+            ),
+        ),
+        // X is the re-branded Twitter app. The view-id naming is the
+        // same — only the package changed.
+        "com.x.android" to Signature(
+            surfaceViewIdTokens = listOf(
+                "immersive_video_player_view",
+                "video_player_view",
+                "tweet_video_container",
+                "video_tweet_player",
+                "player_video_view",
+            ),
+            surfaceClassNameTokens = listOf(
+                "ImmersiveVideoPlayerView",
+                "VideoPlayerView",
+                "VideoTweetView",
+            ),
+        ),
     )
 
     /**
@@ -236,9 +273,12 @@ class PatternMatcher(
         packageName.startsWith("com.facebook") -> Surface.FACEBOOK_REELS
         packageName.startsWith("com.google.android.youtube") -> Surface.YOUTUBE_SHORTS
         packageName.startsWith("com.instagram") -> Surface.INSTAGRAM_REELS
-        packageName.startsWith("com.zhiliaoapp") ||
-            packageName.startsWith("com.ss.android") -> Surface.TIKTOK_FYP
+        packageName.startsWith("com.zhiliaoapp") ->
+            Surface.TIKTOK_FYP
+        packageName.startsWith("com.ss.android") -> Surface.TIKTOK_FYP
         packageName.startsWith("com.snapchat") -> Surface.SNAPCHAT_SPOTLIGHT
+        packageName.startsWith("com.twitter") ||
+            packageName.startsWith("com.x.android") -> Surface.TWITTER_VIDEO
         else -> Surface.UNKNOWN
     }
 

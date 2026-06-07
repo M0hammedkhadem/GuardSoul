@@ -24,7 +24,8 @@ class AppRepository(
     val appLimitDao: AppLimitDao,
     private val scheduleRuleDao: ScheduleRuleDao,
     private val tamperAlertDao: TamperAlertDao,
-    private val settings: AppSettings
+    private val settings: AppSettings,
+    private val encryptedPrefs: EncryptedPrefs
 ) {
     fun getAppSettings(): AppSettings = settings
 
@@ -134,10 +135,14 @@ class AppRepository(
     suspend fun resetAllSettings() {
         clearAllEvents()
         clearTamperAlerts()
-        
-        // Issue #241: Explicitly clear EncryptedPrefs as well
-        EncryptedPrefs(application).clear()
-        
+
+        // Issue #241: Clear the Koin-injected EncryptedPrefs instance
+        // (not a freshly-constructed one) so listeners registered via
+        // pinHashFlow actually get notified. The previous
+        // `EncryptedPrefs(application).clear()` call mutated a separate
+        // instance, leaving the singleton's listeners stale.
+        encryptedPrefs.clear()
+
         settings.setShieldActive(false)
         settings.setTrialMode(false)
         settings.setDeactivationDelay(0)
@@ -147,7 +152,7 @@ class AppRepository(
         settings.setLongestStreak(0)
         settings.setXpPoints(0)
         settings.setLevel(1)
-        
+
         // Clear all schedules and limits
         appLimitDao.deleteAll()
         scheduleRuleDao.deleteAll()

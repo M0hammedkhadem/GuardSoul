@@ -40,7 +40,7 @@ object BenchmarkLogger {
     private var lastSummaryAt: Long = 0L
     private const val SUMMARY_INTERVAL_MS: Long = 60_000L
 
-    /** Called from [ShortstopAccessibilityService.onAccessibilityEvent]. */
+    /** Called from [ShortstopEngine.onAccessibilityEvent]. */
     fun onEvent(
         pkg: String,
         eventType: Int,

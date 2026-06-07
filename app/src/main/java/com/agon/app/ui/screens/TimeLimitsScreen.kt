@@ -125,7 +125,7 @@ fun TimeLimitsScreen(
                         Spacer(Modifier.height(8.dp))
                         LazyColumn(Modifier.heightIn(max = 200.dp)) {
                             val filtered = if (searchQuery.isBlank()) installedApps else installedApps.filter { it.second.contains(searchQuery, ignoreCase = true) || it.first.contains(searchQuery, ignoreCase = true) }
-                            items(filtered) { (pkg, label) ->
+                            items(filtered, key = { it.first }) { (pkg, label) ->
                                 Row(Modifier.fillMaxWidth().clickable { selectedPackage = pkg; selectedLabel = label; searchQuery = "" }.padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                                     Text(label, fontSize = 14.sp, color = text, modifier = Modifier.weight(1f))
                                     Text(pkg.substringAfterLast('.'), fontSize = 11.sp, color = textMuted)

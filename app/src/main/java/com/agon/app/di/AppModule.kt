@@ -9,14 +9,13 @@ import com.agon.app.analytics.ReviewPrompt
 import com.agon.app.billing.BillingClientWrapper
 import com.agon.app.billing.BillingManager
 import com.agon.app.blocking.AiBlockTracker
+import com.agon.app.consent.ConsentCache
 import com.agon.app.consent.ConsentManager
 import com.agon.app.data.local.AppDatabase
 import com.agon.app.data.repository.AppRepository
 import com.agon.app.data.settings.AppSettings
 import com.agon.app.data.settings.EncryptedPrefs
 import com.agon.app.utils.SmartDetectionEngine
-import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.runBlocking
 import org.koin.android.ext.koin.androidApplication
 import org.koin.dsl.module
 
@@ -45,7 +44,8 @@ val repositoryModule = module {
             appLimitDao = get(),
             scheduleRuleDao = get(),
             tamperAlertDao = get(),
-            settings = get()
+            settings = get(),
+            encryptedPrefs = get()
         )
     }
 }
@@ -55,23 +55,36 @@ val utilsModule = module {
 }
 
 /**
- * Analytics + crash reporting. The consent provider reads the current
- * DataStore value lazily, so we don't need to wire the consent manager
- * here (it would create a cycle).
+ * Analytics + crash reporting.
+ *
+ * The previous version used `runBlocking { consentFlow.first() }`
+ * inside the lambda to read the current consent flag every time
+ * the guard fired. That's fine in the background, but
+ * `AnalyticsManager` / `CrashReporter` are also consulted from
+ * synchronous Firebase callbacks (e.g. FirebaseAnalytics.logEvent
+ * runs on the calling thread, and many call sites are the UI
+ * thread). The `runBlocking` was occasionally triggering
+ * `IllegalStateException: Cannot invoke blocking operation on
+ * default dispatcher` on the main thread.
+ *
+ * The fix: cache the consent flags in a [ConsentCache] singleton
+ * that is refreshed by a coroutine launched from `GuardianApp`
+ * at app start. The analytics / crash guards become a
+ * non-blocking property read.
  */
+val consentModule = module {
+    single { ConsentCache() }
+}
+
 val analyticsModule = module {
     single {
         AnalyticsManager(androidApplication()) {
-            runCatching {
-                runBlocking { get<AppSettings>().consentAnalyticsFlow.first() }
-            }.getOrDefault(false)
+            get<ConsentCache>().analyticsConsent()
         }
     }
     single {
         CrashReporter(androidApplication()) {
-            runCatching {
-                runBlocking { get<AppSettings>().consentCrashFlow.first() }
-            }.getOrDefault(false)
+            get<ConsentCache>().crashConsent()
         }
     }
     single { ReviewPrompt(androidApplication(), get()) }
@@ -107,6 +120,7 @@ val appModules = listOf(
     settingsModule,
     repositoryModule,
     utilsModule,
+    consentModule,
     analyticsModule,
     billingModule,
     accountModule

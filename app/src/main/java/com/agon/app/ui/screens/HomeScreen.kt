@@ -7,6 +7,11 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
@@ -28,13 +33,17 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import com.agon.app.LanguageManager
 import com.agon.app.R
+import com.agon.app.DnsVpnService
 import com.agon.app.ui.theme.*
 import com.agon.app.utils.DisciplineTier
 import com.agon.app.utils.DisciplineTiers
 import com.agon.app.utils.ShareCardGenerator
+import com.agon.app.blocking.PornBlockerController
 import com.agon.app.viewmodel.HomeViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -59,6 +68,7 @@ fun HomeScreen(
     val partnerRequestInFlight by vm.partnerRequestInFlight.collectAsStateWithLifecycle()
     val pinError by vm.pinError.collectAsStateWithLifecycle()
     val trialMode by vm.trialMode.collectAsStateWithLifecycle()
+    val blockerStatus by vm.blockerStatus.collectAsStateWithLifecycle()
 
     var pinInput by remember { mutableStateOf("") }
     var partnerCodeInput by remember { mutableStateOf("") }
@@ -156,6 +166,14 @@ fun HomeScreen(
 
             item {
                 Spacer(Modifier.height(12.dp))
+                BlockerStatusCard(
+                    status = blockerStatus,
+                    shieldActive = shieldActive,
+                )
+            }
+
+            item {
+                Spacer(Modifier.height(12.dp))
                 ActionTile(
                     title = stringResource(R.string.card_delay_title),
                     subtitle = stringResource(R.string.card_delay_subtitle),
@@ -188,7 +206,16 @@ fun HomeScreen(
                         val totalBlocks = totalBlocks
                         shareScope.launch {
                             val data = vm.buildShareCardData(weeklyBlockCount = totalBlocks)
-                            val bmp = ShareCardGenerator.render(data)
+                            // ShareCardGenerator.render draws text into
+                            // a Bitmap (~ 200-400 ms on mid-range devices
+                            // for the default card). Doing that on the
+                            // main thread would jank the share-tile
+                            // tap. Move it to Default; only the
+                            // startActivity call (which requires the
+                            // main thread) runs on Main.
+                            val bmp = withContext(Dispatchers.Default) {
+                                ShareCardGenerator.render(data)
+                            }
                             val chooser = ShareCardGenerator.share(context, bmp)
                             context.startActivity(chooser)
                         }
@@ -434,15 +461,31 @@ fun ShieldOrb(isActive: Boolean, onClick: () -> Unit) {
         label = "glow"
     )
 
-    val orbColor = if (isActive) Color(0xFF00D4AA) else Color(0xFFFF4757)
+    val orbColor = if (isActive) shieldGreen else shieldRed
     val statusText = if (isActive) "ACTIVE" else "INACTIVE"
 
     Column(
-        modifier = Modifier.fillMaxWidth().clickable(
-            onClick = onClick,
-            indication = null,
-            interactionSource = remember { MutableInteractionSource() }
-        ),
+        modifier = Modifier
+            .fillMaxWidth()
+            // ORB_CLICKABLE: the previous Modifier.clickable had
+            // no semantics — TalkBack announced the inner Text
+            // (a long string) and skipped the role entirely. We
+            // now use a clickable + semantics pair so the orb is
+            // announced as a Button with a short content
+            // description in the user's locale.
+            .clickable(
+                onClick = onClick,
+                indication = null,
+                interactionSource = remember { MutableInteractionSource() }
+            )
+            .semantics(mergeDescendants = true) {
+                role = Role.Button
+                contentDescription = if (isActive) {
+                    "Shield active. Tap to deactivate."
+                } else {
+                    "Shield inactive. Tap to activate."
+                }
+            },
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Box(contentAlignment = Alignment.Center, modifier = Modifier.size(280.dp)) {
@@ -485,7 +528,12 @@ fun ShieldOrb(isActive: Boolean, onClick: () -> Unit) {
             text = if (isActive) "Tap to deactivate shield" else "Tap to activate shield",
             fontSize = 14.sp,
             color = textSecondary.copy(alpha = 0.6f),
-            modifier = Modifier.padding(top = 8.dp)
+            modifier = Modifier
+                .padding(top = 8.dp)
+                // Hide the redundant label from a11y — the
+                // contentDescription on the Column already
+                // conveys the action.
+                .clearAndSetSemantics { }
         )
     }
 }
@@ -810,6 +858,138 @@ private fun TierCard(
                 stringResource(R.string.tier_progress_to_next, remaining)
             }
             Text(text = progressLabel, color = textMuted, fontSize = 11.sp)
+        }
+    }
+}
+
+/**
+ * Compact "what is currently protecting me?" badge shown on the
+ * home screen. Maps the live [PornBlockerController.Status] onto a
+ * coloured chip so the user can see at a glance *which* filter
+ * engine is active — without opening the Content screen.
+ *
+ * Renders in one of three states:
+ *  - GREEN   — Private DNS or VPN is established (DNS-level filter
+ *              is up, the strongest guarantee).
+ *  - YELLOW  — Porn-blocker toggle is on but neither DO/VPN path
+ *              is established yet; only the keyword filter is
+ *              running. Surfaces the warning copy so the user
+ *              knows to grant Device Owner or VPN consent.
+ *  - GREY    — Porn-blocker toggle is off; the rest of the card
+ *              is dimmed.
+ */
+@Composable
+fun BlockerStatusCard(
+    status: PornBlockerController.Status,
+    shieldActive: Boolean,
+) {
+    val (chipColor, chipLabel) = when (status.engine) {
+        PornBlockerController.Status.Engine.PRIVATE_DNS ->
+            Color(0xFF00D4AA) to stringResource(R.string.blocker_status_engine_dns)
+        PornBlockerController.Status.Engine.VPN -> {
+            // BATCH-Q: when the VPN is up, prefer showing the
+            // *family provider name* (e.g. "OpenDNS FamilyShield")
+            // over a generic "Local VPN". Falls back to the old
+            // string if the provider enum is somehow missing.
+            val provider = status.familyProvider
+            val label = when (provider) {
+                DnsVpnService.FamilyDnsProvider.OPENDNS ->
+                    stringResource(R.string.family_dns_opendns)
+                DnsVpnService.FamilyDnsProvider.CLOUDFLARE ->
+                    stringResource(R.string.family_dns_cloudflare)
+                DnsVpnService.FamilyDnsProvider.CLEANBROWSING_FAMILY ->
+                    stringResource(R.string.family_dns_cleanbrowsing_family)
+                DnsVpnService.FamilyDnsProvider.CLEANBROWSING_ADULT ->
+                    stringResource(R.string.family_dns_cleanbrowsing_adult)
+                DnsVpnService.FamilyDnsProvider.NONE,
+                null -> stringResource(R.string.blocker_status_engine_vpn)
+            }
+            Color(0xFF00D4AA) to label
+        }
+        PornBlockerController.Status.Engine.KEYWORD_ONLY ->
+            Color(0xFFFFB020) to stringResource(R.string.blocker_status_engine_keyword)
+        PornBlockerController.Status.Engine.OFF ->
+            Color(0xFF6B7280) to stringResource(R.string.blocker_status_engine_off)
+    }
+    val cardAlpha = if (status.engine == PornBlockerController.Status.Engine.OFF) 0.55f else 1f
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 20.dp),
+        shape = RoundedCornerShape(20.dp),
+        colors = androidx.compose.material3.CardDefaults.cardColors(
+            containerColor = surface.copy(alpha = cardAlpha)
+        ),
+        border = BorderStroke(1.dp, cardBorder),
+    ) {
+        Column(Modifier.padding(20.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    Modifier
+                        .size(40.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(chipColor.copy(alpha = 0.15f)),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        Icons.Default.HealthAndSafety,
+                        null,
+                        tint = chipColor,
+                        modifier = Modifier.size(20.dp),
+                    )
+                }
+                Spacer(Modifier.width(14.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        stringResource(R.string.blocker_status_title),
+                        color = text.copy(alpha = cardAlpha),
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Bold,
+                    )
+                    Text(
+                        chipLabel,
+                        color = chipColor,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                    )
+                }
+            }
+            Spacer(Modifier.height(10.dp))
+            // Secondary line: Device Owner status (cheap to compute and
+            // the most common reason a user lands on KEYWORD_ONLY).
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    if (status.isDeviceOwner) Icons.Default.VerifiedUser else Icons.Default.Info,
+                    null,
+                    tint = if (status.isDeviceOwner) Color(0xFF00D4AA) else textMuted,
+                    modifier = Modifier.size(14.dp),
+                )
+                Spacer(Modifier.width(6.dp))
+                Text(
+                    if (status.isDeviceOwner)
+                        stringResource(R.string.blocker_status_device_owner_yes)
+                    else
+                        stringResource(R.string.blocker_status_device_owner_no),
+                    color = textSecondary,
+                    fontSize = 11.sp,
+                )
+            }
+            if (status.engine == PornBlockerController.Status.Engine.KEYWORD_ONLY &&
+                shieldActive) {
+                Spacer(Modifier.height(10.dp))
+                Surface(
+                    color = warning.copy(alpha = 0.10f),
+                    shape = RoundedCornerShape(8.dp),
+                    border = BorderStroke(1.dp, warning.copy(alpha = 0.30f)),
+                ) {
+                    Text(
+                        stringResource(R.string.blocker_status_keyword_warning),
+                        color = warning,
+                        fontSize = 11.sp,
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+                    )
+                }
+            }
         }
     }
 }

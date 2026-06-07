@@ -4,9 +4,9 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.agon.app.AppBlockerService
-import com.agon.app.AiScannerService
 import com.agon.app.PornBlockerService
 import com.agon.app.GuardianApp
+import com.agon.app.blocking.PornBlockerController
 import com.agon.app.data.local.dao.MostBlockedApp
 import com.agon.app.data.settings.AppSettings
 import com.agon.app.guardianApp
@@ -22,6 +22,7 @@ import com.agon.app.utils.WithdrawalTimeline
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
 class HomeViewModel(application: Application) : AndroidViewModel(application) {
@@ -112,6 +113,27 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
         .distinctUntilChanged()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
 
+    /**
+     * Live snapshot of which engine is currently providing the
+     * adult-domain filter. Polled every 2 s so the home-screen
+     * status badge reflects VPN / DNS state changes from background
+     * services without us having to wire push updates through the
+     * services.
+     */
+    val blockerStatus: StateFlow<PornBlockerController.Status> = flow {
+        while (true) {
+            emit(PornBlockerController.snapshot(getApplication()))
+            delay(2_000L)
+        }
+    }.stateIn(
+        viewModelScope,
+        SharingStarted.WhileSubscribed(5_000),
+        PornBlockerController.Status(
+            engine = PornBlockerController.Status.Engine.KEYWORD_ONLY,
+            isDeviceOwner = false,
+        ),
+    )
+
     val aiScannerActive: StateFlow<Boolean> = settings.aiScannerFlow
         .distinctUntilChanged()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
@@ -146,6 +168,14 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
     val showPinDialog: StateFlow<Boolean> = _showPinDialog.asStateFlow()
 
     private val _pinError = MutableStateFlow(false)
+
+    /**
+     * PIN-RATE-LIMIT: lockout message shown in the dialog. The
+     * UI observes this and disables the "Submit" button while
+     * the value is non-null.
+     */
+    private val _pinLockoutMessage = MutableStateFlow<String?>(null)
+    val pinLockoutMessage: StateFlow<String?> = _pinLockoutMessage.asStateFlow()
     val pinError: StateFlow<Boolean> = _pinError.asStateFlow()
 
     /**
@@ -166,30 +196,55 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
     /** Number of consecutive failed PIN attempts in the current dialog session. */
     private var pinFailCount = 0
 
+    /**
+     * PIN-RATE-LIMIT: persistent rate limiter for the PIN dialog.
+     * Survives configuration change AND process death, so an
+     * attacker can't reset the counter by force-killing the app
+     * between wrong-PIN attempts.
+     */
+    private val pinRateLimiter = com.agon.app.utils.PinRateLimiter(
+        getApplication<GuardianApp>().repository.getAppSettings().encryptedPrefs
+    )
+
+    /**
+     * Exposes the remaining lockout duration to the UI. Used by
+     * the PIN dialog to show a countdown ("Locked for 00:30") and
+     * to disable the "Submit" button.
+     */
+    val pinLockoutRemainingMs: StateFlow<Long> = kotlinx.coroutines.flow.MutableStateFlow(0L).also { state ->
+        viewModelScope.launch {
+            while (isActive) {
+                state.value = pinRateLimiter.remainingMs()
+                kotlinx.coroutines.delay(1_000L)
+            }
+        }
+    }.asStateFlow()
+
     private var countdownJob: Job? = null
 
     init {
-        // Single combine so shield × porn-blocker × ai-scanner transitions are
-        // atomic — no double-start/stop, no race when the user flips toggles
-        // while the shield is off.
+        // Single combine so shield × porn-blocker transitions are
+        // atomic — no double-start/stop, no race when the user
+        // flips toggles while the shield is off.
+        // AI Explorer is handled inside
+        // [com.agon.app.blocking.AiExplorerEngine], driven by the
+        // accessibility service, so it doesn't need a start/stop
+        // pair here.
         viewModelScope.launch {
             combine(
                 shieldActive,
                 pornBlockerActive,
-                aiScannerActive
-            ) { shield, porn, ai -> Triple(shield, porn, ai) }
+            ) { shield, porn -> shield to porn }
                 .distinctUntilChanged()
-                .collect { (active, porn, ai) ->
+                .collect { (active, porn) ->
                     val context = getApplication<GuardianApp>()
                     if (active) {
                         AppBlockerService.start(context)
                         if (porn) PornBlockerService.start(context)
                         else PornBlockerService.stop(context)
-                        if (ai) AiScannerService.start(context)
                     } else {
                         AppBlockerService.stop(context)
                         PornBlockerService.stop(context)
-                        AiScannerService.stop(context)
                     }
                 }
         }
@@ -221,14 +276,17 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
     fun startDeactivation() {
         if (trialMode.value || deactivationDelay.value <= 0) {
             // When the user has no delay, still go through the
-            // partner/strict gates if they're enabled. Strict-mode
-            // PIN and Accountability Partner both block immediate
-            // deactivation even when `deactivationDelay == 0`.
+            // partner/PIN gates if they're enabled. PIN is required
+            // whenever one is set — strict mode is a separate *enforcement
+            // intensity* setting and is not the gate for "can the user
+            // turn the shield off". Without this, a user who set a PIN
+            // but left strict mode off could turn protection off in a
+            // single tap.
             if (accountabilityEnabled.value && accountabilityEmail.value.isNotBlank()) {
                 requestPartnerApproval()
                 return
             }
-            if (strictMode.value && hasPin.value) {
+            if (hasPin.value) {
                 _showPinDialog.value = true
                 return
             }
@@ -258,10 +316,12 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
             _countdownEndAt.value = 0L
             _countdownActive.value = false
             // After the delay: run Accountability Partner gate first,
-            // then strict-mode PIN, then full deactivation.
+            // then PIN (if set), then full deactivation. Same rationale
+            // as the immediate path: PIN alone is the gate, not
+            // strict-mode-AND-PIN.
             if (accountabilityEnabled.value && accountabilityEmail.value.isNotBlank()) {
                 requestPartnerApproval()
-            } else if (strictMode.value && hasPin.value) {
+            } else if (hasPin.value) {
                 _showPinDialog.value = true
             } else {
                 completeDeactivation()
@@ -342,22 +402,37 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
 
     fun verifyPin(input: String) {
         viewModelScope.launch {
+            // PIN-RATE-LIMIT: refuse the attempt while a lockout
+            // is active. The previous implementation would happily
+            // call SecurityUtils.verifyPinAgainstHash during a
+            // lockout, defeating any backoff.
+            if (pinRateLimiter.isLockedOut()) {
+                _pinError.value = true
+                _pinLockoutMessage.value =
+                    "تم القفل. حاول بعد ${pinRateLimiter.remainingMs() / 1000} ثانية"
+                return@launch
+            }
             val storedHash = settings.getPinHash()
             if (SecurityUtils.verifyPinAgainstHash(input, storedHash)) {
                 pinFailCount = 0
+                pinRateLimiter.reset()
+                _pinLockoutMessage.value = null
                 _showPinDialog.value = false
                 completeDeactivation()
             } else {
                 pinFailCount += 1
+                pinRateLimiter.recordFailure()
                 _pinError.value = true
                 // FEATURES_SPEC §9: log a tamper alert after 3 failed attempts.
-                if (pinFailCount >= 3) {
+                if (pinRateLimiter.currentFailCount() >= 3) {
                     try {
                         repo.recordTamperAlert(
                             type = "pin_failed",
-                            detail = "3+ consecutive PIN failures on shield deactivation"
+                            detail = "${pinRateLimiter.currentFailCount()}+ consecutive PIN failures on shield deactivation"
                         )
-                    } catch (_: Exception) {}
+                    } catch (e: Exception) {
+                        timber.log.Timber.w(e, "HomeViewModel: recordTamperAlert failed")
+                    }
                 }
             }
         }
@@ -370,9 +445,14 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun dismissPinDialog() {
+        // PIN-RATE-LIMIT: do NOT zero the persistent failure
+        // counter on dismiss. Previously, closing the dialog
+        // wiped the counter so the user could just keep
+        // brute-forcing. The counter only resets on a successful
+        // verify (see [verifyPin]) or via the in-PIN-settings
+        // reset flow.
         _showPinDialog.value = false
         _pinError.value = false
-        pinFailCount = 0
     }
 
     /**
@@ -560,10 +640,26 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
     fun stopStudyRoom() {
         viewModelScope.launch {
             val current = settings.studyRoomActiveUntilFlow.first()
+            val durationMinutes = settings.studyRoomDurationMinutesFlow.first()
             val remaining = StudyRoom.remainingMs(current)
             // Roll the *used* minutes into the persistent total.
+            // STUDY-ROOM-WRONG-CONSTANT: previously used
+            // `StudyRoom.DEFAULT_DURATION_MINUTES` for the
+            // denominator. A user who started a 90-min focus
+            // block and stopped it after 30 min would get:
+            //   usedMs = 60 * 60_000L - 30 * 60_000L = 30 min ✓
+            // (because remaining was computed from `activeUntil`),
+            // but the prior `usedMin` calc was
+            // `(60 * 60_000L - remaining) / 60_000L` — for a
+            // 30-min-used 90-min room:
+            //   (60 * 60_000L - (90 - 30) * 60_000L) / 60_000L
+            //   = (60 - 60) / 1 = 0 minutes focused
+            // The user got 0 credit for 30 minutes of focus.
+            // We now read the persisted duration and use it
+            // for the denominator.
             if (remaining > 0L) {
-                val usedMs = StudyRoom.DEFAULT_DURATION_MINUTES * 60_000L - remaining
+                val totalMs = durationMinutes.toLong() * 60_000L
+                val usedMs = (totalMs - remaining).coerceAtLeast(0L)
                 val usedMin = (usedMs / 60_000L).toInt()
                 val total = settings.studyRoomTotalMinutesFocusedFlow.first()
                 settings.setStudyRoomTotalMinutesFocused(total + usedMin)

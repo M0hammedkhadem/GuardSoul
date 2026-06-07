@@ -478,7 +478,7 @@ private fun AppPickerDialog(onDismiss: () -> Unit, onSelect: (String, String) ->
                 Spacer(Modifier.height(12.dp))
                 val filtered = if (search.isBlank()) installedApps else installedApps.filter { it.second.contains(search, true) || it.first.contains(search, true) }
                 LazyColumn(Modifier.heightIn(max = 300.dp)) {
-                    items(filtered) { (pkg, label) ->
+                    items(filtered, key = { it.first }) { (pkg, label) ->
                         Row(
                             Modifier.fillMaxWidth().clickable { onSelect(pkg, label) }.padding(vertical = 8.dp),
                             verticalAlignment = Alignment.CenterVertically

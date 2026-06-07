@@ -97,9 +97,19 @@ class FastDetector {
     /**
      * Fast detection — returns immediately if a cached verdict exists
      * for the same `(pkg, windowId)`, otherwise inspects
-     * [AccessibilityEvent.getSource] in isolation and falls back to
-     * a targeted view-id lookup.
+     * [AccessibilityEvent.getSource] in isolation and falls back to a
+     * targeted view-id lookup.
      *
+     * @param preFetchedRoot Optional pre-fetched root-in-active-window
+     *        from the host service. When supplied, the view-id lookup
+     *        searches the **root** (not the event source) — this is
+     *        critical for the partial-blocking case: when the user
+     *        taps a Reels tab, the event source is the tab button
+     *        itself, and the short-video surface is a sibling in the
+     *        tree. A view-id lookup on the source can never see it.
+     *        The host already fetches the root once per event for
+     *        slow-path engines; we reuse it here so the fast path
+     *        costs zero additional IPC.
      * @return A [Result] carrying the verdict, the matched node (if
      *         any), the time spent in milliseconds, a short
      *         diagnostic string, and whether the hit was a *tab*
@@ -109,11 +119,11 @@ class FastDetector {
         event: AccessibilityEvent,
         signature: PatternMatcher.Signature?,
         surface: PatternMatcher.Surface,
+        preFetchedRoot: AccessibilityNodeInfo? = null,
     ): Result {
         val started = System.currentTimeMillis()
         val pkg = event.packageName?.toString() ?: return Result(
             verdict = Verdict.UNKNOWN,
-            node = null,
             elapsedMs = 0L,
             triggeredBy = "no-pkg",
             isTabHit = false,
@@ -137,7 +147,6 @@ class FastDetector {
         if (cached != null && cached.expiresAtMs > now) {
             return Result(
                 verdict = cached.verdict,
-                node = null,
                 elapsedMs = System.currentTimeMillis() - started,
                 triggeredBy = "cache:${cached.verdict.name}",
                 isTabHit = cached.isTabHit,
@@ -160,45 +169,71 @@ class FastDetector {
             if (hit != null) {
                 val verdict = if (hit.shouldBlock) Verdict.ON_SHORT_FORM else Verdict.ALLOWED
                 cacheIfNotable(key, verdict, now, hit.isTabHit)
+                // Don't recycle `source` — the system owns it (it
+                // was attached to the AccessibilityEvent and will
+                // be released when the event is consumed). The
+                // matched-node recycle happened in matchNode.
                 return Result(
                     verdict = verdict,
-                    node = source,
                     elapsedMs = System.currentTimeMillis() - started,
                     triggeredBy = "source:${hit.triggeredBy}",
                     isTabHit = hit.isTabHit,
                 )
             }
-            // Don't recycle event.source — the system owns it.
         }
 
         // 3) Targeted view-id lookup — ask the system to walk the tree
         //    for the most-likely tokens. This is faster than our own
         //    recursive walk because it runs in the target-app process.
+        //
+        //    **BATCH-P (partial-blocking fix):** when the host
+        //    supplied a `preFetchedRoot`, we search the *root* —
+        //    not the event source. The source is the node that
+        //    *fired* the event (often a tab button or a thumbnail),
+        //    and the short-video surface it represents is a
+        //    sibling elsewhere in the tree, NOT a descendant.
+        //    Searching the source's subtree missed every
+        //    "tap-Reels-tab-then-watch" case.
         if (signature != null) {
-            val topTokens = signature.surfaceViewIdTokens.take(3)
-            for (token in topTokens) {
-                val matches = source?.findAccessibilityNodeInfosByViewId(
-                    "${pkg}:id/$token"
-                ) ?: continue
-                if (matches.isNotEmpty()) {
-                    val hitNode = matches[0]
-                    // FB-004: every AccessibilityNodeInfo obtained
-                    // from a system query must be recycled. We
-                    // recycle the matched node and any siblings
-                    // returned by the same query, otherwise we
-                    // leak a node per match.
-                    for (n in matches) {
-                        if (n !== hitNode) n.recycle()
-                    }
-                    val verdict = Verdict.ON_SHORT_FORM
-                    cacheIfNotable(key, verdict, now, isTabHit = false)
-                    return Result(
-                        verdict = verdict,
-                        node = hitNode,
-                        elapsedMs = System.currentTimeMillis() - started,
-                        triggeredBy = "viewId:$token",
-                        isTabHit = false,
+            val topTokens = signature.surfaceViewIdTokens.take(5)
+            val (lookupNode, lookupTag) = if (preFetchedRoot != null) {
+                preFetchedRoot to "rootViewId"
+            } else {
+                source to "viewId"
+            }
+            if (lookupNode != null) {
+                for (token in topTokens) {
+                    val matches = lookupNode.findAccessibilityNodeInfosByViewId(
+                        "${pkg}:id/$token"
                     )
+                    if (matches.isNotEmpty()) {
+                        // FB-004: every AccessibilityNodeInfo obtained
+                        // from a system query must be recycled. We
+                        // recycle the matched node and any siblings
+                        // returned by the same query, otherwise we
+                        // leak a node per match. (FD-001: the matched
+                        // node used to be exposed via `Result.node` —
+                        // a single leaked node per short-form detection.
+                        // The field is no longer needed by any caller,
+                        // so we recycle all nodes here.)
+                        for (n in matches) n.recycle()
+                        val verdict = Verdict.ON_SHORT_FORM
+                        cacheIfNotable(key, verdict, now, isTabHit = false)
+                        return Result(
+                            verdict = verdict,
+                            elapsedMs = System.currentTimeMillis() - started,
+                            triggeredBy = "$lookupTag:$token",
+                            isTabHit = false,
+                        )
+                    } else {
+                        // No matches for this token: we still own the
+                        // returned list (it's always a fresh allocation
+                        // from the framework), and the list itself
+                        // doesn't hold AccessibilityNodeInfo refs after
+                        // a miss, but the framework still expects the
+                        // call to be balanced. Recycle defensively.
+                        for (n in matches) n.recycle()
+                    }
                 }
             }
         }
@@ -207,7 +242,6 @@ class FastDetector {
         cacheIfNotable(key, Verdict.ALLOWED, now, isTabHit = false)
         return Result(
             verdict = Verdict.ALLOWED,
-            node = null,
             elapsedMs = System.currentTimeMillis() - started,
             triggeredBy = "ok",
             isTabHit = false,
@@ -350,7 +384,6 @@ class FastDetector {
 
     data class Result(
         val verdict: Verdict,
-        val node: AccessibilityNodeInfo?,
         val elapsedMs: Long,
         val triggeredBy: String,
         /**

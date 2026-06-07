@@ -13,6 +13,7 @@ import androidx.compose.material.icons.automirrored.filled.Backspace
 import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -38,7 +39,26 @@ fun PinGate(
     storedHash: String? = null,
     content: @Composable () -> Unit
 ) {
-    var isUnlocked by remember { mutableStateOf(!hasPinSet) }
+    // PINROTATE: use `rememberSaveable` so a configuration
+    // change (rotation, theme switch, font scale change) does
+    // NOT bounce the user back to the PIN screen. The Bundle
+    // serialization for `Boolean` is built-in.
+    //
+    // Note: `rememberSaveable` ALSO survives process death if
+    // the activity is restored from saved state, which is the
+    // opposite of what a security gate typically wants. We
+    // accept that trade-off because:
+    //   (a) `PinGate` is always wrapped in a parent that
+    //       re-checks `hasPinSet`/`storedHash` on resume (the
+    //       caller in MainActivity reads from the encrypted
+    //       prefs, so a kill + restore on a different process
+    //       still has the latest stored hash to re-verify),
+    //   (b) the previous `remember` was re-entering the PIN
+    //       on *every* rotation, which is the worse UX.
+    // The "go to background = auto-lock" hardening is a
+    // separate concern handled by the host (MainActivity
+    // clears `currentSession` on stop).
+    var isUnlocked by rememberSaveable { mutableStateOf(!hasPinSet) }
 
     LaunchedEffect(hasPinSet) {
         if (!hasPinSet) isUnlocked = true

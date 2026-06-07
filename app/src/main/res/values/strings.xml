@@ -4,6 +4,39 @@
     <string name="accessibility_desc">GuardSoul Accessibility Service for content filtering</string>
     <string name="guardian_accessibility_desc">GuardSoul Guardian Service for app monitoring</string>
     <string name="shortstop_accessibility_desc">GuardSoul Shortstop Service for surgical blocking of Reels, Shorts, TikTok For-You, and Snapchat Spotlight. Detects addictive content inside social apps and masks only the short-form player surface — keeping messages, search, and the rest of the app available.</string>
+    <string name="accessibility_service_desc">GuardSoul content-filtering and uninstall-protection accessibility service. Scans the active window for blocked keywords and domains, watches system Settings to block uninstall attempts, and surgically detects short-form video surfaces (Reels, Shorts, TikTok For-You, Snapchat Spotlight, Twitter / X video) so only the addictive player is masked — messages, search, and the rest of each app stay available.</string>
+
+    <!-- Blocker status badge (home screen) -->
+    <string name="blocker_status_title">Adult-site filter</string>
+    <string name="blocker_status_engine_off">Off</string>
+    <string name="blocker_status_engine_dns">Private DNS · OS-level</string>
+    <string name="blocker_status_engine_vpn">Local VPN · Family DNS</string>
+    <string name="blocker_status_engine_keyword">Keyword filter only</string>
+    <string name="blocker_status_keyword_warning">DNS-level filtering is not active. Adult domains may still resolve.</string>
+    <string name="blocker_status_device_owner_no">Device Owner not granted</string>
+    <string name="blocker_status_device_owner_yes">Device Owner</string>
+
+    <!-- BATCH-Q: Family DNS provider display names (home badge) -->
+    <string name="family_dns_opendns">OpenDNS FamilyShield</string>
+    <string name="family_dns_cloudflare">Cloudflare for Families</string>
+    <string name="family_dns_cleanbrowsing_family">CleanBrowsing Family</string>
+    <string name="family_dns_cleanbrowsing_adult">CleanBrowsing Adult</string>
+
+    <!-- Test porn blocker dialog -->
+    <string name="test_blocker_title">Filter diagnostics</string>
+    <string name="test_blocker_run">Run diagnostics</string>
+    <string name="test_blocker_shield_ok">Shield is on</string>
+    <string name="test_blocker_shield_off">Shield is off — no filtering while inactive</string>
+    <string name="test_blocker_toggle_off">Porn blocker toggle is off</string>
+    <string name="test_blocker_toggle_state">Porn blocker toggle: %1$s</string>
+    <string name="test_blocker_dns_ok">Private DNS: CleanBrowsing Family</string>
+    <string name="test_blocker_dns_pending">Private DNS: not yet configured</string>
+    <string name="test_blocker_vpn_ok">Local VPN: established</string>
+    <string name="test_blocker_vpn_pending">Local VPN: not established (grant VPN consent in System Settings)</string>
+    <string name="test_blocker_a11y_ok">Accessibility service: bound</string>
+    <string name="test_blocker_a11y_missing">Accessibility service: not bound — keyword filter disabled</string>
+    <string name="test_blocker_keyword_count">Keyword entries: %1$d</string>
+    <string name="test_blocker_domain_count">Domain entries: %1$d</string>
     <string name="shortstop_mask_title">%1$s paused</string>
     <string name="shortstop_mask_subtitle">We hid the addictive feed. Tap to dismiss, or take a break.</string>
     <string name="shortstop_mask_close">Close</string>
@@ -138,6 +171,8 @@
     <string name="statistics_total">Total</string>
     <string name="statistics_blocks">Blocks</string>
     <string name="statistics_empty">No block logs yet.</string>
+    <string name="statistics_longest">Longest</string>
+    <string name="statistics_today_apps">Today apps</string>
 
     <!-- Social Screen -->
     <string name="screen_social_title">Smart Social Media</string>

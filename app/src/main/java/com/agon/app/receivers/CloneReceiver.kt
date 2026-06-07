@@ -10,6 +10,7 @@ import com.agon.app.AppNotificationChannels
 import com.agon.app.guardianApp
 import com.agon.app.GuardianApp
 import com.agon.app.R
+import com.agon.app.utils.ScheduleEnforcer
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -25,6 +26,23 @@ class CloneReceiver : BroadcastReceiver() {
             Intent.ACTION_PACKAGE_ADDED,
             Intent.ACTION_PACKAGE_REPLACED -> {
                 val packageName = intent.data?.encodedSchemeSpecificPart ?: return
+
+                // Self-update path: when GuardSoul itself is updated
+                // (PACKAGE_REPLACED with our own package name), the
+                // system has cleared all AlarmManager alarms owned by
+                // the previous APK. Re-arm the schedule transitions so
+                // the user's rules don't silently stop firing. We use
+                // the existing PACKAGE_REPLACED listener (no new
+                // intent-filter needed) so a single receiver covers
+                // both "another package was installed/replaced" and
+                // "we were replaced".
+                if (packageName == context.packageName &&
+                    intent.action == Intent.ACTION_PACKAGE_REPLACED
+                ) {
+                    rescheduleAlarmsAfterSelfUpdate(context)
+                    return
+                }
+
                 if (isPotentialClone(context, packageName)) {
                     notifyCloneDetected(context, packageName)
                 }
@@ -38,6 +56,28 @@ class CloneReceiver : BroadcastReceiver() {
                         pendingResult.finish()
                     }
                 }
+            }
+        }
+    }
+
+    /**
+     * Re-arm every scheduled transition after the app is updated.
+     *
+     * `rescheduleAll` is idempotent: it cancels request codes
+     * 1000-1099 then re-arms the next 10 upcoming transitions. Safe
+     * to call when no rules are configured (returns early).
+     */
+    private fun rescheduleAlarmsAfterSelfUpdate(context: Context) {
+        val pendingResult = goAsync()
+        scope.launch {
+            try {
+                val app = context.guardianApp() ?: return@launch
+                ScheduleEnforcer.rescheduleAll(context, app.repository)
+                Timber.d("CloneReceiver: re-armed schedule alarms after self-update")
+            } catch (e: Exception) {
+                Timber.w(e, "CloneReceiver: failed to reschedule alarms after self-update")
+            } finally {
+                pendingResult.finish()
             }
         }
     }

@@ -306,7 +306,7 @@ private fun BadgesCard(badges: List<BadgeWithState>) {
                 verticalArrangement = Arrangement.spacedBy(8.dp),
                 userScrollEnabled = false
             ) {
-                items(badges) { badgeWithState ->
+                items(badges, key = { it.badge.id }) { badgeWithState ->
                     BadgeItem(badgeWithState)
                 }
             }
@@ -379,7 +379,7 @@ private fun XpHistoryCard(heatmapData: Map<Long, Int>) {
                 horizontalArrangement = Arrangement.spacedBy(4.dp),
                 modifier = Modifier.fillMaxWidth()
             ) {
-                items(recentDays) { entry ->
+                items(recentDays, key = { it.label }) { entry ->
                     val maxXp = recentDays.maxOfOrNull { it.xp } ?: 1
                     val barHeight = if (maxXp > 0) (entry.xp.toFloat() / maxXp * 60).coerceAtLeast(4f) else 4f
                     Column(

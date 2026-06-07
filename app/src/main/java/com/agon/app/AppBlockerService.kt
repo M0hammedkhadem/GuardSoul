@@ -25,6 +25,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -162,6 +163,23 @@ class AppBlockerService : Service(), KoinComponent {
     // new app without the previous one suppressing the next.
     private val lastBlockTimes = ConcurrentHashMap<String, Long>()
 
+    /**
+     * ABS-002: cache the per-day usage stats so we don't re-query
+     * UsageStatsManager on every polling tick. The map is rebuilt
+     * whenever the day boundary flips (see the daily refresh loop)
+     * so a stale value never outlives the day it belongs to.
+     */
+    @Volatile private var usageStatsCache: Map<String, Long> = emptyMap()
+    @Volatile private var usageStatsCacheDay: Long = 0L
+
+    /**
+     * ABS-003: cache the per-package application label. Without
+     * this we re-call `packageManager.getApplicationInfo` (a binder
+     * IPC) on every block event. The cache is cleared when the
+     * blocklist is refreshed (the user added/removed apps).
+     */
+    private val appLabelCache = ConcurrentHashMap<String, String>()
+
     @Volatile private var lastCheckTime = 0L
     @Volatile private var currentDayStart = 0L
 
@@ -205,6 +223,10 @@ class AppBlockerService : Service(), KoinComponent {
         // Rebuild the AI temp-block cache from DataStore on every service start
         // so 15-minute blocks survive a process death / reboot.
         serviceScope.launch { aiBlockTracker.refreshFromStorage() }
+        // ABS-004: start the expiration pruner so a temp block
+        // recorded at 09:00 stops counting as "blocked" at 09:15
+        // even if the service stays alive for hours.
+        aiBlockTracker.startExpirationPruner(serviceScope)
         serviceScope.launch {
             reloadSignal.collect {
                 lastBlockTimes.clear()
@@ -224,36 +246,53 @@ class AppBlockerService : Service(), KoinComponent {
         }
     }
 
-    private suspend fun startSettingsCollectors() {
+    private fun startSettingsCollectors() {
         val settings = repo.getAppSettings()
-        // Eagerly cache the initial values so shouldBlock() has them on the
+        // Seed all caches with the latest persisted values on the
         // first poll (avoids a 250ms "no settings yet" window after start).
-        cachedShieldActive = settings.isShieldActive()
-        cachedStrictMode = settings.isStrictMode()
-        cachedInstagramMode = settings.getInstagramMode()
-        cachedYoutubeMode = settings.getYoutubeMode()
-        cachedFacebookMode = settings.getFacebookMode()
-        cachedSnapchatBlocked = settings.isSnapchatBlocked()
-        cachedTwitterBlocked = settings.isTwitterBlocked()
-        cachedTiktokBlocked = settings.isTiktokBlocked()
-        refreshTimeOfDayCaches()
-
-        // Now wire up the live collectors.
-        settings.shieldActiveFlow.collect { cachedShieldActive = it }
-        settings.strictModeFlow.collect { cachedStrictMode = it }
-        settings.instagramModeFlow.collect { cachedInstagramMode = it }
-        settings.youtubeModeFlow.collect { cachedYoutubeMode = it }
-        settings.facebookModeFlow.collect { cachedFacebookMode = it }
-        settings.socialSnapchatFlow.collect { cachedSnapchatBlocked = it }
-        settings.socialTwitterFlow.collect { cachedTwitterBlocked = it }
-        settings.socialTiktokFlow.collect { cachedTiktokBlocked = it }
-        // App limits — replace the per-package DB read with a single flow.
-        repo.getAllAppLimits().collect { limits ->
-            cachedAppLimits = limits.associateBy { it.packageName }
+        serviceScope.launch {
+            cachedShieldActive = settings.isShieldActive()
+            cachedStrictMode = settings.isStrictMode()
+            cachedInstagramMode = settings.getInstagramMode()
+            cachedYoutubeMode = settings.getYoutubeMode()
+            cachedFacebookMode = settings.getFacebookMode()
+            cachedSnapchatBlocked = settings.isSnapchatBlocked()
+            cachedTwitterBlocked = settings.isTwitterBlocked()
+            cachedTiktokBlocked = settings.isTiktokBlocked()
+            refreshTimeOfDayCaches()
         }
-        // Schedule rules — recompute the "is any rule active right now" flag.
-        repo.getAllScheduleRules().collect {
-            cachedScheduleActive = computeScheduleActive(it)
+
+        // ABS-001: each flow must be collected inside its own
+        // `launch { … }` inside a `coroutineScope { … }` so they all
+        // run concurrently. The previous implementation chained 11
+        // sequential `.collect { … }` calls, which means the first
+        // `.collect` is a hot terminal that NEVER returns; collectors
+        // 2-11 never started, so all those settings froze at the
+        // initial value. This silently broke full-mode social
+        // blocking, time-limit enforcement, and schedule activation.
+        serviceScope.launch {
+            coroutineScope {
+                launch { settings.shieldActiveFlow.collect { cachedShieldActive = it } }
+                launch { settings.strictModeFlow.collect { cachedStrictMode = it } }
+                launch { settings.instagramModeFlow.collect { cachedInstagramMode = it } }
+                launch { settings.youtubeModeFlow.collect { cachedYoutubeMode = it } }
+                launch { settings.facebookModeFlow.collect { cachedFacebookMode = it } }
+                launch { settings.socialSnapchatFlow.collect { cachedSnapchatBlocked = it } }
+                launch { settings.socialTwitterFlow.collect { cachedTwitterBlocked = it } }
+                launch { settings.socialTiktokFlow.collect { cachedTiktokBlocked = it } }
+                // App limits — replace the per-package DB read with a single flow.
+                launch {
+                    repo.getAllAppLimits().collect { limits ->
+                        cachedAppLimits = limits.associateBy { it.packageName }
+                    }
+                }
+                // Schedule rules — recompute the "is any rule active right now" flag.
+                launch {
+                    repo.getAllScheduleRules().collect {
+                        cachedScheduleActive = computeScheduleActive(it)
+                    }
+                }
+            }
         }
     }
 
@@ -297,7 +336,14 @@ class AppBlockerService : Service(), KoinComponent {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        ForegroundServiceHelper.startForegroundCompat(this, NOTIFICATION_ID, createNotification())
+        ForegroundServiceHelper.startForegroundCompat(
+            this, NOTIFICATION_ID, createNotification(),
+            // FG-001: must match AndroidManifest `foregroundServiceType`
+            // for this service. A mismatch on Android 14+ (UPSIDE_DOWN_CAKE)
+            // throws SecurityException, which the helper swallowed
+            // silently — the FGS was effectively never promoted.
+            android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
+        )
         startPolling()
         return START_STICKY
     }
@@ -337,6 +383,9 @@ class AppBlockerService : Service(), KoinComponent {
         if (today != currentDayStart) {
             currentDayStart = today
             lastBlockTimes.clear()
+            // ABS-002: day boundary flipped — force the usage
+            // cache to rebuild on the next call.
+            usageStatsCacheDay = 0L
         }
         if (lastBlockTimes.size > BlockingConfig.MAX_TRACKED_PACKAGES) {
             lastBlockTimes.clear()
@@ -488,18 +537,35 @@ class AppBlockerService : Service(), KoinComponent {
     }
 
     private fun getUsageMinutesToday(packageName: String): Long {
-        return try {
-            val now = System.currentTimeMillis()
-            val stats = usageStatsManager.queryUsageStats(UsageStatsManager.INTERVAL_DAILY, currentDayStart, now)
-            val appStat = stats.find { it.packageName == packageName }
-            (appStat?.totalTimeInForeground ?: 0L) / 60000L
-        } catch (e: Exception) { 0L }
+        // ABS-002: if the cache was built for the current day,
+        // skip the IPC. The cache is rebuilt when the day flips.
+        val now = System.currentTimeMillis()
+        if (usageStatsCacheDay != currentDayStart) {
+            usageStatsCache = try {
+                val stats = usageStatsManager.queryUsageStats(
+                    UsageStatsManager.INTERVAL_DAILY,
+                    currentDayStart,
+                    now
+                )
+                stats.associate { it.packageName to (it.totalTimeInForeground / 60000L) }
+            } catch (e: Exception) {
+                Timber.w(e, "AppBlockerService: queryUsageStats failed")
+                emptyMap()
+            }
+            usageStatsCacheDay = currentDayStart
+        }
+        return usageStatsCache[packageName] ?: 0L
     }
 
     private fun getAppLabel(pkg: String): String {
+        // ABS-003: memoize. `packageManager.getApplicationInfo` is
+        // a binder IPC, and we used to call it on every block event.
+        appLabelCache[pkg]?.let { return it }
         return try {
             val ai = packageManager.getApplicationInfo(pkg, 0)
-            packageManager.getApplicationLabel(ai).toString()
+            val label = packageManager.getApplicationLabel(ai).toString()
+            appLabelCache[pkg] = label
+            label
         } catch (_: Exception) { pkg }
     }
 

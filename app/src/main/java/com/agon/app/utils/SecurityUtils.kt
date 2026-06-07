@@ -8,7 +8,21 @@ import javax.crypto.SecretKeyFactory
 import javax.crypto.spec.PBEKeySpec
 
 object SecurityUtils {
-    private const val PBKDF2_ITERATIONS = 10000
+    /**
+     * OWASP Password Storage Cheat Sheet (2023) recommends
+     *   600 000 iterations
+     * for PBKDF2-HMAC-SHA256. The previous default of 10 000
+     * is well below that bar; a modern GPU can brute-force a
+     * 6-digit PIN hashed with 10 k iterations in under a second.
+     *
+     * Hashes are tagged with the iteration count they were
+     * produced with (`pbkdf2$<iter>$...`) so existing PINs
+     * hashed with the legacy 10 k default are still verifiable
+     * (with the old work factor) on next login — and can then
+     * be transparently re-hashed with the new default.
+     */
+    const val PBKDF2_ITERATIONS_CURRENT = 600_000
+    private const val PBKDF2_ITERATIONS_LEGACY = 10_000
     private const val PBKDF2_KEY_LENGTH = 256
     private const val PBKDF2_ALGORITHM = "PBKDF2WithHmacSHA256"
     private const val SALT_LENGTH = 16
@@ -18,16 +32,19 @@ object SecurityUtils {
     private val secureRandom = SecureRandom()
 
     /**
-     * Hashes the PIN using PBKDF2WithHmacSHA256 (10000 iterations, 256-bit).
-     * Output format: "pbkdf2$base64(salt)$base64(hash)".
-     * Legacy SHA-256 hashes ("sha256$...") are still produced and verified for
-     * backward compatibility with PINs stored before this upgrade.
+     * Hashes the PIN using PBKDF2WithHmacSHA256
+     * (600 000 iterations, 256-bit) with a fresh 128-bit salt.
+     * Output format: "pbkdf2$<iter>$base64(salt)$base64(hash)".
+     * Legacy SHA-256 hashes ("sha256$...") are still produced
+     * and verified for backward compatibility with PINs stored
+     * before this upgrade.
      */
     fun hashPin(pin: String): String {
         val salt = ByteArray(SALT_LENGTH).also { secureRandom.nextBytes(it) }
-        val spec = PBEKeySpec(pin.toCharArray(), salt, PBKDF2_ITERATIONS, PBKDF2_KEY_LENGTH)
+        val spec = PBEKeySpec(pin.toCharArray(), salt, PBKDF2_ITERATIONS_CURRENT, PBKDF2_KEY_LENGTH)
         val key = SecretKeyFactory.getInstance(PBKDF2_ALGORITHM).generateSecret(spec).encoded
         return PREFIX_PBKDF2 +
+            PBKDF2_ITERATIONS_CURRENT + "$" +
             Base64.encodeToString(salt, Base64.NO_WRAP) + "$" +
             Base64.encodeToString(key, Base64.NO_WRAP)
     }
@@ -44,8 +61,10 @@ object SecurityUtils {
 
     /**
      * Verifies the entered PIN against the stored hash.
-     * Supports both PBKDF2 ("pbkdf2$...") and legacy SHA-256 ("sha256$...") formats,
-     * and also the bare hex SHA-256 hashes used before this upgrade.
+     * Supports both PBKDF2 ("pbkdf2$<iter>$..." — iter is read
+     * from the tag) and legacy SHA-256 ("sha256$...") formats,
+     * and also the bare hex SHA-256 hashes used before the
+     * iter-tagged PBKDF2 upgrade.
      */
     fun verifyPin(pin: String, encryptedPrefs: EncryptedPrefs): Boolean {
         val stored = encryptedPrefs.getPinHash()
@@ -62,24 +81,35 @@ object SecurityUtils {
         return when {
             stored.startsWith(PREFIX_PBKDF2) -> {
                 val parts = stored.removePrefix(PREFIX_PBKDF2).split("$")
-                if (parts.size != 2) return false
-                val salt = try {
-                    Base64.decode(parts[0], Base64.NO_WRAP)
+                // New format: "pbkdf2$<iter>$<salt>$<hash>" (4 parts
+                // after the prefix). Old format: "pbkdf2$<salt>$<hash>"
+                // (3 parts after the prefix) — assume the legacy
+                // 10 k iteration count.
+                val (iter, salt, expected) = when (parts.size) {
+                    3 -> Triple(PBKDF2_ITERATIONS_LEGACY, parts[0], parts[1])
+                    4 -> {
+                        val it = parts[0].toIntOrNull() ?: return false
+                        Triple(it, parts[1], parts[2])
+                    }
+                    else -> return false
+                }
+                val saltBytes = try {
+                    Base64.decode(salt, Base64.NO_WRAP)
                 } catch (_: Exception) {
                     return false
                 }
-                val expected = try {
-                    Base64.decode(parts[1], Base64.NO_WRAP)
+                val expectedBytes = try {
+                    Base64.decode(expected, Base64.NO_WRAP)
                 } catch (_: Exception) {
                     return false
                 }
-                val spec = PBEKeySpec(pin.toCharArray(), salt, PBKDF2_ITERATIONS, PBKDF2_KEY_LENGTH)
+                val spec = PBEKeySpec(pin.toCharArray(), saltBytes, iter, PBKDF2_KEY_LENGTH)
                 val key = try {
                     SecretKeyFactory.getInstance(PBKDF2_ALGORITHM).generateSecret(spec).encoded
                 } catch (_: Exception) {
                     return false
                 }
-                MessageDigest.isEqual(key, expected)
+                MessageDigest.isEqual(key, expectedBytes)
             }
             stored.startsWith(PREFIX_SHA256) -> {
                 val expected = try {

@@ -1,10 +1,14 @@
 package com.agon.app.blocking
 
 import com.agon.app.data.settings.AppSettings
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
@@ -101,6 +105,34 @@ class AiBlockTracker(private val settings: AppSettings) {
         _tempBlocks.value = map
     }
 
+    /**
+     * ABS-004: prune expired temp blocks on a periodic tick. The
+     * previous implementation only called `refreshFromStorage()`
+     * once at startup, so a temp block recorded at 09:00 would
+     * still appear in the cached map at 10:00 (after its 15-minute
+     * expiry) until the service restarted.
+     *
+     * The scan runs every 30 s — cheap (a single map walk) and
+     * matches the existing FastDetector prune cadence. Cancellation
+     * is cooperative: the caller must pass a [scope] that lives as
+     * long as the tracker is needed.
+     */
+    fun startExpirationPruner(scope: CoroutineScope) {
+        scope.launch {
+            while (isActive) {
+                val now = System.currentTimeMillis()
+                val current = _tempBlocks.value
+                if (current.isNotEmpty()) {
+                    val pruned = current.filterValues { it > now }
+                    if (pruned.size != current.size) {
+                        _tempBlocks.value = pruned
+                    }
+                }
+                delay(PRUNE_INTERVAL_MS)
+            }
+        }
+    }
+
     companion object {
         /** Sliding window in milliseconds (4 minutes). */
         const val WINDOW_MS: Long = 4L * 60L * 1_000L
@@ -110,5 +142,8 @@ class AiBlockTracker(private val settings: AppSettings) {
 
         /** Length of the temp block in milliseconds (15 minutes). */
         const val TEMP_BLOCK_MS: Long = 15L * 60L * 1_000L
+
+        /** How often the in-memory temp-block map is pruned. */
+        const val PRUNE_INTERVAL_MS: Long = 30L * 1_000L
     }
 }

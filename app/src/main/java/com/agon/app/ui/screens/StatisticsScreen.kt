@@ -84,13 +84,13 @@ fun StatisticsScreen(
             item {
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     StatCard(stringResource(R.string.statistics_streak), "$streak ${stringResource(R.string.statistics_days)}", Icons.Default.LocalFireDepartment, warning, Modifier.weight(1f))
-                    StatCard("Longest", "$longestStreak ${stringResource(R.string.statistics_days)}", Icons.Default.Star, success, Modifier.weight(1f))
+                    StatCard(stringResource(R.string.statistics_longest), "$longestStreak ${stringResource(R.string.statistics_days)}", Icons.Default.Star, success, Modifier.weight(1f))
                 }
             }
             item {
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     StatCard(stringResource(R.string.statistics_active), "$daysActive ${stringResource(R.string.statistics_days)}", Icons.Default.CalendarMonth, success, Modifier.weight(1f))
-                    StatCard("Today apps", "${blockedAppsToday.size}", Icons.Default.Apps, primary, Modifier.weight(1f))
+                    StatCard(stringResource(R.string.statistics_today_apps), "${blockedAppsToday.size}", Icons.Default.Apps, primary, Modifier.weight(1f))
                 }
             }
 

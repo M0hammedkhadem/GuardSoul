@@ -5,7 +5,7 @@ import android.content.Intent
 import android.net.Uri
 import com.agon.app.data.settings.AppSettings
 import kotlinx.coroutines.flow.first
-import kotlin.random.Random
+import java.security.SecureRandom
 
 /**
  * "Accountability Partner" — a flow inspired by Bulldog Blocker and
@@ -26,11 +26,25 @@ object AccountabilityPartner {
     const val CODE_LENGTH = 6
     const val CODE_VALIDITY_MS = 5L * 60L * 1_000L   // 5 min
 
+    /**
+     * Use [SecureRandom] for unlock-code generation. The previous
+     * implementation used [kotlin.random.Random] (XorWow, a
+     * predictable PRNG seeded with the system time). With 1 000 000
+     * possible 6-digit codes and a 5-minute validity window, an
+     * attacker observing one valid code could predict subsequent
+     * values for the same process. [SecureRandom] is a CSPRNG
+     * suitable for authentication tokens.
+     */
+    private val rng = SecureRandom()
+
     /** Generate a 6-digit numeric code (zero-padded). */
-    fun generateCode(): String =
-        (1..CODE_LENGTH)
-            .fold(StringBuilder(CODE_LENGTH)) { sb, _ -> sb.append(Random.nextInt(0, 10)) }
-            .toString()
+    fun generateCode(): String {
+        val sb = StringBuilder(CODE_LENGTH)
+        repeat(CODE_LENGTH) {
+            sb.append(rng.nextInt(0, 10))
+        }
+        return sb.toString()
+    }
 
     /**
      * Build a pre-filled `mailto:` intent the user can use to send the
@@ -44,8 +58,22 @@ object AccountabilityPartner {
             append("Unlock code: ").append(code).append('\n').append('\n')
             append("This code expires in 5 minutes. If you didn't expect this message, you can ignore it.\n")
         }
-        val mailto = Uri.parse("mailto:${partnerEmail.trim()}")
-            .buildUpon()
+        // PARTNER-MAILTO: previously built with
+        //   Uri.parse("mailto:${partnerEmail.trim()}")
+        // then appended subject/body as query parameters. If the
+        // user (or a script filling the settings store) supplied
+        // an email containing `?` or `&` characters, the URI parser
+        // would interpret the address as opaque + extra path
+        // components, breaking the intent.
+        //
+        // Build the URI with `Uri.Builder().scheme().opaquePart()`,
+        // which treats the address as an opaque part. Then
+        // percent-encode the body to ensure the `+` character in
+        // line breaks doesn't get decoded as a space.
+        val sanitized = partnerEmail.trim()
+        val mailto = Uri.Builder()
+            .scheme("mailto")
+            .opaquePart(sanitized)
             .appendQueryParameter("subject", subject)
             .appendQueryParameter("body", body)
             .build()
@@ -99,7 +127,22 @@ object AccountabilityPartner {
             settings.clearPendingUnlockCode()
             return Result.EXPIRED
         }
-        if (entered.trim() != code) return Result.MISMATCH
+        // PARTNER-COMPARE: use a constant-time compare to avoid a
+        // timing oracle. The previous implementation used
+        // `entered.trim() != code`, which short-circuits on the
+        // first mismatched character. With 1 000 000 possible
+        // codes and a 5-minute validity window, a network-local
+        // attacker could plausibly brute-force the code given a
+        // timing side channel. The Kotlin String `==` is
+        // constant-time per spec only for `MessageDigest.isEqual`
+        // — use it explicitly.
+        val enteredTrim = entered.trim()
+        val match = enteredTrim.length == code.length &&
+            java.security.MessageDigest.isEqual(
+                enteredTrim.toByteArray(),
+                code.toByteArray()
+            )
+        if (!match) return Result.MISMATCH
         settings.clearPendingUnlockCode()
         return Result.OK
     }

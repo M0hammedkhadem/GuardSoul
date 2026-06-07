@@ -29,6 +29,17 @@ class PornBlockerService : android.app.Service() {
         @Volatile
         private var intentionalStop = false
 
+        /**
+         * True when the system Private DNS has been successfully
+         * set to CleanBrowsing Family by [configurePrivateDns].
+         * Exposed to the home-screen status badge so the user can
+         * see at a glance whether the filter is actually applied
+         * (not just the toggle being on).
+         */
+        @Volatile
+        var isDnsConfigured: Boolean = false
+            private set
+
         fun start(context: Context) {
             intentionalStop = false
             ForegroundServiceHelper.startServiceAsForeground(context, PornBlockerService::class.java)
@@ -43,9 +54,20 @@ class PornBlockerService : android.app.Service() {
     }
 
     private val repo: AppRepository by inject()
-    private val serviceScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
-    private var originalMode: String? = null
-    private var originalSpecifier: String? = null
+    // PB-003: was Dispatchers.Main. `dpm.setGlobalSetting` is a
+    // binder call into system_server and can block on the main
+    // thread; on slow devices this can cause UI jank or ANRs. The
+    // service has no UI surface, so Dispatchers.IO is the right
+    // dispatcher for all the binder-bound work in this class.
+    private val serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+    // @Volatile: written by [onStartCommand] on the main thread but
+    // read by the ContentObserver callback (registered on
+    // `Settings.Global`) which fires on the binder thread. Without
+    // @Volatile, the observer can see a stale `null` even after
+    // the service has captured the original DNS values, and would
+    // then re-overwrite the value on cleanup.
+    @Volatile private var originalMode: String? = null
+    @Volatile private var originalSpecifier: String? = null
     private var observationJob: Job? = null
     private var dnsObserver: ContentObserver? = null
 
@@ -58,7 +80,11 @@ class PornBlockerService : android.app.Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        ForegroundServiceHelper.startForegroundCompat(this, NOTIFICATION_ID, createNotification())
+        ForegroundServiceHelper.startForegroundCompat(
+            this, NOTIFICATION_ID, createNotification(),
+            // FG-001: manifest declares specialUse.
+            android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
+        )
         return START_STICKY
     }
 
@@ -91,31 +117,43 @@ class PornBlockerService : android.app.Service() {
     private fun registerDnsObserver() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P) return
         val handler = Handler(Looper.getMainLooper())
+        // PB-002: collapse bursts of onChange callbacks into a single
+        // re-application. The settings flow itself writes the URI,
+        // which fires a synchronous onChange; if we react
+        // immediately we re-apply, which fires another onChange, and
+        // a rapid UI toggle (e.g. a parent toggling shield off and
+        // back on in Settings) used to spawn 8-10 coroutines
+        // before the burst settled. The flag is `compareAndSet`-d
+        // so concurrent emissions coalesce cleanly.
+        var inFlight = java.util.concurrent.atomic.AtomicBoolean(false)
         val observer = object : ContentObserver(handler) {
             override fun onChange(selfChange: Boolean, uri: Uri?) {
                 super.onChange(selfChange, uri)
-                // We only act when the filter is supposed to be on. The
-                // settings flow re-asserts configurePrivateDns() in that
-                // case so this is just the fast-path.
+                if (!inFlight.compareAndSet(false, true)) return
                 serviceScope.launch {
-                    val settings = repo.getAppSettings()
-                    if (settings.isShieldActive() && settings.isPornBlockerActive()) {
-                        val cr = contentResolver
-                        val mode = Settings.Global.getString(cr, "private_dns_mode")
-                        val specifier = Settings.Global.getString(cr, "private_dns_specifier")
-                        val looksOk = mode == "hostname" &&
-                            specifier == BlockingConfig.CLEANBROWSING_FAMILY_HOST
-                        if (!looksOk) {
-                            Timber.w("DNS: tamper detected (mode=$mode, specifier=$specifier), re-applying filter")
-                            try {
-                                repo.recordTamperAlert(
-                                    "dns_changed",
-                                    "Private DNS was changed away from CleanBrowsing Family. " +
-                                        "Current mode=$mode, specifier=$specifier."
-                                )
-                            } catch (_: Exception) {}
-                            configurePrivateDns()
+                    try {
+                        kotlinx.coroutines.delay(200)
+                        val settings = repo.getAppSettings()
+                        if (settings.isShieldActive() && settings.isPornBlockerActive()) {
+                            val cr = contentResolver
+                            val mode = Settings.Global.getString(cr, "private_dns_mode")
+                            val specifier = Settings.Global.getString(cr, "private_dns_specifier")
+                            val looksOk = mode == "hostname" &&
+                                specifier == BlockingConfig.CLEANBROWSING_FAMILY_HOST
+                            if (!looksOk) {
+                                Timber.w("DNS: tamper detected (mode=$mode, specifier=$specifier), re-applying filter")
+                                try {
+                                    repo.recordTamperAlert(
+                                        "dns_changed",
+                                        "Private DNS was changed away from CleanBrowsing Family. " +
+                                            "Current mode=$mode, specifier=$specifier."
+                                    )
+                                } catch (_: Exception) {}
+                                configurePrivateDns()
+                            }
                         }
+                    } finally {
+                        inFlight.set(false)
                     }
                 }
             }
@@ -130,10 +168,33 @@ class PornBlockerService : android.app.Service() {
     }
 
     override fun onDestroy() {
-        revertPrivateDns()
+        // PB-001: revertPrivateDns() does binder IPC into
+        // system_server. On a fast system kill the service can be
+        // torn down before the call returns, leaving the user's
+        // Private DNS stuck on CleanBrowsing. Dispatch to IO and
+        // join with a tight timeout — if it doesn't return, the OS
+        // is killing us anyway and the DNS revert is best-effort.
         observationJob?.cancel()
         dnsObserver?.let { contentResolver.unregisterContentObserver(it) }
         dnsObserver = null
+        // PB-001: only revert when the user (or a settings flow)
+        // stopped us intentionally. A system kill should NOT
+        // trigger the revert — otherwise a boot loop or a memory
+        // pressure kill would silently toggle the user's Private
+        // DNS setting on each cycle.
+        val wasIntentional = wasStoppedIntentionally()
+        val revertJob = serviceScope.launch {
+            if (wasIntentional) {
+                try { revertPrivateDns() } catch (e: Exception) {
+                    Timber.w(e, "PornBlockerService: revert failed")
+                }
+            }
+        }
+        try {
+            kotlinx.coroutines.runBlocking {
+                kotlinx.coroutines.withTimeoutOrNull(500) { revertJob.join() }
+            }
+        } catch (_: Exception) {}
         serviceScope.cancel()
         super.onDestroy()
     }
@@ -148,6 +209,7 @@ class PornBlockerService : android.app.Service() {
 
             if (currentMode == "hostname" && currentSpecifier == BlockingConfig.CLEANBROWSING_FAMILY_HOST) {
                 Timber.d("DNS: Already configured correctly")
+                isDnsConfigured = true
                 return
             }
 
@@ -163,6 +225,7 @@ class PornBlockerService : android.app.Service() {
                 dpm.setGlobalSetting(component, "private_dns_mode", "hostname")
                 dpm.setGlobalSetting(component, "private_dns_specifier", BlockingConfig.CLEANBROWSING_FAMILY_HOST)
                 Timber.d("DNS: Configured via Device Owner")
+                isDnsConfigured = true
             } else {
                 // Issue #143: automatic Private DNS manipulation requires
                 // Device Owner. Without it we cannot enforce the filter,
@@ -181,12 +244,12 @@ class PornBlockerService : android.app.Service() {
 
     private fun revertPrivateDns() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P || originalMode == null) return
-        
+
         try {
             if (DeviceOwnerService.isDeviceOwner(this)) {
                 val dpm = getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
                 val component = ComponentName(this, GuardianDeviceAdminReceiver::class.java)
-                
+
                 // Only revert if it's currently set to our filter
                 val cr = contentResolver
                 val currentSpecifier = Settings.Global.getString(cr, "private_dns_specifier")
@@ -200,6 +263,7 @@ class PornBlockerService : android.app.Service() {
             }
             originalMode = null
             originalSpecifier = null
+            isDnsConfigured = false
         } catch (e: Exception) {
             Timber.e(e, "DNS: Revert failed")
         }

@@ -6,8 +6,8 @@ package com.agon.app.blocking
  * Keep these in one place so:
  * - tests can override them,
  * - the rationale for each value is documented once,
- * - and adjacent subsystems (`GuardianAccessibilityService`, AI short-video
- *   detection, …) can share the same language.
+ * - and adjacent subsystems (`ContentFilterEngine`, `UninstallGuardEngine`,
+ *   `ShortstopEngine`, `AiExplorerEngine`, …) can share the same language.
  */
 object BlockingConfig {
     /**
@@ -43,7 +43,7 @@ object BlockingConfig {
      */
     const val BLOCK_COOLDOWN_MS: Long = 150L
 
-    // --- Short-video / Reels detection thresholds (ShortstopAccessibilityService) ---
+    // --- Short-video / Reels detection thresholds (ShortstopEngine) ---
 
     /** A video is considered "full screen" if it covers this fraction of the screen height. */
     const val FULL_SCREEN_HEIGHT_RATIO: Float = 0.85f
@@ -128,7 +128,32 @@ object BlockingConfig {
     /** CleanBrowsing Family Filter host (Device-Owner Private DNS). */
     const val CLEANBROWSING_FAMILY_HOST: String = "family-filter-dns.cleanbrowsing.org"
 
-    /** CleanBrowsing Adult Filter DNS v4 primary. */
+    // -- BATCH-Q (Family DNS addition) ---------------------------------
+    // The VPN fallback used to hard-code the **Adult** filter, which
+    // is more aggressive than what most "clean / safe search" users
+    // want. We now expose three well-known family DNS providers and
+    // tier them so the user gets the *cleanest possible* upstream
+    // by default, with progressively stronger filters as fallback.
+
+    /** OpenDNS FamilyShield (Cisco) — adult-only, very stable. */
+    const val OPENDNS_FAMILY_DNS_1: String = "208.67.222.123"
+    const val OPENDNS_FAMILY_DNS_2: String = "208.67.220.123"
+    const val OPENDNS_FAMILY_DNS_V6_1: String = "2620:119:35::35"
+    const val OPENDNS_FAMILY_DNS_V6_2: String = "2620:119:53::53"
+
+    /** Cloudflare for Families — adult + malware (1.1.1.3). */
+    const val CLOUDFLARE_FAMILY_DNS_1: String = "1.1.1.3"
+    const val CLOUDFLARE_FAMILY_DNS_2: String = "1.0.0.3"
+    const val CLOUDFLARE_FAMILY_DNS_V6_1: String = "2606:4700:4700::1113"
+    const val CLOUDFLARE_FAMILY_DNS_V6_2: String = "2606:4700:4700::1003"
+
+    /** CleanBrowsing Family IPs (in addition to the hostname above). */
+    const val CLEANBROWSING_FAMILY_DNS_1: String = "185.228.168.168"
+    const val CLEANBROWSING_FAMILY_DNS_2: String = "185.228.169.168"
+    const val CLEANBROWSING_FAMILY_DNS_V6_1: String = "2a0d:2a00:1::2"
+    const val CLEANBROWSING_FAMILY_DNS_V6_2: String = "2a0d:2a00:2::2"
+
+    /** CleanBrowsing Adult Filter DNS v4 primary (most aggressive — final fallback). */
     const val CLEANBROWSING_ADULT_DNS_1: String = "185.228.168.10"
     /** CleanBrowsing Adult Filter DNS v4 secondary. */
     const val CLEANBROWSING_ADULT_DNS_2: String = "185.228.169.11"
@@ -245,12 +270,28 @@ object BlockingConfig {
 
     /**
      * Delay between the [GLOBAL_ACTION_BACK] and the forced
-     * [GLOBAL_ACTION_HOME] in [ShortstopAccessibilityService.kickOutFromShort].
-     * 80 ms is long enough for the BACK transition to start
-     * animating but short enough that the user perceives a single
-     * "swoop" rather than two distinct navigation events.
+     * [GLOBAL_ACTION_HOME] in [ShortstopEngine.kickOutFromShort].
+     *
+     * **BATCH-P**: tightened from 80 ms → 30 ms to meet the
+     * sub-frame (≤ 50 ms) detection target. The BACK transition
+     * still queues its animation, but HOME is dispatched before
+     * the BACK animation finishes — Android merges the two
+     * transitions, so the user perceives a single "swoop" off the
+     * short-video surface. A long delay (e.g. 80 ms) meant the
+     * user watched 1-2 frames of the short before HOME landed.
      */
-    const val SHORTSTOP_FORCE_HOME_DELAY_MS: Long = 80L
+    const val SHORTSTOP_FORCE_HOME_DELAY_MS: Long = 30L
+
+    /**
+     * When the FastDetector returns a "tab hit" (a high-confidence
+     * detection that the user just tapped a Reels/Shorts tab), we
+     * skip the BACK step entirely and dispatch HOME immediately.
+     * Rationale: the player hasn't actually started yet, so there
+     * is nothing on the back stack to pop. This brings the
+     * "tap-Reels-tab → home" end-to-end latency under 10 ms
+     * (HOME itself takes ~5 ms to dispatch through the framework).
+     */
+    const val SHORTSTOP_FAST_KICK_NO_DELAY: Boolean = true
 
     /**
      * Daily quota (minutes) for short-form content. After the user

@@ -14,7 +14,15 @@ import java.util.Calendar
 private val Context.settingsStore by preferencesDataStore(name = "app_settings")
 
 class AppSettings(private val context: Context) {
-    private val encryptedPrefs = EncryptedPrefs(context)
+    /**
+     * The Koin-managed [EncryptedPrefs] instance used by this
+     * [AppSettings]. Exposed so call sites (e.g.
+     * [com.agon.app.GuardianDeviceAdminReceiver]) can read/write
+     * encrypted values without constructing a second
+     * [EncryptedPrefs] that would bypass the listener registry
+     * of the singleton (see [EncryptedPrefs.clear]).
+     */
+    val encryptedPrefs: EncryptedPrefs = EncryptedPrefs(context)
 
     private object Keys {
         val ONBOARDING_COMPLETE = booleanPreferencesKey("onboarding_complete")
@@ -26,6 +34,12 @@ class AppSettings(private val context: Context) {
         val STREAK_COUNT = intPreferencesKey("streak_count")
         val LONGEST_STREAK = intPreferencesKey("longest_streak")
         val LAST_ACTIVE_DATE = longPreferencesKey("last_active_date")
+        // STALE-SHIELD-CHECK: day the shield was last turned ON.
+        // StatisticsViewModel.calculateCleanStreak only credits
+        // days on or after this date, so a user who disables the
+        // shield for a week doesn't get a fake "7 clean days"
+        // streak when they turn it back on.
+        val LAST_SHIELD_ENABLED_DAY = longPreferencesKey("last_shield_enabled_day")
 
         val SOCIAL_INSTAGRAM = booleanPreferencesKey("social_instagram")
         val INSTAGRAM_MODE = stringPreferencesKey("instagram_mode")
@@ -144,6 +158,13 @@ class AppSettings(private val context: Context) {
         // --- Self-learning learner (auto-discovered short-form signatures) ---
         val LEARNED_SIGNATURES = stringPreferencesKey("learned_signatures_v1")
         val LEARNER_ENABLED = booleanPreferencesKey("learner_enabled")
+
+        // --- BATCH-Q: Family DNS provider selection --------------------
+        // "opendns"  — OpenDNS FamilyShield (208.67.222.123) [default]
+        // "cloudflare" — Cloudflare for Families (1.1.1.3)
+        // "cleanbrowsing" — CleanBrowsing Family (185.228.168.168)
+        // "adult" — CleanBrowsing Adult (185.228.168.10) [aggressive]
+        val FAMILY_DNS_PROVIDER = stringPreferencesKey("family_dns_provider")
     }
 
     // --- AI Explorer temp block storage ---------------------------------
@@ -160,6 +181,7 @@ class AppSettings(private val context: Context) {
     val streakCountFlow: Flow<Int> = context.settingsStore.data.map { it[Keys.STREAK_COUNT] ?: 0 }
     val longestStreakFlow: Flow<Int> = context.settingsStore.data.map { it[Keys.LONGEST_STREAK] ?: 0 }
     val lastActiveDateFlow: Flow<Long> = context.settingsStore.data.map { it[Keys.LAST_ACTIVE_DATE] ?: 0L }
+    val lastShieldEnabledDayFlow: Flow<Long> = context.settingsStore.data.map { it[Keys.LAST_SHIELD_ENABLED_DAY] ?: 0L }
 
     val socialInstagramFlow: Flow<Boolean> = context.settingsStore.data.map { it[Keys.SOCIAL_INSTAGRAM] ?: false }
     val instagramModeFlow: Flow<String> = context.settingsStore.data.map { it[Keys.INSTAGRAM_MODE] ?: "off" }
@@ -197,6 +219,8 @@ class AppSettings(private val context: Context) {
     val aiOverlayModeFlow: Flow<Boolean> = context.settingsStore.data.map { it[Keys.AI_OVERLAY_MODE] ?: false }
     val safeSearchModeFlow: Flow<String> = context.settingsStore.data.map { it[Keys.SAFE_SEARCH_MODE] ?: "basic" }
     val blockDohFlow: Flow<Boolean> = context.settingsStore.data.map { it[Keys.BLOCK_DOH] ?: false }
+    /** BATCH-Q: which family DNS provider the VPN should use. */
+    val familyDnsProviderFlow: Flow<String> = context.settingsStore.data.map { it[Keys.FAMILY_DNS_PROVIDER] ?: "opendns" }
     val aiThresholdFlow: Flow<Float> = context.settingsStore.data.map { it[Keys.AI_THRESHOLD] ?: 0.7f }
 
     val xpPointsFlow: Flow<Int> = context.settingsStore.data.map { it[Keys.XP_POINTS] ?: 0 }
@@ -252,6 +276,7 @@ class AppSettings(private val context: Context) {
     suspend fun setStreakCount(v: Int) { context.settingsStore.edit { it[Keys.STREAK_COUNT] = v } }
     suspend fun setLongestStreak(v: Int) { context.settingsStore.edit { it[Keys.LONGEST_STREAK] = v } }
     suspend fun setLastActiveDate(v: Long) { context.settingsStore.edit { it[Keys.LAST_ACTIVE_DATE] = v } }
+    suspend fun setLastShieldEnabledDay(v: Long) { context.settingsStore.edit { it[Keys.LAST_SHIELD_ENABLED_DAY] = v } }
 
     suspend fun setInstagramMode(v: String) {
         require(v in listOf("off", "full", "reels")) { "Invalid Instagram mode: $v" }
@@ -329,6 +354,8 @@ class AppSettings(private val context: Context) {
     suspend fun setAiOverlayMode(v: Boolean) { context.settingsStore.edit { it[Keys.AI_OVERLAY_MODE] = v } }
     suspend fun setSafeSearchMode(v: String) { context.settingsStore.edit { it[Keys.SAFE_SEARCH_MODE] = v } }
     suspend fun setBlockDoh(v: Boolean) { context.settingsStore.edit { it[Keys.BLOCK_DOH] = v } }
+    /** BATCH-Q: choose the family DNS provider for the VPN fallback. */
+    suspend fun setFamilyDnsProvider(v: String) { context.settingsStore.edit { it[Keys.FAMILY_DNS_PROVIDER] = v } }
     suspend fun setAiThreshold(v: Float) { context.settingsStore.edit { it[Keys.AI_THRESHOLD] = v } }
 
     suspend fun setXpPoints(v: Int) { context.settingsStore.edit { it[Keys.XP_POINTS] = v } }

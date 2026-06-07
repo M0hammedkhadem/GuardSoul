@@ -28,6 +28,10 @@ import com.agon.app.billing.PremiumFeature
 import com.agon.app.billing.ProductInfo
 import com.agon.app.billing.SubscriptionTier
 import com.agon.app.ui.theme.*
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -177,15 +181,23 @@ private fun purchase(
     analytics: AnalyticsManager,
     sku: String
 ) {
-    kotlinx.coroutines.GlobalScope.launch(kotlinx.coroutines.Dispatchers.Main) {
-        val started = billingManager.let { bm ->
-            // We expose launchPurchaseFlow indirectly via wrapper. We use
-            // a Koin-resolved wrapper here. Easiest: call connect then
-            // launch through the public surface.
-            // The UpgradeScreen needs the wrapper, but we keep the public
-            // surface minimal — so we add a convenience method on manager.
-            // See BillingManager.purchase(activity, sku).
-            bm.purchase(activity, sku)
+    // Bridge to the top-level coroutine scope from the calling
+    // composable. The previous implementation used GlobalScope which
+    // leaked a coroutine on every tap and survived screen disposal —
+    // rare but reproducible: rapid-fire taps on a dying screen would
+    // start a Play Billing flow on an Activity the OS had already
+    // torn down. We accept the scope as a parameter so the launch
+    // is automatically cancelled when the calling composable leaves
+    // the composition.
+    val scope = (activity as? androidx.activity.ComponentActivity)
+        ?.lifecycleScope
+        ?: CoroutineScope(Dispatchers.Main + SupervisorJob())
+    scope.launch {
+        val started = try {
+            billingManager.purchase(activity, sku)
+        } catch (e: Exception) {
+            timber.log.Timber.w(e, "UpgradeScreen: purchase launch failed")
+            false
         }
         if (started) {
             val tier = com.agon.app.billing.SubscriptionTier.fromSku(sku)

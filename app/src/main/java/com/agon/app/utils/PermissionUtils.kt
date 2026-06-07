@@ -10,7 +10,7 @@ import android.os.Build
 import android.os.PowerManager
 import android.os.Process
 import android.provider.Settings
-import com.agon.app.services.GuardianAccessibilityService
+import com.agon.app.services.GuardSoulAccessibilityService
 import com.agon.app.GuardianDeviceAdminReceiver
 import com.agon.app.data.settings.AppSettings
 import kotlinx.coroutines.CoroutineScope
@@ -46,7 +46,7 @@ object PermissionUtils {
     }
 
     fun isAccessibilityGranted(context: Context): Boolean =
-        AccessibilityUtils.isServiceEnabled(context, GuardianAccessibilityService::class.java)
+        AccessibilityUtils.isServiceEnabled(context, GuardSoulAccessibilityService::class.java)
 
     fun isVpnGranted(context: Context): Boolean {
         return try {
