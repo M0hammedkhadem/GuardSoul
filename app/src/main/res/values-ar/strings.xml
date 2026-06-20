@@ -8,6 +8,10 @@
     <string name="screen_home_subtitle">درع العافية الرقمية</string>
     <string name="status_protected">محمي</string>
     <string name="status_inactive">غير نشط</string>
+    <string name="tap_to_activate_shield">اضغط لتفعيل الدرع</string>
+    <string name="tap_to_deactivate_shield">اضغط لإيقاف الدرع</string>
+    <string name="shield_active_desc">الدرع مفعل. اضغط للإيقاف.</string>
+    <string name="shield_inactive_desc">الدرع متوقف. اضغط للتفعيل.</string>
     <string name="status_connected">متصل</string>
     <string name="status_disconnected">غير متصل</string>
     <string name="contentdesc_timer">مؤقت</string>
@@ -28,28 +32,19 @@
     <string name="block_shorts_action_redirect">العودة للرئيسية</string>
     <string name="block_shorts_action_exit">إغلاق التطبيق</string>
     <string name="block_shorts_action_block_screen">شاشة الحظر</string>
-    <string name="shortstop_accessibility_desc">خدمة Shortstop من جارديان للحظر الجراحي لـ Reels وShorts وTikTok For-You وSnapchat Spotlight. تكتشف المحتوى الإدماني داخل تطبيقات التواصل وتخفي فقط سطح المشغّل القصير — مع إبقاء الرسائل والبحث وباقي التطبيق متاحاً.</string>
-    <string name="shortstop_mask_title">%1$s متوقف</string>
-    <string name="shortstop_mask_subtitle">أخفينا الخلاصة الإدمانية. انقر للإغلاق أو خذ استراحة.</string>
-    <string name="shortstop_mask_close">إغلاق</string>
-    <string name="shortstop_mask_take_break">استراحة 5 دقائق</string>
     <string name="shortstop_reason_break">وقت الاستراحة. عُد بعد بضع دقائق.</string>
     <string name="shortstop_reason_quota">تم بلوغ الحد اليومي للمحتوى القصير.</string>
     <string name="shortstop_reason_hours">%1$s متوقف خلال ساعات التركيز.</string>
-    <string name="shortstop_settings_title">الحظر الجراحي</string>
-    <string name="shortstop_settings_subtitle">إخفاء المشغّل القصير فقط — مع إبقاء باقي التطبيق يعمل.</string>
+    <string name="shortstop_settings_title">الحظر الجزئي</string>
+    <string name="shortstop_settings_subtitle">حظر الخلاصات القصيرة وإرجاعك للشاشة الرئيسية — مع إبقاء باقي التطبيق يعمل.</string>
     <string name="shortstop_quota_label">الحصة اليومية للمحتوى القصير</string>
     <string name="shortstop_quota_summary">%1$d دقيقة يومياً (0 = غير محدود)</string>
     <string name="shortstop_break_interval_label">تذكير الاستراحة</string>
     <string name="shortstop_break_interval_summary">كل %1$d دقيقة من تصفح المحتوى القصير</string>
     <string name="shortstop_break_length_label">مدة الاستراحة</string>
     <string name="shortstop_break_length_summary">ثم استراحة إجبارية %1$d دقيقة</string>
-    <string name="shortstop_status_idle">خامل</string>
-    <string name="shortstop_status_scrolling">تمرير سريع</string>
-    <string name="shortstop_status_blocked">محظور</string>
     <string name="shortstop_kickout_video">%1$s محظور — تم إرجاعك إلى الشاشة الرئيسية</string>
     <string name="shortstop_kickout_section">قسم %1$s محظور — تم إرجاعك إلى الشاشة الرئيسية</string>
-    <string name="shortstop_kickout_subtitle">سنعيدك إلى الشاشة الرئيسية.</string>
     <string name="school_time_title">وقت المدرسة</string>
     <string name="school_time_desc">حظر جميع التطبيقات أثناء ساعات المدرسة</string>
     <string name="bedtime_title">وضع النوم</string>
@@ -194,7 +189,7 @@
     <string name="feature_device_admin_blocked">تم حظر إزالة مشرف الجهاز</string>
     <string name="feature_dns_change_detected">كشف تغيير DNS نشط</string>
     <string name="feature_safe_mode_warning">تحذير الإقلاع الآمن نشط</string>
-    <string name="tamper_shortstop_disabled_title">الحظر الجراحي متوقف</string>
+    <string name="tamper_shortstop_disabled_title">الحظر الجزئي متوقف</string>
     <string name="tamper_shortstop_disabled_text">تم إيقاف حظر الفيديوهات القصيرة بعد إعادة تشغيل الجهاز. أعد تفعيله من إعدادات إمكانية الوصول للاستمرار بحظر الريلز والشورتات وتيك توك.</string>
     <string name="feature_permission_removal_blocked">تم حظر إزالة الأذونات</string>
     <string name="card_how_ai_title">كيف يعمل المسح بالذكاء الاصطناعي</string>
@@ -233,7 +228,10 @@
     <string name="status_grant_permissions">امنح جميع الأذونات لتفعيل الدرع.</string>
     <string name="perm_accessibility">خدمة إمكانية الوصول</string>
     <string name="desc_accessibility">مطلوب لاكتشاف فتح التطبيقات المحظورة وفرض شاشات الحظر.</string>
+    <string name="perm_accessibility_desc">يسمح بحظر الخلاصات القصيرة والتطبيقات تلقائياً</string>
     <string name="instruction_accessibility">الإعدادات ← إمكانية الوصول ← الخدمات المثبتة ← جارديان</string>
+    <string name="status_granted">ممنوح</string>
+    <string name="status_required">مطلوب</string>
     <string name="perm_vpn">إذن VPN</string>
     <string name="desc_vpn">مطلوب لحظر الإباحية لفلترة حركة المرور على الويب وفرض البحث الآمن.</string>
     <string name="instruction_vpn">يُطلب تلقائيًا عند تفعيل حظر الإباحية</string>
@@ -360,24 +358,6 @@
     <!-- تصدير/استيراد -->
     <string name="export_title">تصدير / استيراد</string>
 
-    <!-- التعلم الذاتي (توقيعات الفيديو القصير المكتشفة تلقائياً) -->
-    <string name="learner_title">التوقيعات المكتشفة تلقائياً</string>
-    <string name="learner_subtitle">يتعلم حارس النفس تطبيقات الفيديو القصير الجديدة تلقائياً عند ملاحظة مشغّل بملء الشاشة. يُفعَّل التوقيع بعد 5 مشاهدات موزّعة على 24 ساعة.</string>
-    <string name="learner_enabled_label">تفعيل التعلم التلقائي</string>
-    <string name="learner_enabled_summary">عند التفعيل، يسجّل النظام أسطح مشغّل بملء الشاشة في التطبيقات غير المعروفة، ويبدأ بحظرها بعد تأكيد التوقيع.</string>
-    <string name="learner_empty">لا توجد توقيعات مكتسبة بعد. افتح بعض تطبيقات الفيديو القصير وأعد المحاولة.</string>
-    <string name="learner_promoted">مفعَّل</string>
-    <string name="learner_candidate">قيد التقييم (%1$d / %2$d مشاهدة)</string>
-    <string name="learner_last_seen">آخر ظهور %1$s</string>
-    <string name="learner_first_seen">أول ظهور %1$s</string>
-    <string name="learner_view_ids">معرّفات العرض</string>
-    <string name="learner_class_names">أسماء الكلاسات</string>
-    <string name="learner_forget">نسيان</string>
-    <string name="learner_forget_all">نسيان الكل</string>
-    <string name="learner_clear_confirm_title">نسيان جميع التوقيعات المكتشفة؟</string>
-    <string name="learner_clear_confirm_message">سيتوقف حارس النفس عن حظر أي تطبيق تم اكتشافه تلقائياً. يمكنك إعادة التفعيل بفتح التطبيق مجدداً.</string>
-    <string name="learner_clear_confirm_yes">نسيان الكل</string>
-    <string name="learner_clear_confirm_no">إلغاء</string>
     <string name="export_card_title">تصدير قوائم الحظر</string>
     <string name="export_card_desc">احفظ القائمة السوداء والبيضاء في ملف</string>
     <string name="export_btn">تصدير</string>
@@ -632,7 +612,7 @@
     <string name="alert_new_app_installed">تم تثبيت تطبيق جديد: %1$s</string>
     <string name="channel_remote_commands">الأوامر عن بُعد</string>
     <string name="channel_remote_commands_desc">إشعارات الأوامر الواردة من لوحة تحكم الوالدين</string>
-    <string name="guardian_accessibility_desc">يستخدم تطبيق Guardian خدمة إمكانية الوصول لكشف وحظر المحتوى المشتت أو الضار في الوقت الفعلي عبر التطبيقات ومواقع الويب. لا يتم جمع أو تخزين أي بيانات شخصية.</string>
+
 
     <!-- Safe Search Mode -->
     <string name="label_safe_search_mode">وضع البحث الآمن</string>
@@ -646,6 +626,12 @@
     <!-- BATCH-Q: Family DNS provider display names (home badge) -->
     <string name="family_dns_opendns">OpenDNS FamilyShield</string>
     <string name="family_dns_cloudflare">Cloudflare للعائلات</string>
-    <string name="family_dns_cleanbrowsing_family">CleanBrowsing العائلي</string>
-    <string name="family_dns_cleanbrowsing_adult">CleanBrowsing للبالغين</string>
+    <string name="family_dns_cleanbrowsing_family">Cloudflare العائلي</string>
+    <string name="family_dns_cleanbrowsing_adult">Cloudflare للبالغين</string>
+
+    <!-- Settings Block Overlay -->
+    <string name="settings_block_app_info_title">⛔ تم حظر الوصول</string>
+    <string name="settings_block_app_info_desc">لا يمكنك الوصول إلى إعدادات GuardSoul أثناء تفعيل حماية الإلغاء.</string>
+    <string name="settings_block_device_admin_title">⛔ تم حظر الوصول</string>
+    <string name="settings_block_device_admin_desc">إعدادات مشرف الجهاز محظورة لحماية GuardSoul.</string>
 </resources>

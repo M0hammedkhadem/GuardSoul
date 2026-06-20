@@ -3,93 +3,77 @@ package com.agon.app.viewmodel
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.agon.app.AppBlockerService
-import com.agon.app.BlocklistItem
-
 import com.agon.app.guardianApp
-import com.agon.app.GuardianApp
-import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 
 class ListsViewModel(application: Application) : AndroidViewModel(application) {
     private val repo = (application.guardianApp()!!).repository
+    private val settings = repo.getAppSettings()
 
-    private val _selectedListType = MutableStateFlow("blacklist")
-    val selectedListType: StateFlow<String> = _selectedListType.asStateFlow()
+    private val _isBlacklist = MutableStateFlow(true)
+    val isBlacklist: StateFlow<Boolean> = _isBlacklist.asStateFlow()
 
-    private val _selectedCategory = MutableStateFlow("keywords")
-    val selectedCategory: StateFlow<String> = _selectedCategory.asStateFlow()
+    private val _selectedCategory = MutableStateFlow(ListCategory.KEYWORDS)
+    val selectedCategory: StateFlow<ListCategory> = _selectedCategory.asStateFlow()
 
-    val currentListType: String get() = _selectedListType.value
-    val currentCategory: String get() = _selectedCategory.value
+    val blockedApps: StateFlow<Set<String>> = settings.blockedAppsFlow
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptySet())
 
-    @OptIn(ExperimentalCoroutinesApi::class)
-    val items: StateFlow<List<BlocklistItem>> = combine(
-        _selectedListType, _selectedCategory
-    ) { type, cat -> type to cat }
-        .flatMapLatest { (type, cat) -> repo.getBlocklistFlow(type, cat) }
-        .map { entities -> entities.map { BlocklistItem.fromEntity(it) }.distinctBy { it.id } }
-        .distinctUntilChanged()
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    val blockedWebsites: StateFlow<Set<String>> = settings.blockedWebsitesFlow
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptySet())
 
-    @OptIn(ExperimentalCoroutinesApi::class)
-    private fun countFor(category: String): StateFlow<Int> =
-        _selectedListType.flatMapLatest { type ->
-            repo.getBlocklistFlow(type, category).map { it.size }
-        }.distinctUntilChanged().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
+    // Keywords now from Room DB via repository
+    val blockedKeywords: StateFlow<Set<String>> = repo.getBlacklistKeywords()
+        .map { it.toSet() }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptySet())
 
-    val keywordsCount = countFor("keywords")
-    val websitesCount = countFor("websites")
-    val appsCount = countFor("apps")
+    fun setBlacklist(value: Boolean) {
+        _isBlacklist.value = value
+    }
 
-    fun setListType(type: String) { _selectedListType.value = type }
-    fun setCategory(cat: String) { _selectedCategory.value = cat }
+    fun setCategory(category: ListCategory) {
+        _selectedCategory.value = category
+    }
 
-    fun addItem(value: String, label: String? = null) {
+    fun addItem(item: String) {
+        if (item.isBlank()) return
         viewModelScope.launch {
-            val item = BlocklistItem.create(
-                listType = _selectedListType.value,
-                category = _selectedCategory.value,
-                value = value,
-                label = label,
-            )
-            repo.addBlocklistItem(item.toEntity())
-            notifyAppBlocker(item.listType, item.category)
+            when (_selectedCategory.value) {
+                ListCategory.APPS -> {
+                    val current = settings.blockedAppsFlow.first()
+                    settings.setBlockedApps(current + item)
+                }
+                ListCategory.WEBSITES -> {
+                    val current = settings.blockedWebsitesFlow.first()
+                    settings.setBlockedWebsites(current + item)
+                }
+                ListCategory.KEYWORDS -> {
+                    repo.addKeyword(item, isWhitelist = false)
+                }
+            }
         }
     }
 
-    fun addItem(item: BlocklistItem) {
+    fun removeItem(item: String) {
         viewModelScope.launch {
-            repo.addBlocklistItem(item.toEntity())
-            notifyAppBlocker(item.listType, item.category)
+            when (_selectedCategory.value) {
+                ListCategory.APPS -> {
+                    val current = settings.blockedAppsFlow.first()
+                    settings.setBlockedApps(current - item)
+                }
+                ListCategory.WEBSITES -> {
+                    val current = settings.blockedWebsitesFlow.first()
+                    settings.setBlockedWebsites(current - item)
+                }
+                ListCategory.KEYWORDS -> {
+                    repo.removeKeyword(item, isWhitelist = false)
+                }
+            }
         }
     }
+}
 
-    fun removeItem(id: Long) {
-        viewModelScope.launch {
-            repo.removeBlocklistItemById(id)
-            notifyAppBlocker(_selectedListType.value, _selectedCategory.value)
-        }
-    }
-
-    fun toggleItem(item: BlocklistItem) {
-        viewModelScope.launch {
-            val entity = repo.getBlocklistItemById(item.id) ?: return@launch
-            repo.addBlocklistItem(entity.copy(enabled = !entity.enabled))
-            notifyAppBlocker(item.listType, item.category)
-        }
-    }
-
-    fun updateItem(item: BlocklistItem) {
-        viewModelScope.launch {
-            repo.addBlocklistItem(item.toEntity().copy(id = item.id))
-            notifyAppBlocker(item.listType, item.category)
-        }
-    }
-
-    private fun notifyAppBlocker(listType: String, @Suppress("UNUSED_PARAMETER") category: String) {
-        val ctx = getApplication<GuardianApp>()
-        AppBlockerService.reloadBlocklist(ctx)
-    }
+enum class ListCategory {
+    APPS, WEBSITES, KEYWORDS
 }

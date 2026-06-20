@@ -1,20 +1,11 @@
 package com.agon.app
 
 import android.app.Activity
-import android.app.admin.DevicePolicyManager
-import android.content.ComponentName
 import android.content.Context
-import android.content.Intent
-import android.net.Uri
-import android.net.VpnService
-import android.os.Build
 import android.os.Bundle
-import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -29,83 +20,45 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.LifecycleEventObserver
-import androidx.lifecycle.compose.LocalLifecycleOwner
-import androidx.lifecycle.lifecycleScope
-import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
-import com.agon.app.account.AuthRepository
-import com.agon.app.account.CloudSyncRepository
-import com.agon.app.account.UserSession
-import com.agon.app.analytics.AnalyticsManager
-import com.agon.app.analytics.InAppUpdater
-import com.agon.app.analytics.ReviewPrompt
-import com.agon.app.billing.BillingManager
-import com.agon.app.consent.ConsentManager
 import com.agon.app.ui.components.PinGate
 import com.agon.app.ui.screens.*
+import com.agon.app.ui.theme.*
 import com.agon.app.utils.AccessibilityUtils
 import com.agon.app.utils.PermissionUtils
-import com.agon.app.ui.theme.*
 import com.agon.app.viewmodel.*
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.launch
-import org.koin.android.ext.android.inject
-import timber.log.Timber
 
 class MainActivity : ComponentActivity() {
-    private val billingManager: BillingManager by inject()
-    private val analyticsManager: AnalyticsManager by inject()
-    private val authRepository: AuthRepository by inject()
-    private val cloudSync: CloudSyncRepository by inject()
-    private val consentManager: ConsentManager by inject()
-    private val reviewPrompt: ReviewPrompt by inject()
-    private val inAppUpdater: InAppUpdater by inject()
-
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
-
-        val app = application as GuardianApp
-
-        // Try to request GDPR consent early. The form only shows in EEA/UK
-        // and only on the first launch; on subsequent launches this is a
-        // near-instant no-op.
-        lifecycleScope.launch {
-            runCatching { consentManager.ensureConsent(this@MainActivity) }
-                .onFailure { Timber.w(it, "ConsentManager failed") }
-        }
-
-        // Check for a Play Store update. Resumes any in-progress download.
-        lifecycleScope.launch {
-            runCatching { inAppUpdater.checkForUpdate(this@MainActivity) }
-                .onFailure { Timber.w(it, "InAppUpdater check failed") }
-        }
-
+        (application as GuardianApp).setCurrentActivity(this)
+        handleIntent(intent)
         setContent {
             AgonAppTheme {
+                val app = application as GuardianApp
                 val onboardingComplete by produceState<Boolean?>(initialValue = null) {
                     value = app.repository.getAppSettings().isOnboardingComplete()
                 }
                 val isComplete = onboardingComplete ?: false
                 if (onboardingComplete != null) {
-                    MainApp(
-                        initialOnboardingComplete = isComplete,
-                        billingManager = billingManager,
-                        analyticsManager = analyticsManager,
-                        authRepository = authRepository,
-                        cloudSync = cloudSync,
-                        reviewPrompt = reviewPrompt
-                    )
+                    MainApp(initialOnboardingComplete = isComplete)
                 } else {
                     Box(
                         modifier = Modifier.fillMaxSize().background(background),
@@ -118,6 +71,34 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    override fun onNewIntent(intent: android.content.Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleIntent(intent)
+    }
+
+    private fun handleIntent(intent: android.content.Intent?) {
+        if (intent?.action == "com.agon.app.REACTIVATE_DEVICE_ADMIN") {
+            com.agon.app.utils.ServiceManager.activateDeviceAdmin(this)
+        }
+    }
+
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: android.content.Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == 1001) {
+            com.agon.app.utils.ServiceManager.handleMediaProjectionResult(this, resultCode, data, requestCode)
+        } else if (requestCode == com.agon.app.utils.ServiceManager.REQUEST_VPN_PERMISSION ||
+            requestCode == com.agon.app.utils.ServiceManager.REQUEST_VPN_FROM_SHIELD
+        ) {
+            com.agon.app.utils.ServiceManager.handleVpnPermissionResult(this, resultCode)
+        }
+    }
+
+    override fun onDestroy() {
+        (application as GuardianApp).setCurrentActivity(null)
+        super.onDestroy()
+    }
+
     override fun attachBaseContext(base: Context) {
         super.attachBaseContext(LanguageManager.apply(base))
     }
@@ -126,11 +107,6 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun MainApp(
     initialOnboardingComplete: Boolean = false,
-    billingManager: BillingManager,
-    analyticsManager: AnalyticsManager,
-    authRepository: AuthRepository,
-    cloudSync: CloudSyncRepository,
-    reviewPrompt: ReviewPrompt
 ) {
     val navController = rememberNavController()
     val context = LocalContext.current
@@ -140,17 +116,11 @@ fun MainApp(
 
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
-    val isBottomNavVisible = currentRoute in listOf("home", "social", "content", "lists", "statistics", "profile")
+    val isBottomNavVisible = currentRoute in listOf("home", "lists", "content", "social")
 
     val onboardingComplete by settings.onboardingCompleteFlow.collectAsState(initial = initialOnboardingComplete)
     val pinHash by settings.pinHashFlow.collectAsState(initial = "")
     val hasPinSet = pinHash.isNotBlank()
-    val authUserId by settings.authUserIdFlow.collectAsState(initial = "")
-    val cloudSyncEnabled by settings.cloudSyncEnabledFlow.collectAsState(initial = false)
-    val cloudLastSyncAt by settings.cloudLastSyncAtFlow.collectAsState(initial = 0L)
-    val currentSession = remember(authUserId) {
-        if (authUserId.isBlank()) UserSession.SignedOut else authRepository.currentSession()
-    }
 
     LaunchedEffect(onboardingComplete) {
         if (onboardingComplete) {
@@ -176,13 +146,11 @@ fun MainApp(
         ) {
             composable("onboarding") {
                 val lifecycleOwner = LocalLifecycleOwner.current
-
                 val accessibilityGranted by settings.permAccessibilityFlow.collectAsState(initial = false)
-                val overlayGranted by settings.permOverlayFlow.collectAsState(initial = false)
-                val usageAccessGranted by settings.permUsageFlow.collectAsState(initial = false)
-                val deviceAdminGranted by settings.permAdminFlow.collectAsState(initial = false)
-                val vpnGranted by settings.permVpnFlow.collectAsState(initial = false)
-                val notificationGranted by settings.permNotificationsFlow.collectAsState(initial = false)
+
+                LaunchedEffect(Unit) {
+                    PermissionUtils.syncPermissionsWithCache(context, settings)
+                }
 
                 DisposableEffect(lifecycleOwner) {
                     val observer = LifecycleEventObserver { _, event ->
@@ -194,27 +162,8 @@ fun MainApp(
                     onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
                 }
 
-                val vpnLauncher = rememberLauncherForActivityResult(
-                    contract = ActivityResultContracts.StartActivityForResult()
-                ) { result ->
-                    if (result.resultCode == Activity.RESULT_OK) {
-                        PermissionUtils.syncPermissionsWithCache(context, settings)
-                    }
-                }
-
-                val adminLauncher = rememberLauncherForActivityResult(
-                    contract = ActivityResultContracts.StartActivityForResult()
-                ) {
-                    PermissionUtils.syncPermissionsWithCache(context, settings)
-                }
-
                 OnboardingScreen(
                     accessibilityGranted = accessibilityGranted,
-                    vpnGranted = vpnGranted,
-                    deviceAdminGranted = deviceAdminGranted,
-                    overlayGranted = overlayGranted,
-                    usageAccessGranted = usageAccessGranted,
-                    notificationGranted = notificationGranted,
                     initialLanguage = LanguageManager.currentLanguageCode,
                     onSetName = { name ->
                         scope.launch {
@@ -231,20 +180,6 @@ fun MainApp(
                     onComplete = {
                         scope.launch {
                             settings.setOnboardingComplete()
-                            analyticsManager.logOnboardingCompleted()
-                            // Trigger cloud sync (anonymously) so the user
-                            // doesn't lose their first session on reinstall.
-                            // FIRE-FORGET-LOG: previously swallowed
-                            // exceptions silently. If Firebase auth is
-                            // down (e.g. no network on first launch) we
-                            // want to know in the logs so support can
-                            // diagnose "cloud sync never worked" reports.
-                            runCatching { authRepository.signInAnonymously() }
-                                .onFailure { e ->
-                                    com.agon.app.utils.AppLogger.w(
-                                        "MainActivity: post-onboarding anonymous sign-in failed: ${e.message}"
-                                    )
-                                }
                             (context as Activity).recreate()
                         }
                     },
@@ -252,47 +187,6 @@ fun MainApp(
                         when (key) {
                             "accessibility" -> {
                                 AccessibilityUtils.openAccessibilitySettings(context)
-                            }
-                            "vpn" -> {
-                                val intent = VpnService.prepare(context)
-                                if (intent != null) {
-                                    vpnLauncher.launch(intent)
-                                } else {
-                                    PermissionUtils.syncPermissionsWithCache(context, settings)
-                                }
-                            }
-                            "device_admin" -> {
-                                val intent = Intent(DevicePolicyManager.ACTION_ADD_DEVICE_ADMIN).apply {
-                                    putExtra(DevicePolicyManager.EXTRA_DEVICE_ADMIN, ComponentName(context, GuardianDeviceAdminReceiver::class.java))
-                                    putExtra(DevicePolicyManager.EXTRA_ADD_EXPLANATION, context.getString(R.string.device_admin_explanation))
-                                }
-                                adminLauncher.launch(intent)
-                            }
-                            "overlay" -> {
-                                val intent = Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION).apply {
-                                    data = Uri.parse("package:${context.packageName}")
-                                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                                }
-                                context.startActivity(intent)
-                            }
-                            "usage_access" -> {
-                                val intent = Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS).apply {
-                                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                                }
-                                try {
-                                    context.startActivity(intent)
-                                } catch (e: Exception) {
-                                    context.startActivity(Intent(Settings.ACTION_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-                                }
-                            }
-                            "notifications" -> {
-                                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                                    Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).apply {
-                                        putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
-                                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                                        context.startActivity(this)
-                                    }
-                                }
                             }
                         }
                     },
@@ -316,24 +210,20 @@ fun MainApp(
                 )
             }
 
+            composable("lists") {
+                val vm: ListsViewModel = viewModel()
+                ListsScreen(vm = vm)
+            }
+
+            composable("content") {
+                val vm: ContentViewModel = viewModel()
+                ContentScreen(vm = vm)
+            }
+
             composable("social") {
                 PinGate(hasPinSet = hasPinSet, storedHash = pinHash) {
                     val vm: SocialViewModel = viewModel()
                     SocialScreen(vm = vm)
-                }
-            }
-
-            composable("content") {
-                PinGate(hasPinSet = hasPinSet, storedHash = pinHash) {
-                    val vm: ContentViewModel = viewModel()
-                    ContentScreen(vm = vm)
-                }
-            }
-
-            composable("lists") {
-                PinGate(hasPinSet = hasPinSet, storedHash = pinHash) {
-                    val vm: ListsViewModel = viewModel()
-                    ListsScreen(vm = vm)
                 }
             }
 
@@ -346,160 +236,11 @@ fun MainApp(
                 PinGate(hasPinSet = hasPinSet, storedHash = pinHash) {
                     SettingsScreen(vm = vm,
                         onNavigateToSocial = { navController.navigate("social") },
-                        onNavigateToContent = { navController.navigate("content") },
-                        onNavigateToLists = { navController.navigate("lists") },
                         onNavigateToPermissions = { navController.navigate("permissions") },
-                        onNavigateToProfile = { navController.navigate("profile") },
                         onNavigateToPinSetup = { navController.navigate("pin_setup") },
-                        onNavigateToSchedule = { navController.navigate("schedule") },
-                        onNavigateToTimeLimits = { navController.navigate("time_limits") },
-                        onNavigateToStatistics = { navController.navigate("statistics") },
-                        onNavigateToLearner = { navController.navigate("learner") },
-                        onNavigateToExportImport = { navController.navigate("export_import") },
-                        onNavigateToAccount = { navController.navigate("account") },
-                        onNavigateToUpgrade = { navController.navigate("upgrade") },
-                        onNavigateToPrivacy = { navController.navigate("privacy") },
-                        onNavigateToTerms = { navController.navigate("terms") },
                         onBack = { navController.popBackStack() }
                     )
                 }
-            }
-
-            composable("profile") {
-                val vm: ProfileViewModel = viewModel()
-                ProfileScreen(vm = vm, onBack = { navController.popBackStack() })
-            }
-
-            composable("schedule") {
-                PinGate(hasPinSet = hasPinSet, storedHash = pinHash) {
-                    val vm: ScheduleViewModel = viewModel()
-                    ScheduleScreen(vm = vm, onBack = { navController.popBackStack() })
-                }
-            }
-
-            composable("time_limits") {
-                val vm: TimeLimitsViewModel = viewModel()
-                PinGate(hasPinSet = hasPinSet, storedHash = pinHash) {
-                    TimeLimitsScreen(vm = vm, onBack = { navController.popBackStack() })
-                }
-            }
-
-            composable("statistics") {
-                val vm: StatisticsViewModel = viewModel()
-                StatisticsScreen(vm = vm, onBack = { navController.popBackStack() })
-            }
-
-            composable("learner") {
-                LearnerScreen(onBack = { navController.popBackStack() })
-            }
-
-            composable("export_import") {
-                PinGate(hasPinSet = hasPinSet, storedHash = pinHash) {
-                    ExportImportScreen(onBack = { navController.popBackStack() })
-                }
-            }
-
-            composable("upgrade") {
-                UpgradeScreen(
-                    billingManager = billingManager,
-                    analytics = analyticsManager,
-                    onClose = { navController.popBackStack() }
-                )
-            }
-
-            composable("auth_signin") {
-                AuthScreen(
-                    mode = AuthMode.SignIn,
-                    onAuthSuccess = { navController.popBackStack() },
-                    onBack = { navController.popBackStack() },
-                    onSignIn = { e, p ->
-                        runCatching { authRepository.signInWithEmail(e, p) }
-                            .onFailure { ex ->
-                                com.agon.app.utils.AppLogger.w(
-                                    "MainActivity: signInWithEmail failed: ${ex.message}"
-                                )
-                            }
-                            .map { }
-                    },
-                    onSignUp = { _, _, _ -> Result.success(Unit) },
-                    // Google One-Tap is not wired in this screen (would
-                    // need Credential Manager + a server-side
-                    // idToken). Returning success-with-no-op makes the
-                    // intent explicit and is the same shape the
-                    // previous "silently succeed" implementation took.
-                    // The disabled button stays a no-op, but the typed
-                    // Result means the AuthScreen will only navigate
-                    // when sign-in genuinely completed.
-                    onSignInWithGoogle = { Result.success(Unit) },
-                    // AuthRepository returns UserSession, but the screen
-                    // needs Result<Unit>. Anonymous sign-in is best-
-                    // effort: a `SignedOut` session is treated as
-                    // failure and surfaced to the user (so a Firebase
-                    // outage no longer lands them on Home with no
-                    // account record).
-                    onContinueAnonymously = {
-                        val session = authRepository.signInAnonymously()
-                        if (session is UserSession.SignedIn) Result.success(Unit)
-                        else Result.failure(IllegalStateException("Anonymous sign-in unavailable"))
-                    }
-                )
-            }
-
-            composable("auth_signup") {
-                AuthScreen(
-                    mode = AuthMode.SignUp,
-                    onAuthSuccess = { navController.popBackStack() },
-                    onBack = { navController.popBackStack() },
-                    onSignIn = { _, _ -> Result.success(Unit) },
-                    onSignUp = { e, p, n ->
-                        runCatching { authRepository.signUpWithEmail(e, p, n) }
-                            .onFailure { ex ->
-                                com.agon.app.utils.AppLogger.w(
-                                    "MainActivity: signUpWithEmail failed: ${ex.message}"
-                                )
-                            }
-                            .map { }
-                    },
-                    onSignInWithGoogle = { Result.success(Unit) },
-                    onContinueAnonymously = {
-                        val session = authRepository.signInAnonymously()
-                        if (session is UserSession.SignedIn) Result.success(Unit)
-                        else Result.failure(IllegalStateException("Anonymous sign-in unavailable"))
-                    }
-                )
-            }
-
-            composable("account") {
-                PinGate(hasPinSet = hasPinSet, storedHash = pinHash) {
-                    AccountScreen(
-                        session = currentSession,
-                        billingManager = billingManager,
-                        onBack = { navController.popBackStack() },
-                        onSignInClicked = { navController.navigate("auth_signin") },
-                        onSignOut = {
-                            // SIGN-OUT-SUSPEND: signOut() is now
-                            // a suspend function (no runBlocking).
-                            // Launch in the composable scope.
-                            scope.launch { authRepository.signOut() }
-                        },
-                        onOpenSubscription = { navController.navigate("upgrade") },
-                        onOpenPrivacy = { navController.navigate("privacy") },
-                        onOpenTerms = { navController.navigate("terms") },
-                        onToggleCloudSync = { enabled ->
-                            scope.launch { cloudSync.enable(enabled) }
-                        },
-                        cloudSyncEnabled = cloudSyncEnabled,
-                        cloudLastSyncAt = cloudLastSyncAt
-                    )
-                }
-            }
-
-            composable("privacy") {
-                PrivacyPolicyScreen(onBack = { navController.popBackStack() })
-            }
-
-            composable("terms") {
-                TermsOfServiceScreen(onBack = { navController.popBackStack() })
             }
         }
     }
@@ -509,14 +250,25 @@ fun MainApp(
 fun BottomNav(navController: NavHostController) {
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
-    val items = listOf(
-        BottomNavItem("home", Icons.Default.Shield, stringResource(R.string.nav_shield)),
-        BottomNavItem("social", Icons.Default.PhoneAndroid, stringResource(R.string.nav_social)),
-        BottomNavItem("content", Icons.Default.VisibilityOff, stringResource(R.string.nav_content)),
-        BottomNavItem("lists", Icons.AutoMirrored.Filled.List, stringResource(R.string.nav_lists)),
-        BottomNavItem("statistics", Icons.Default.BarChart, stringResource(R.string.nav_stats)),
-        BottomNavItem("profile", Icons.Default.Person, stringResource(R.string.nav_profile))
-    )
+    val layoutDirection = LocalLayoutDirection.current
+
+    // Unified visual order: Lists | Content | Social | Shield (Shield always far right)
+    // In RTL, Row lays out right-to-left, so we reverse the list for RTL
+    val items = if (layoutDirection == LayoutDirection.Rtl) {
+        listOf(
+            BottomNavItem("home", Icons.Default.Shield, stringResource(R.string.nav_shield)),
+            BottomNavItem("social", Icons.Default.PhoneAndroid, stringResource(R.string.nav_social)),
+            BottomNavItem("content", Icons.Default.VisibilityOff, stringResource(R.string.nav_content)),
+            BottomNavItem("lists", Icons.AutoMirrored.Filled.List, stringResource(R.string.nav_lists)),
+        )
+    } else {
+        listOf(
+            BottomNavItem("lists", Icons.AutoMirrored.Filled.List, stringResource(R.string.nav_lists)),
+            BottomNavItem("content", Icons.Default.VisibilityOff, stringResource(R.string.nav_content)),
+            BottomNavItem("social", Icons.Default.PhoneAndroid, stringResource(R.string.nav_social)),
+            BottomNavItem("home", Icons.Default.Shield, stringResource(R.string.nav_shield)),
+        )
+    }
     Surface(
         color = surface,
         border = BorderStroke(1.dp, cardBorder),

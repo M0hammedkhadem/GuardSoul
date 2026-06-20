@@ -1,10 +1,8 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">GuardSoul</string>
     <string name="accessibility_desc">GuardSoul Accessibility Service for content filtering</string>
-    <string name="guardian_accessibility_desc">GuardSoul Guardian Service for app monitoring</string>
-    <string name="shortstop_accessibility_desc">GuardSoul Shortstop Service for surgical blocking of Reels, Shorts, TikTok For-You, and Snapchat Spotlight. Detects addictive content inside social apps and masks only the short-form player surface — keeping messages, search, and the rest of the app available.</string>
-    <string name="accessibility_service_desc">GuardSoul content-filtering and uninstall-protection accessibility service. Scans the active window for blocked keywords and domains, watches system Settings to block uninstall attempts, and surgically detects short-form video surfaces (Reels, Shorts, TikTok For-You, Snapchat Spotlight, Twitter / X video) so only the addictive player is masked — messages, search, and the rest of each app stay available.</string>
+    <string name="accessibility_service_desc">GuardSoul content-filtering and uninstall-protection accessibility service. Scans the active window for blocked keywords and domains, watches system Settings to block uninstall attempts, and detects short-form video surfaces (Reels, Shorts, TikTok For-You, Snapchat Spotlight, Twitter / X video) so only the addictive player is masked — messages, search, and the rest of each app stay available.</string>
 
     <!-- Blocker status badge (home screen) -->
     <string name="blocker_status_title">Adult-site filter</string>
@@ -19,8 +17,8 @@
     <!-- BATCH-Q: Family DNS provider display names (home badge) -->
     <string name="family_dns_opendns">OpenDNS FamilyShield</string>
     <string name="family_dns_cloudflare">Cloudflare for Families</string>
-    <string name="family_dns_cleanbrowsing_family">CleanBrowsing Family</string>
-    <string name="family_dns_cleanbrowsing_adult">CleanBrowsing Adult</string>
+    <string name="family_dns_cleanbrowsing_family">Cloudflare Family</string>
+    <string name="family_dns_cleanbrowsing_adult">Cloudflare Adult</string>
 
     <!-- Test porn blocker dialog -->
     <string name="test_blocker_title">Filter diagnostics</string>
@@ -29,7 +27,7 @@
     <string name="test_blocker_shield_off">Shield is off — no filtering while inactive</string>
     <string name="test_blocker_toggle_off">Porn blocker toggle is off</string>
     <string name="test_blocker_toggle_state">Porn blocker toggle: %1$s</string>
-    <string name="test_blocker_dns_ok">Private DNS: CleanBrowsing Family</string>
+    <string name="test_blocker_dns_ok">Private DNS: Cloudflare Family</string>
     <string name="test_blocker_dns_pending">Private DNS: not yet configured</string>
     <string name="test_blocker_vpn_ok">Local VPN: established</string>
     <string name="test_blocker_vpn_pending">Local VPN: not established (grant VPN consent in System Settings)</string>
@@ -37,27 +35,19 @@
     <string name="test_blocker_a11y_missing">Accessibility service: not bound — keyword filter disabled</string>
     <string name="test_blocker_keyword_count">Keyword entries: %1$d</string>
     <string name="test_blocker_domain_count">Domain entries: %1$d</string>
-    <string name="shortstop_mask_title">%1$s paused</string>
-    <string name="shortstop_mask_subtitle">We hid the addictive feed. Tap to dismiss, or take a break.</string>
-    <string name="shortstop_mask_close">Close</string>
-    <string name="shortstop_mask_take_break">Take 5-min break</string>
     <string name="shortstop_reason_break">Break time. Come back in a few minutes.</string>
     <string name="shortstop_reason_quota">Daily quota reached for short-form content.</string>
     <string name="shortstop_reason_hours">%1$s is paused during your focus hours.</string>
-    <string name="shortstop_settings_title">Surgical blocking</string>
-    <string name="shortstop_settings_subtitle">Mask only the short-form player — keep the rest of the app working.</string>
+    <string name="shortstop_settings_title">Partial blocking</string>
+    <string name="shortstop_settings_subtitle">Block short-form feeds and redirect you back — keep the rest of the app working.</string>
     <string name="shortstop_quota_label">Daily short-form quota</string>
     <string name="shortstop_quota_summary">%1$d min per day (0 = unlimited)</string>
     <string name="shortstop_break_interval_label">Break reminder</string>
     <string name="shortstop_break_interval_summary">Every %1$d min of short-form browsing</string>
     <string name="shortstop_break_length_label">Break duration</string>
     <string name="shortstop_break_length_summary">Then a %1$d-min forced break</string>
-    <string name="shortstop_status_idle">Idle</string>
-    <string name="shortstop_status_scrolling">Scrolling fast</string>
-    <string name="shortstop_status_blocked">Blocked</string>
     <string name="shortstop_kickout_video">%1$s is blocked — you were sent to home</string>
     <string name="shortstop_kickout_section">%1$s section is blocked — you were sent to home</string>
-    <string name="shortstop_kickout_subtitle">Returning you to the home screen.</string>
 
     <!-- Navigation -->
     <string name="nav_shield">Shield</string>
@@ -115,7 +105,10 @@
 
     <string name="perm_accessibility">Accessibility Service</string>
     <string name="desc_accessibility">Required to detect prohibited content inside apps and browsers.</string>
+    <string name="perm_accessibility_desc">Allows blocking short-form feeds and apps automatically</string>
     <string name="instruction_accessibility">Settings â†’ Accessibility â†’ GuardSoul â†’ Enable</string>
+    <string name="status_granted">Granted</string>
+    <string name="status_required">Required</string>
 
     <string name="perm_vpn">VPN Connection</string>
     <string name="desc_vpn">Required for web-level porn filtering and safe search enforcement.</string>
@@ -141,7 +134,7 @@
     <string name="tamper_pin_failed_text">Multiple failed PIN attempts detected.</string>
     <string name="tamper_safemode_title">Safe Mode Detected</string>
     <string name="tamper_safemode_text">Device is in safe mode. Protection is active.</string>
-    <string name="tamper_shortstop_disabled_title">Surgical blocking is off</string>
+    <string name="tamper_shortstop_disabled_title">Partial blocking is off</string>
     <string name="tamper_shortstop_disabled_text">Short-form blocking was disabled after the device restarted. Re-enable it in Accessibility settings to keep Reels, Shorts, and TikTok blocked.</string>
     <string name="tamper_adb_title">ADB Access Alert</string>
     <string name="tamper_adb_text">USB debugging is enabled. This is a security risk.</string>
@@ -285,11 +278,18 @@
     <string name="card_ai_explorer_subtitle">Detect NSFW content on screen</string>
     <string name="card_porn_blocker_title">Porn Blocker</string>
     <string name="card_porn_blocker_subtitle">DNS-level blocking of adult websites</string>
-    <string name="dns_blocking_desc">DNS-level blocking of adult websites via CleanBrowsing servers</string>
+    <string name="dns_blocking_desc">DNS-level blocking of adult websites via Cloudflare servers</string>
     <string name="card_strong_protection_title">Strong Protection</string>
     <string name="card_strong_protection_subtitle">Lock shield until PIN is entered</string>
     <string name="card_trial_title">Trial Mode</string>
     <string name="card_trial_subtitle">Disable deactivation countdown</string>
+    <string name="test_mode_title">Test Mode</string>
+    <string name="test_mode_subtitle">Try features without shield countdown</string>
+    <string name="test_mode_on">ON</string>
+    <string name="test_mode_off">OFF</string>
+    <string name="test_mode_on_desc">Features active for testing (no countdown)</string>
+    <string name="test_mode_off_desc">Tap to enable test mode</string>
+    <string name="test_mode_shield_active">Shield is active — test mode disabled</string>
     <string name="card_delay_title">Deactivation Delay</string>
     <string name="card_delay_subtitle">Wait time before shield turns off</string>
     <string name="card_uninstall_title">Uninstall Protection</string>
@@ -339,24 +339,6 @@
     <!-- Export / Import -->
     <string name="export_title">Export &amp; Import</string>
 
-    <!-- Self-Learning (auto-discovered short-form signatures) -->
-    <string name="learner_title">Auto-Learned Signatures</string>
-    <string name="learner_subtitle">GuardSoul learns new short-video apps automatically when it sees a full-screen player. A signature is promoted after 5 hits spread across 24 hours.</string>
-    <string name="learner_enabled_label">Enable auto-learning</string>
-    <string name="learner_enabled_summary">When on, the system records full-screen player surfaces in apps we don\'t yet know about, and starts blocking them once a signature is confirmed.</string>
-    <string name="learner_empty">No learned signatures yet. Open a few short-video apps and come back.</string>
-    <string name="learner_promoted">Promoted</string>
-    <string name="learner_candidate">Candidate (%1$d / %2$d hits)</string>
-    <string name="learner_last_seen">Last seen %1$s</string>
-    <string name="learner_first_seen">First seen %1$s</string>
-    <string name="learner_view_ids">View IDs</string>
-    <string name="learner_class_names">Class names</string>
-    <string name="learner_forget">Forget</string>
-    <string name="learner_forget_all">Forget all</string>
-    <string name="learner_clear_confirm_title">Forget all learned signatures?</string>
-    <string name="learner_clear_confirm_message">GuardSoul will stop blocking any app it has auto-discovered. You can re-enable them by opening the app again.</string>
-    <string name="learner_clear_confirm_yes">Forget all</string>
-    <string name="learner_clear_confirm_no">Cancel</string>
     <string name="export_card_title">Export Lists</string>
     <string name="export_card_desc">Save your blocklists to a backup file</string>
     <string name="export_format_title">File Format</string>
@@ -401,6 +383,9 @@
     <string name="lists_category_apps">Apps</string>
     <string name="lists_category_websites">Websites</string>
     <string name="lists_category_keywords">Keywords</string>
+    <string name="tab_apps">Apps</string>
+    <string name="tab_websites">Websites</string>
+    <string name="tab_keywords">Keywords</string>
     <string name="lists_add_to_blacklist">Add App to blacklist</string>
     <string name="lists_add_to_whitelist">Add App to whitelist</string>
     <string name="lists_empty_title">No items yet</string>
@@ -408,6 +393,7 @@
     <string name="lists_picker_title">Select App</string>
     <string name="lists_picker_search_hint">Search appsâ€¦</string>
     <string name="lists_add_new">Add new %1$s</string>
+    <string name="placeholder_add_new">Add newâ€¦</string>
 
     <!-- Mini status -->
     <string name="mini_shield">Shield</string>
@@ -641,11 +627,21 @@
     <!-- Status -->
     <string name="status_active">Active</string>
     <string name="status_inactive">Inactive</string>
+    <string name="tap_to_activate_shield">Tap to activate shield</string>
+    <string name="tap_to_deactivate_shield">Tap to deactivate shield</string>
+    <string name="shield_active_desc">Shield active. Tap to deactivate.</string>
+    <string name="shield_inactive_desc">Shield inactive. Tap to activate.</string>
 
     <!-- Countdown -->
     <string name="countdown_minutes_seconds">%1$d:%2$02d</string>
     <string name="countdown_hours_minutes_seconds">%1$dh %2$02d:%3$02d</string>
     <string name="countdown_days_hours_minutes_seconds">%1$dd %2$02d:%3$02d:%4$02d</string>
+
+    <!-- Settings Block Overlay -->
+    <string name="settings_block_app_info_title">⛔ Access Blocked</string>
+    <string name="settings_block_app_info_desc">You cannot access GuardSoul settings while uninstall protection is active.</string>
+    <string name="settings_block_device_admin_title">⛔ Access Blocked</string>
+    <string name="settings_block_device_admin_desc">Device admin settings are blocked to protect GuardSoul.</string>
 
     <!-- Trial mode -->
     <string name="trial_mode_title">Trial Mode</string>
@@ -817,5 +813,10 @@
     <string name="terms_section6_title">6. Changes to these terms</string>
     <string name="terms_section6_body">We may update these terms from time to time. Material changes will be announced through an in-app notice. Continued use of GuardSoul after a change constitutes acceptance of the new terms.</string>
     <string name="legal_effective_date">Last updated: 1 June 2026</string>
+
+    <!-- Blocked Apps -->
+    <string name="blocked_apps_title">Blocked Apps</string>
+    <string name="blocked_apps_add">Block an App</string>
+    <string name="btn_done">Done</string>
 </resources>
 

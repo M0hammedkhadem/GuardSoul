@@ -1,11 +1,11 @@
 package com.agon.app.ui.screens
 
+import android.app.Activity
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -22,56 +22,30 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.agon.app.LanguageManager
 import com.agon.app.R
 import com.agon.app.ui.theme.*
 import com.agon.app.guardianApp
-import com.agon.app.GuardianApp
-import com.agon.app.data.local.entity.AppLimitEntity
-import com.agon.app.data.local.entity.BlocklistItemEntity
 import com.agon.app.viewmodel.SettingsViewModel
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.lifecycle.viewmodel.compose.viewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(
     onNavigateToSocial: () -> Unit,
-    onNavigateToContent: () -> Unit,
-    onNavigateToLists: () -> Unit,
     onNavigateToPermissions: () -> Unit,
-    onNavigateToProfile: () -> Unit = {},
     onNavigateToPinSetup: () -> Unit = {},
-    onNavigateToSchedule: () -> Unit = {},
-    onNavigateToTimeLimits: () -> Unit = {},
-    onNavigateToStatistics: () -> Unit = {},
-    onNavigateToLearner: () -> Unit = {},
-    onNavigateToExportImport: () -> Unit = {},
-    onNavigateToAccount: () -> Unit = {},
-    onNavigateToUpgrade: () -> Unit = {},
-    onNavigateToPrivacy: () -> Unit = {},
-    onNavigateToTerms: () -> Unit = {},
     onBack: () -> Unit,
     vm: SettingsViewModel? = null
 ) {
     val context = LocalContext.current
-    val app = context.applicationContext as GuardianApp
+    val app = context.applicationContext as com.agon.app.GuardianApp
     val settings = app.repository.getAppSettings()
     val scrollState = rememberScrollState()
 
-    val shieldActive by settings.shieldActiveFlow.collectAsState(initial = false)
-    val pornBlockerActive by settings.pornBlockerFlow.collectAsState(initial = false)
-    val aiScannerActive by settings.aiScannerFlow.collectAsState(initial = false)
-    val uninstallProtectionActive by settings.uninstallProtectionFlow.collectAsState(initial = false)
-    val snapchatBlocked by settings.socialSnapchatFlow.collectAsState(initial = false)
-    val twitterBlocked by settings.socialTwitterFlow.collectAsState(initial = false)
-    val tiktokBlocked by settings.socialTiktokFlow.collectAsState(initial = false)
-    val instagramMode by settings.instagramModeFlow.collectAsState(initial = "off")
-    val youtubeMode by settings.youtubeModeFlow.collectAsState(initial = "off")
-    val facebookMode by settings.facebookModeFlow.collectAsState(initial = "off")
-    val instagramBlocked = instagramMode != "off"
-
-    val timeLimitedApps by app.repository.getAllAppLimits().collectAsState(initial = emptyList())
-    val blacklistedApps by app.repository.getBlocklistFlow("blacklist", "apps").collectAsState(initial = emptyList())
+    val strictMode by settings.strictModeFlow.collectAsState(initial = false)
+    val delayDays by settings.deactivationDelayFlow.collectAsState(initial = 0)
+    var showDelayDialog by remember { mutableStateOf(false) }
+    var showLanguageDialog by remember { mutableStateOf(false) }
 
     Scaffold(
         containerColor = background,
@@ -106,133 +80,9 @@ fun SettingsScreen(
                 Column {
                     SettingsRow(icon = Icons.Default.People, title = stringResource(R.string.row_social_media), onClick = onNavigateToSocial)
                     HorizontalDivider(color = cardBorder)
-                    SettingsRow(icon = Icons.Default.Security, title = stringResource(R.string.row_content_blocker), onClick = onNavigateToContent)
-                    HorizontalDivider(color = cardBorder)
-                    SettingsRow(icon = Icons.AutoMirrored.Filled.List, title = stringResource(R.string.row_blacklist), onClick = onNavigateToLists)
-                    HorizontalDivider(color = cardBorder)
                     SettingsRow(icon = Icons.Default.VpnKey, title = stringResource(R.string.row_permissions_settings), onClick = onNavigateToPermissions)
                     HorizontalDivider(color = cardBorder)
-                    SettingsRow(icon = Icons.Default.Person, title = stringResource(R.string.profile_title), onClick = onNavigateToProfile)
-                    HorizontalDivider(color = cardBorder)
-                    SettingsRow(icon = Icons.Default.AccountCircle, title = stringResource(R.string.account_title), onClick = onNavigateToAccount)
-                    HorizontalDivider(color = cardBorder)
-                    SettingsRow(icon = Icons.Default.Star, title = stringResource(R.string.upgrade_title), onClick = onNavigateToUpgrade)
-                    HorizontalDivider(color = cardBorder)
                     SettingsRow(icon = Icons.Default.Lock, title = stringResource(R.string.profile_pin_protection), onClick = onNavigateToPinSetup)
-                    HorizontalDivider(color = cardBorder)
-                    SettingsRow(icon = Icons.Default.Schedule, title = stringResource(R.string.schedule_title), onClick = onNavigateToSchedule)
-                    HorizontalDivider(color = cardBorder)
-                    SettingsRow(icon = Icons.Default.Timer, title = stringResource(R.string.timelimits_title), onClick = onNavigateToTimeLimits)
-                    HorizontalDivider(color = cardBorder)
-                    SettingsRow(icon = Icons.Default.BarChart, title = stringResource(R.string.statistics_title), onClick = onNavigateToStatistics)
-                    HorizontalDivider(color = cardBorder)
-                    SettingsRow(icon = Icons.Default.Psychology, title = stringResource(R.string.learner_title), onClick = onNavigateToLearner)
-                    HorizontalDivider(color = cardBorder)
-                    SettingsRow(icon = Icons.Default.FileUpload, title = stringResource(R.string.export_title), onClick = onNavigateToExportImport)
-                    HorizontalDivider(color = cardBorder)
-                    SettingsRow(icon = Icons.Default.Description, title = stringResource(R.string.privacy_title), onClick = onNavigateToPrivacy)
-                    HorizontalDivider(color = cardBorder)
-                    SettingsRow(icon = Icons.Default.Article, title = stringResource(R.string.terms_title), onClick = onNavigateToTerms)
-                }
-            }
-
-            HorizontalDivider(color = cardBorder, modifier = Modifier.padding(vertical = 16.dp))
-
-            Text(stringResource(R.string.section_status_overview), fontWeight = FontWeight.Bold, color = textSecondary, modifier = Modifier.padding(bottom = 12.dp, start = 4.dp))
-
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                StatusMiniCard(
-                    modifier = Modifier.weight(1f),
-                    icon = Icons.Default.Shield,
-                    title = stringResource(R.string.mini_shield),
-                    isActive = shieldActive,
-                    activeColor = success
-                )
-                StatusMiniCard(
-                    modifier = Modifier.weight(1f),
-                    icon = Icons.Default.VpnLock,
-                    title = stringResource(R.string.mini_vpn_filter),
-                    isActive = pornBlockerActive,
-                    activeColor = success
-                )
-            }
-            Spacer(modifier = Modifier.height(12.dp))
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                StatusMiniCard(
-                    modifier = Modifier.weight(1f),
-                    icon = Icons.Default.CenterFocusStrong,
-                    title = stringResource(R.string.mini_ai_scan),
-                    isActive = aiScannerActive,
-                    activeColor = accent
-                )
-                StatusMiniCard(
-                    modifier = Modifier.weight(1f),
-                    icon = Icons.Default.Lock,
-                    title = stringResource(R.string.mini_uninstall),
-                    isActive = uninstallProtectionActive,
-                    activeColor = danger
-                )
-            }
-
-            HorizontalDivider(color = cardBorder, modifier = Modifier.padding(vertical = 16.dp))
-
-            Text(stringResource(R.string.section_blocked_apps), fontWeight = FontWeight.Bold, color = textSecondary, modifier = Modifier.padding(bottom = 12.dp, start = 4.dp))
-
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = card),
-                border = BorderStroke(1.dp, cardBorder)
-            ) {
-                Column {
-                    BlockedAppRow(stringResource(R.string.app_instagram), instagramBlocked, "full")
-                    HorizontalDivider(color = cardBorder)
-                    BlockedAppRow(stringResource(R.string.app_snapchat), snapchatBlocked, "full")
-                    HorizontalDivider(color = cardBorder)
-                    BlockedAppRow(stringResource(R.string.app_twitter), twitterBlocked, "full")
-                    HorizontalDivider(color = cardBorder)
-                    BlockedAppRow(stringResource(R.string.app_tiktok), tiktokBlocked, "full")
-                    HorizontalDivider(color = cardBorder)
-                    BlockedAppRow(stringResource(R.string.app_youtube), youtubeMode != "off", youtubeMode)
-                    HorizontalDivider(color = cardBorder)
-                    BlockedAppRow(stringResource(R.string.app_facebook), facebookMode != "off", facebookMode)
-                }
-            }
-
-            if (timeLimitedApps.isNotEmpty()) {
-                Spacer(modifier = Modifier.height(24.dp))
-                Text(stringResource(R.string.section_time_limited_apps), fontWeight = FontWeight.Bold, color = textSecondary, modifier = Modifier.padding(bottom = 12.dp, start = 4.dp))
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(containerColor = card),
-                    border = BorderStroke(1.dp, cardBorder)
-                ) {
-                    Column {
-                        timeLimitedApps.forEachIndexed { index, limit ->
-                            SettingsRow(icon = Icons.Default.Timer, title = limit.appLabel.ifBlank { limit.packageName.substringAfterLast('.') }) {}
-                            if (index < timeLimitedApps.lastIndex) {
-                                HorizontalDivider(color = cardBorder)
-                            }
-                        }
-                    }
-                }
-            }
-
-            if (blacklistedApps.isNotEmpty()) {
-                Spacer(modifier = Modifier.height(24.dp))
-                Text(stringResource(R.string.section_blacklisted_apps), fontWeight = FontWeight.Bold, color = textSecondary, modifier = Modifier.padding(bottom = 12.dp, start = 4.dp))
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(containerColor = card),
-                    border = BorderStroke(1.dp, cardBorder)
-                ) {
-                    Column {
-                        blacklistedApps.forEachIndexed { index, item ->
-                            SettingsRow(icon = Icons.Default.Block, title = item.value.substringAfterLast('.')) {}
-                            if (index < blacklistedApps.lastIndex) {
-                                HorizontalDivider(color = cardBorder)
-                            }
-                        }
-                    }
                 }
             }
 
@@ -249,6 +99,65 @@ fun SettingsScreen(
                     SettingsRow(icon = Icons.Default.DeleteOutline, title = stringResource(R.string.btn_reset_statistics)) { vm?.resetStatistics() }
                     HorizontalDivider(color = cardBorder)
                     SettingsRow(icon = Icons.Default.Restore, title = stringResource(R.string.btn_reset_all_settings)) { vm?.resetAllSettings() }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+            Text("Protection", fontWeight = FontWeight.Bold, color = textSecondary, modifier = Modifier.padding(bottom = 12.dp, start = 4.dp))
+
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = card),
+                border = BorderStroke(1.dp, cardBorder)
+            ) {
+                Column {
+                    // Strict Mode toggle
+                    Row(
+                        modifier = Modifier.fillMaxWidth().clickable {
+                            vm?.setStrictMode(!strictMode)
+                        }.padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(imageVector = Icons.Default.Security, contentDescription = null, tint = primary, modifier = Modifier.size(24.dp))
+                        Spacer(modifier = Modifier.width(16.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(text = "Strict Mode", color = text, fontSize = 16.sp)
+                            Text(text = "Require PIN to change settings", color = textSecondary, fontSize = 12.sp)
+                        }
+                        Switch(
+                            checked = strictMode,
+                            onCheckedChange = { vm?.setStrictMode(it) },
+                            colors = SwitchDefaults.colors(checkedTrackColor = primary)
+                        )
+                    }
+                    HorizontalDivider(color = cardBorder)
+                    // Deactivation Delay chooser
+                    Row(
+                        modifier = Modifier.fillMaxWidth().clickable { showDelayDialog = true }.padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(imageVector = Icons.Default.HourglassEmpty, contentDescription = null, tint = primary, modifier = Modifier.size(24.dp))
+                        Spacer(modifier = Modifier.width(16.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(text = stringResource(R.string.card_delay_title), color = text, fontSize = 16.sp)
+                            Text(text = "Current: ${delayDays} days", color = textSecondary, fontSize = 12.sp)
+                        }
+                        Icon(Icons.Default.ChevronRight, contentDescription = null, tint = textMuted)
+                    }
+                    HorizontalDivider(color = cardBorder)
+                    // Language toggle
+                    Row(
+                        modifier = Modifier.fillMaxWidth().clickable { showLanguageDialog = true }.padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(imageVector = Icons.Default.Translate, contentDescription = null, tint = primary, modifier = Modifier.size(24.dp))
+                        Spacer(modifier = Modifier.width(16.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(text = "Language", color = text, fontSize = 16.sp)
+                            Text(text = LanguageManager.currentLanguageCode.uppercase(), color = textSecondary, fontSize = 12.sp)
+                        }
+                        Icon(Icons.Default.ChevronRight, contentDescription = null, tint = textMuted)
+                    }
                 }
             }
 
@@ -278,91 +187,140 @@ fun SettingsScreen(
                     Spacer(modifier = Modifier.height(16.dp))
                     Text(
                         text = stringResource(R.string.about_description),
-                        color = textSecondary,
-                        fontSize = 13.sp,
-                        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-                        lineHeight = 18.sp
+                        color = textSecondary, fontSize = 13.sp,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center, lineHeight = 18.sp
                     )
                 }
             }
-
             Spacer(modifier = Modifier.height(32.dp))
         }
     }
-}
 
-@Composable
-fun BlockedAppRow(name: String, isBlocked: Boolean, mode: String) {
-    Row(
-        modifier = Modifier.fillMaxWidth().padding(16.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(Icons.Default.Apps, contentDescription = null, tint = textMuted, modifier = Modifier.size(20.dp))
-            Spacer(modifier = Modifier.width(12.dp))
-            Text(name, color = text, fontSize = 15.sp)
-        }
+    // Delay selection dialog
+    if (showDelayDialog) {
+        AlertDialog(
+            onDismissRequest = { showDelayDialog = false },
+            title = { Text(stringResource(R.string.card_delay_title), fontWeight = FontWeight.Bold) },
+            text = {
+                Column {
+                    val options = listOf(0, 2, 7, 15, 30)
+                    options.forEach { days ->
+                        val selected = delayDays == days
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    vm?.setDeactivationDelay(days)
+                                    showDelayDialog = false
+                                }
+                                .padding(vertical = 12.dp, horizontal = 8.dp)
+                                .then(
+                                    if (selected) Modifier.background(
+                                        primary.copy(alpha = 0.1f),
+                                        RoundedCornerShape(8.dp)
+                                    ) else Modifier
+                                )
+                                .padding(horizontal = 12.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            RadioButton(
+                                selected = selected,
+                                onClick = {
+                                    vm?.setDeactivationDelay(days)
+                                    showDelayDialog = false
+                                },
+                                colors = RadioButtonDefaults.colors(selectedColor = primary)
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                when (days) {
+                                    0 -> stringResource(R.string.delay_no_delay)
+                                    2 -> stringResource(R.string.delay_2_days)
+                                    7 -> stringResource(R.string.delay_7_days)
+                                    15 -> stringResource(R.string.delay_15_days)
+                                    30 -> stringResource(R.string.delay_1_month)
+                                    else -> "$days days"
+                                },
+                                color = if (selected) primary else text,
+                                fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal
+                            )
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showDelayDialog = false }) {
+                    Text(stringResource(R.string.btn_cancel))
+                }
+            },
+            containerColor = surface,
+            shape = RoundedCornerShape(24.dp)
+        )
+    }
 
-        val badgeColor = if (!isBlocked) success else if (mode == "full") danger else warning
-        val badgeText = if (!isBlocked) stringResource(R.string.badge_open_upper) else if (mode == "full") stringResource(R.string.badge_blocked) else mode.uppercase()
-
-        Surface(
-            color = badgeColor.copy(alpha = 0.1f),
-            shape = RoundedCornerShape(4.dp),
-            border = BorderStroke(1.dp, badgeColor.copy(alpha = 0.3f))
-        ) {
-            Text(
-                text = badgeText,
-                color = badgeColor,
-                fontSize = 10.sp,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-            )
-        }
+    // Language selection dialog
+    if (showLanguageDialog) {
+        AlertDialog(
+            onDismissRequest = { showLanguageDialog = false },
+            title = { Text("Language", fontWeight = FontWeight.Bold) },
+            text = {
+                Column {
+                    val options = listOf("en" to "English", "ar" to "العربية")
+                    options.forEach { (code, label) ->
+                        val selected = LanguageManager.currentLanguageCode == code
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    LanguageManager.setLanguage(context, code)
+                                    (context as Activity).recreate()
+                                    showLanguageDialog = false
+                                }
+                                .padding(vertical = 12.dp, horizontal = 8.dp)
+                                .then(
+                                    if (selected) Modifier.background(
+                                        primary.copy(alpha = 0.1f),
+                                        RoundedCornerShape(8.dp)
+                                    ) else Modifier
+                                )
+                                .padding(horizontal = 12.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            RadioButton(
+                                selected = selected,
+                                onClick = {
+                                    LanguageManager.setLanguage(context, code)
+                                    (context as Activity).recreate()
+                                    showLanguageDialog = false
+                                },
+                                colors = RadioButtonDefaults.colors(selectedColor = primary)
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Text(label, color = if (selected) primary else text, fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal)
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showLanguageDialog = false }) {
+                    Text(stringResource(R.string.btn_cancel))
+                }
+            },
+            containerColor = surface,
+            shape = RoundedCornerShape(24.dp)
+        )
     }
 }
 
 @Composable
 fun SettingsRow(icon: androidx.compose.ui.graphics.vector.ImageVector, title: String, onClick: () -> Unit) {
     Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .padding(16.dp),
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick).padding(16.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Icon(imageVector = icon, contentDescription = null, tint = primary, modifier = Modifier.size(24.dp))
         Spacer(modifier = Modifier.width(16.dp))
         Text(text = title, color = text, fontSize = 16.sp, modifier = Modifier.weight(1f))
         Icon(Icons.Default.ChevronRight, contentDescription = null, tint = textMuted)
-    }
-}
-
-@Composable
-fun StatusMiniCard(modifier: Modifier, icon: androidx.compose.ui.graphics.vector.ImageVector, title: String, isActive: Boolean, activeColor: Color) {
-    Card(
-        modifier = modifier,
-        colors = CardDefaults.cardColors(containerColor = card),
-        border = BorderStroke(1.dp, if (isActive) activeColor.copy(alpha = 0.5f) else cardBorder)
-    ) {
-        Column(
-            modifier = Modifier.padding(16.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(40.dp)
-                    .clip(CircleShape)
-                    .background(if (isActive) activeColor.copy(alpha = 0.15f) else surfaceLight),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(imageVector = icon, contentDescription = null, tint = if (isActive) activeColor else textMuted)
-            }
-            Spacer(modifier = Modifier.height(12.dp))
-            Text(text = title, color = text, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-            Spacer(modifier = Modifier.height(4.dp))
-            Text(text = if (isActive) stringResource(R.string.status_active) else stringResource(R.string.status_inactive), color = if (isActive) activeColor else textMuted, fontSize = 12.sp)
-        }
     }
 }

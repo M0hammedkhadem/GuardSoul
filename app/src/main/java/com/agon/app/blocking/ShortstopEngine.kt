@@ -1,734 +1,522 @@
 package com.agon.app.blocking
 
 import android.accessibilityservice.AccessibilityService
-import android.graphics.Rect
-import android.os.Handler
-import android.os.Looper
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
-import android.widget.Toast
 import com.agon.app.GuardianApp
-import com.agon.app.R
-import com.agon.app.guardianApp
-import com.agon.app.utils.AppLogger
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import timber.log.Timber
 import java.util.concurrent.ConcurrentHashMap
 
-/**
- * Shortstop surgical short-video blocker engine.
- *
- * Extracted from the legacy [ShortstopAccessibilityService] so it can
- * run inside a single unified accessibility service
- * ([com.agon.app.services.GuardSoulAccessibilityService]) alongside
- * the [ContentFilterEngine], [UninstallGuardEngine], and [AiExplorerEngine].
- *
- * The engine is responsible for detecting Reels / Shorts / TikTok FYP
- * / Snapchat Spotlight / Twitter-X video surfaces and forcibly kicking
- * the user back to the launcher. It also runs the scroll-interception
- * and daily-quota layers, and the self-learning engine.
- *
- * The engine holds a reference to the host service so it can call
- * `performGlobalAction` and `rootInActiveWindow`. The host is owned
- * by the Android framework — never `null` while [onAccessibilityEvent]
- * is being invoked.
- */
+/** Called when a full app block is triggered */
+fun interface BlockOverlayHandler {
+    fun showBlockOverlay(pkg: String)
+}
+
 class ShortstopEngine(private val host: AccessibilityService) {
 
-    companion object {
-        /** Packages that have a curated [PatternMatcher.Signature]. */
-        val TARGET_PACKAGES: Set<String> = setOf(
-            "com.facebook.katana",
-            "com.facebook.lite",
-            "com.google.android.youtube",
-            "com.instagram.android",
-            "com.zhiliaoapp.musically",
-            "com.ss.android.ugc.trill",
-            "com.snapchat.android",
-            "com.twitter.android",
-            "com.x.android",
-        )
+    @Volatile var blockOverlayHandler: BlockOverlayHandler? = null
 
-        /** True when the current foreground package is a Shortstop target. */
-        fun isTarget(pkg: String?): Boolean = pkg != null && pkg in TARGET_PACKAGES
-    }
-
-    private val mainHandler = Handler(Looper.getMainLooper())
     private val serviceScope = CoroutineScope(Dispatchers.Default + SupervisorJob())
-
-    // --- Detection state --------------------------------------------------
-
     private val matcher = PatternMatcher()
-    private val fastDetector = FastDetector()
-    private val scrollInterception = ScrollInterception()
-    /** **BATCH-R**: Facebook-Reels-specific layered detector. */
-    private val facebookBlocker = FacebookBlockerEngine()
-    private val overlay by lazy { ShortsMaskOverlay(host) }
+    private val tempBan = TempBanManager.getInstance(host.applicationContext)
 
-    /**
-     * Self-learning engine. Lazily created (in [start]) because the
-     * [SignatureLearner] needs a [com.agon.app.data.settings.AppSettings]
-     * instance from the [GuardianApp] container, which isn't safe to
-     * read from a property initializer.
-     */
-    @Volatile private var learner: SignatureLearner? = null
+    // Cached YouTube signature for hot path — avoids map lookup on every event
+    private val youtubeSig: PatternMatcher.Signature? = matcher.signatureFor("com.google.android.youtube")
 
-    /** Per-package last block timestamp (anti-flicker / cooldown). */
-    private val lastBlockAt = ConcurrentHashMap<String, Long>()
+    private var ruleEngine = RuleEngine()
+    @Volatile private var currentConfig = RuleEngine.Config()
 
-    /**
-     * Per-package last kick-out timestamp. Prevents the back-press
-     * loop when one event triggers multiple times in quick
-     * succession.
-     */
-    private val lastKickAt = ConcurrentHashMap<String, Long>()
+    private val lastRedirectMs = ConcurrentHashMap<String, Long>()
+    private val feedBlockCooldownMs = 500L
+    private val youtubeFeedBlockCooldownMs = 200L  // aggressive for YouTube Shorts
+    private val fullBlockCooldownMs = 1500L
 
-    /**
-     * Per-package last TYPE_WINDOW_CONTENT_CHANGED timestamp. Used to
-     * throttle content-change events that fire dozens of times per
-     * second in apps like YouTube / Instagram.
-     */
-    private val lastContentChangeAt = ConcurrentHashMap<String, Long>()
+    // Throttle WINDOW_CONTENT_CHANGED per package (fires rapidly in YouTube/IG)
+    private val lastContentChangeMs = ConcurrentHashMap<String, Long>()
+    private val contentChangeThrottleMs = 200L
 
-    /** Per-package cached mode (per-app surgical / full / off). */
+    private var activeTrackingJob: Job? = null
+    private var lastTrackedPkg: String? = null
+
+    // Guardian Pattern: periodic re-verification every 1000ms
+    private val guardianHandler = android.os.Handler(android.os.Looper.getMainLooper())
+    private var guardianRunnable: Runnable? = null
+    private var isGuardianRunning = false
+
     @Volatile private var cachedShieldActive = false
     @Volatile private var cachedInstagramMode = "off"
     @Volatile private var cachedYoutubeMode = "off"
     @Volatile private var cachedFacebookMode = "off"
-    @Volatile private var cachedTiktokBlocked = false
     @Volatile private var cachedSnapchatBlocked = false
     @Volatile private var cachedTwitterBlocked = false
-    @Volatile private var cachedBlockedHourActive = false
-    @Volatile private var cachedDailyQuotaExceeded = false
-    @Volatile private var cachedBreakActive = false
-    @Volatile private var cachedDailyQuotaMinutes = BlockingConfig.DEFAULT_DAILY_QUOTA_MIN
-    @Volatile private var cachedBreakIntervalMinutes = 15
-    @Volatile private var cachedMinutesSpentToday = 0
+    @Volatile private var cachedTiktokBlocked = false
+    @Volatile private var cachedBlockedApps: Set<String> = emptySet()
 
-    /**
-     * Per-package timestamp at which the user *entered* a
-     * short-form surface. Used to compute minutes-spent on the
-     * surface so the daily quota can be enforced. We persist the
-     * accumulated minutes back to [AppSettings] on surface-left so
-     * the count survives process death / reboot.
-     */
-    private val surfaceEnteredMs = ConcurrentHashMap<String, Long>()
-
-    /** Public StateFlow the UI subscribes to. */
-    private val _status = MutableStateFlow(Status())
-    val status: StateFlow<Status> = _status.asStateFlow()
-
-    /** UI-facing status snapshot. */
-    data class Status(
-        val overlayShown: Boolean = false,
-        val lastSurface: PatternMatcher.Surface = PatternMatcher.Surface.UNKNOWN,
-        val lastConfidence: Float = 0f,
-        val lastReason: String = "idle",
-        val targetPackage: String? = null,
-    )
-
-    /** Subscribe to settings flows. Called from the host. */
     fun start() {
         serviceScope.launch {
-            try {
-                val app = host.applicationContext as GuardianApp
-                val settings = app.repository.getAppSettings()
-                // Initialise the self-learning engine. We honour the
-                // `learnerEnabled` flag from DataStore so the user
-                // can opt out of the auto-discovery in the debug
-                // screen.
-                val enabled = settings.learnerEnabledFlow.first()
-                if (enabled) {
-                    learner = SignatureLearner(settings).also { it.load() }
+            val app = host.applicationContext as GuardianApp
+            val settings = app.repository.getAppSettings()
+
+            // Initialize from current values to avoid race condition
+            cachedShieldActive = settings.shieldActiveFlow.first()
+            cachedInstagramMode = settings.instagramModeFlow.first()
+            cachedYoutubeMode = settings.youtubeModeFlow.first()
+            cachedFacebookMode = settings.facebookModeFlow.first()
+            cachedSnapchatBlocked = settings.socialSnapchatFlow.first()
+            cachedTwitterBlocked = settings.socialTwitterFlow.first()
+            cachedTiktokBlocked = settings.socialTiktokFlow.first()
+            cachedBlockedApps = settings.blockedAppsFlow.first()
+            Timber.d("ShortstopEngine initialized: shield=$cachedShieldActive, tiktok=$cachedTiktokBlocked, blockedApps=${cachedBlockedApps.size}")
+
+            launch { settings.shieldActiveFlow.collect { cachedShieldActive = it } }
+            launch { settings.instagramModeFlow.collect { cachedInstagramMode = it } }
+            launch { settings.youtubeModeFlow.collect { cachedYoutubeMode = it } }
+            launch { settings.facebookModeFlow.collect { cachedFacebookMode = it } }
+            launch { settings.socialSnapchatFlow.collect { cachedSnapchatBlocked = it } }
+            launch { settings.socialTwitterFlow.collect { cachedTwitterBlocked = it } }
+            launch { settings.socialTiktokFlow.collect { cachedTiktokBlocked = it } }
+            launch { settings.blockedAppsFlow.collect { cachedBlockedApps = it } }
+
+            launch {
+                combine(
+                    settings.shortstopDailyQuotaExceededFlow,
+                    settings.shortstopBreakActiveFlow,
+                    settings.shortstopMinutesSpentTodayFlow,
+                    settings.shortstopDailyQuotaMinutesFlow,
+                    settings.shortstopBreakIntervalMinutesFlow,
+                    settings.shortstopBreakLengthMinutesFlow,
+                    settings.shortstopBlockedHourActiveFlow
+                ) { flows: Array<Any> ->
+                    RuleEngine.Config(
+                        dailyQuotaExceeded = flows[0] as Boolean,
+                        breakActive = flows[1] as Boolean,
+                        minutesSpentToday = flows[2] as Int,
+                        dailyQuotaMinutes = flows[3] as Int,
+                        breakIntervalMinutes = flows[4] as Int,
+                        breakLengthMinutes = flows[5] as Int,
+                        blockedHourActive = flows[6] as Boolean
+                    )
+                }.collect {
+                    currentConfig = it
+                    ruleEngine = RuleEngine(it)
                 }
-                launch { settings.shieldActiveFlow.collect { cachedShieldActive = it } }
-                launch { settings.instagramModeFlow.collect { cachedInstagramMode = it } }
-                launch { settings.youtubeModeFlow.collect { cachedYoutubeMode = it } }
-                launch { settings.facebookModeFlow.collect { cachedFacebookMode = it } }
-                launch { settings.socialTiktokFlow.collect { cachedTiktokBlocked = it } }
-                launch { settings.socialSnapchatFlow.collect { cachedSnapchatBlocked = it } }
-                launch { settings.socialTwitterFlow.collect { cachedTwitterBlocked = it } }
-                // Scheduling
-                launch {
-                    settings.shortstopBlockedHourActiveFlow.collect { cachedBlockedHourActive = it }
-                }
-                launch {
-                    settings.shortstopDailyQuotaExceededFlow.collect { cachedDailyQuotaExceeded = it }
-                }
-                launch {
-                    settings.shortstopBreakActiveFlow.collect { cachedBreakActive = it }
-                }
-                launch {
-                    settings.shortstopDailyQuotaMinutesFlow.collect { cachedDailyQuotaMinutes = it }
-                }
-                launch {
-                    settings.shortstopBreakIntervalMinutesFlow.collect { cachedBreakIntervalMinutes = it }
-                }
-                launch {
-                    settings.shortstopMinutesSpentTodayFlow.collect { cachedMinutesSpentToday = it }
-                }
-                // Periodic janitor for the self-learning engine —
-                // drops signatures the user hasn't opened in
-                // 14 days. Runs every 6 h.
-                if (enabled) {
-                    launch {
-                        while (true) {
-                            kotlinx.coroutines.delay(6 * 60 * 60 * 1000L)
-                            val stale = learner?.pruneStale().orEmpty()
-                            if (stale.isNotEmpty()) {
-                                AppLogger.d("Shortstop: learner pruned ${stale.size} stale sigs: $stale")
-                            }
-                        }
-                    }
-                }
-            } catch (e: Exception) {
-                AppLogger.e("Shortstop: failed to subscribe to settings: ${e.message}")
             }
+
+            // Start Guardian Pattern: periodic re-verification every 1000ms
+            startGuardianPattern()
         }
-        AppLogger.d("ShortstopEngine started")
     }
 
-    /** Tear down. Flushes pending minutes-spent counters. */
-    fun stop() {
-        overlay.dismiss()
-        // Cancel the per-engine scope so collectors, the learner
-        // pruner, and any in-flight persistSurfaceLeft launch all
-        // unwind cleanly. Without this, onAccessibilityEvent is
-        // never called again but the collectors keep running
-        // (and the pruner keeps deleting learned signatures).
-        serviceScope.cancel()
-        // Flush any in-flight short-form sessions so the daily
-        // counter stays accurate across service restarts.
-        for (pkg in surfaceEnteredMs.keys.toList()) {
-            persistSurfaceLeft(pkg)
+    /** Fast path: full app block using only package name — no rootInActiveWindow needed. */
+    fun tryFullBlock(pkg: String): Boolean {
+        if (!cachedShieldActive) {
+            Timber.d("tryFullBlock: shield inactive, skip $pkg")
+            return false
         }
-        surfaceEnteredMs.clear()
-        scrollInterception.resetAll()
-        fastDetector.invalidateAll()
-    }
+        // Check temp ban first — if app is in cooldown, block immediately
+        if (tempBan.isInCooldown(pkg)) {
+            Timber.w("tryFullBlock: $pkg is in TEMP BAN cooldown, blocking immediately")
+            redirectToHome(pkg, "temp_ban_cooldown")
+            return true
+        }
+        // Facebook Reels now handled by dedicated FacebookReelsEngine
+        if (pkg == "com.facebook.katana" || pkg == "com.facebook.lite") return false
 
-    /** Called from the host when the framework interrupts us. */
-    fun onInterrupt() {
-        overlay.dismiss()
+        if (matcher.signatureFor(pkg) == null) {
+            if (isFullBlockRequired(pkg)) {
+                Timber.d("tryFullBlock: block $pkg (no signature)")
+                redirectToHome(pkg, "full_block_window_change")
+                return true
+            }
+            Timber.d("tryFullBlock: no block needed for $pkg (no signature)")
+            return false
+        }
+        if (isFullBlockRequired(pkg)) {
+            Timber.d("tryFullBlock: block $pkg (has signature)")
+            redirectToHome(pkg, "full_block")
+            return true
+        }
+        Timber.d("tryFullBlock: feed-only $pkg, not full-blocked")
+        return false
     }
 
     fun onAccessibilityEvent(
         event: AccessibilityEvent,
-        preFetchedRoot: AccessibilityNodeInfo? = null,
+        root: AccessibilityNodeInfo?,
+        sourceIsEventSource: Boolean = false
     ) {
-        val eventStart = System.currentTimeMillis()
-        val pkg = event.packageName?.toString() ?: return
-        if (!isTarget(pkg)) return
         if (!cachedShieldActive) return
-
-        // 1) Mode filter: skip if the user has set this app to "off".
-        if (!isAppBlockingEnabled(pkg)) return
-
+        val pkg = event.packageName?.toString() ?: return
+        // Check temp ban for any targeted package
+        if (tempBan.isInCooldown(pkg)) {
+            Timber.w("Shortstop: $pkg is in TEMP BAN, forcing HOME")
+            redirectToHome(pkg, "temp_ban_feed")
+            return
+        }
+        // Facebook Reels now handled by dedicated FacebookReelsEngine
+        if (pkg == "com.facebook.katana" || pkg == "com.facebook.lite") return
         val now = System.currentTimeMillis()
         val eventType = event.eventType
 
-        // 1.b) Audit #9 — Resurface guard. If the user has just
-        //       been kicked out of this app (within the last
-        //       [BlockingConfig.SHORTSTOP_RESURFACE_GUARD_MS] ms),
-        //       re-kick immediately. This closes the "swipe back
-        //       into the app" bypass where the user simply re-opens
-        //       the app from Recents before the kickout cooldown
-        //       expires. We re-run a full kick so the user is sent
-        //       home again, then the guard window extends.
-        val lastKick = lastKickAt[pkg] ?: 0L
-        if (now - lastKick < BlockingConfig.SHORTSTOP_RESURFACE_GUARD_MS &&
-            // Allow VIEW_CLICKED + WINDOW_STATE_CHANGED to retrigger
-            // the guard; otherwise the guard fires on every
-            // content-change event and we spam the user with
-            // multiple GLOBAL_ACTION_HOMEs in a row.
-            (eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED ||
-                eventType == AccessibilityEvent.TYPE_VIEW_CLICKED ||
-                eventType == AccessibilityEvent.TYPE_WINDOWS_CHANGED)
-        ) {
-            kickOutFromShort(
-                pkg = pkg,
-                surface = matcher.surfaceFor(pkg),
-                isTab = false,
-                reason = "resurface-guard",
-            )
-            return
-        }
-
-        // 2) Scroll events — feed the interception layer.
-        if (eventType == AccessibilityEvent.TYPE_VIEW_SCROLLED) {
-            val decision = scrollInterception.onScroll(event, now)
-            ScrollInterception.log(decision)
-            if (decision.isAddictive) {
-                showFullScreenMask(
-                    pkg,
-                    "Time for a break",
-                    "You've been scrolling fast for a while. Take a deep breath.",
-                )
-            }
-            publishStatus(pkg, PatternMatcher.Surface.UNKNOWN, 0f, decision.reason)
-            BenchmarkLogger.onEvent(
-                pkg, eventType, fastMs = 0L, slowMs = 0L,
-                verdict = "scroll:${decision.reason}"
-            )
-            return
-        }
-
-        // 2.b) Click events — bypass #1 in the audit. The user might
-        //      have just tapped a Reels tab, a short-video thumbnail,
-        //      or a deep-link entry point. The accessibility config
-        //      requests `typeViewClicked` for exactly this case, but
-        //      the previous implementation dropped these events on
-        //      the floor. We now invalidate the FastDetector cache
-        //      (because the click may have changed the surface) and
-        //      fall through to the normal fast/slow detection path.
+        // Fast path: VIEW_CLICKED — user tapped a Shorts thumbnail/tab. Check event.source directly.
         if (eventType == AccessibilityEvent.TYPE_VIEW_CLICKED) {
-            fastDetector.invalidateWindow(pkg, event.windowId)
-        }
+            val source = event.source
+            if (source != null) {
+                // Fast pre-check: YouTube Shorts tokens on the clicked node itself
+                if (pkg == "com.google.android.youtube" && cachedYoutubeMode == "shorts" && !isFullBlockRequired(pkg)) {
+                    if (hasYouTubeShortsToken(source)) {
+                        if (lastTrackedPkg != pkg) startQuotaTracking(pkg)
+                        handleFeedBlock(pkg, now)
+                        return
+                    }
+                    // Also walk up to 2 ancestors (Shorts player often parent/sibling of thumbnail)
+                    var ancestor = source.parent
+                    var depth = 0
+                    while (ancestor != null && depth < 2) {
+                        if (hasYouTubeShortsToken(ancestor)) {
+                            if (lastTrackedPkg != pkg) startQuotaTracking(pkg)
+                            handleFeedBlock(pkg, now)
+                            return
+                        }
+                        ancestor = ancestor.parent
+                        depth++
+                    }
+                }
 
-        // 3) Window events — run the fast detector, then fall back to
-        //    the full pattern matcher if needed.
-        if (eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED &&
-            eventType != AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED &&
-            eventType != AccessibilityEvent.TYPE_WINDOWS_CHANGED &&
-            eventType != AccessibilityEvent.TYPE_VIEW_CLICKED
-        ) return
-
-        // Throttle TYPE_WINDOW_CONTENT_CHANGED to keep CPU under control.
-        if (eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED) {
-            val last = lastContentChangeAt[pkg] ?: 0L
-            if (now - last < BlockingConfig.WINDOW_CONTENT_THROTTLE_MS) return
-            lastContentChangeAt[pkg] = now
-        }
-
-        // 3.a) Rule-engine verdict (blocked hours / quota / break).
-        val ruleCfg = RuleEngine.Config(
-            blockedHourActive = cachedBlockedHourActive,
-            dailyQuotaExceeded = cachedDailyQuotaExceeded,
-            breakActive = cachedBreakActive,
-            minutesSpentToday = cachedMinutesSpentToday,
-            dailyQuotaMinutes = cachedDailyQuotaMinutes,
-            breakIntervalMinutes = cachedBreakIntervalMinutes,
-        )
-        val ruleVerdict = RuleEngine(ruleCfg).evaluate(now)
-        if (ruleVerdict.shouldBlock) {
-            showFullScreenMask(pkg, ruleCopy(pkg, ruleVerdict.reason), ruleVerdict.message)
-            publishStatus(pkg, matcher.surfaceFor(pkg), 1.0f, ruleVerdict.reason.name)
-            val total = System.currentTimeMillis() - eventStart
-            BenchmarkLogger.onEvent(
-                pkg, eventType, fastMs = total, slowMs = 0L,
-                verdict = "rule:${ruleVerdict.reason.name}"
-            )
+                // General case for other curated packages
+                val sig = matcher.signatureFor(pkg)
+                if (sig != null && isFeedBlockingEnabled(pkg) && !isFullBlockRequired(pkg)) {
+                    // Check clicked node + up to 2 ancestors
+                    if (matcher.findFeedViewId(source, pkg, sig) != null) {
+                        if (lastTrackedPkg != pkg) startQuotaTracking(pkg)
+                        handleFeedBlock(pkg, now)
+                        return
+                    }
+                    var ancestor = source.parent
+                    var depth = 0
+                    while (ancestor != null && depth < 2) {
+                        if (matcher.findFeedViewId(ancestor, pkg, sig) != null) {
+                            if (lastTrackedPkg != pkg) startQuotaTracking(pkg)
+                            handleFeedBlock(pkg, now)
+                            return
+                        }
+                        ancestor = ancestor.parent
+                        depth++
+                    }
+                }
+            }
+            // Also handle full-block check for clicks on full-blocked apps
+            if (isFullBlockRequired(pkg)) {
+                redirectToHome(pkg, "full_block_click")
+                return
+            }
             return
         }
 
-        // 3.b) FAST PATH — FastDetector (target: ≤ 10 ms).
-        //      Uses event.source first, then windowId cache, then
-        //      targeted view-id lookup. Avoids the expensive
-        //      rootInActiveWindow() call whenever possible.
-        //      **BATCH-P**: pass `preFetchedRoot` so the viewId
-        //      lookup can search the *root* (not the event source)
-        //      — closing the partial-blocking gap when the user
-        //      taps a Reels tab and the source is the tab button.
         val sig = matcher.signatureFor(pkg)
-        val fast = fastDetector.detect(event, sig, matcher.surfaceFor(pkg), preFetchedRoot)
-        FastDetector.logSlowDetection(fast.elapsedMs, fast.triggeredBy)
-
-        if (fast.verdict == FastDetector.Verdict.ON_SHORT_FORM) {
-            scrollInterception.onSurfaceEntered(pkg, now)
-            persistSurfaceEntered(pkg, now)
-            // Kick the user out of the short video. We do NOT
-            // block in place — the user is sent back to the
-            // previous screen and a brief Toast explains why.
-            kickOutFromShort(
-                pkg = pkg,
-                surface = matcher.surfaceFor(pkg),
-                isTab = fast.isTabHit,
-                reason = "fast:on:${fast.triggeredBy}",
-            )
-            publishStatus(pkg, matcher.surfaceFor(pkg), 0.90f, fast.triggeredBy)
-            val total = System.currentTimeMillis() - eventStart
-            BenchmarkLogger.onEvent(
-                pkg, eventType, fastMs = fast.elapsedMs, slowMs = 0L,
-                verdict = "fast:on"
-            )
+        if (sig == null) {
+            if (eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
+                handleFullBlockCheck(pkg, now)
+            }
             return
         }
 
-        // 3.c) SLOW PATH — full pattern matcher. Only reached when
-        //      the fast path returned UNKNOWN (no event.source, no
-        //      cache hit, no targeted view-id match).
-        if (fast.verdict == FastDetector.Verdict.UNKNOWN) {
-            // SE-001: prefer the pre-fetched root from the host. If
-            // the host didn't supply one (e.g. unit tests, or the
-            // short-circuit cache returned a verdict), call
-            // `host.rootInActiveWindow` ourselves and own the node.
-            val ownedRoot: AccessibilityNodeInfo?
-            if (preFetchedRoot != null) {
-                ownedRoot = null
-            } else {
-                ownedRoot = host.rootInActiveWindow
-            }
-            val root = preFetchedRoot ?: ownedRoot ?: return
-            try {
-                val (screenHeight, screenWidth) = screenSize(root)
-                val activeLearner = learner
+        if (isFullBlockRequired(pkg)) {
+            redirectToHome(pkg, "full_block")
+            return
+        }
 
-                // BATCH-R: Facebook-specific detection runs *first*
-                // for Facebook packages. The FacebookBlockerEngine
-                // looks for engagement-rail view-ids, the
-                // fullscreen-player + follow/audio combination, and
-                // the Reels section tab — signals that the generic
-                // PatternMatcher misses for com.facebook.lite (which
-                // renders Reels inside a WebView) and that even
-                // for com.facebook.katana can resolve Reels hits
-                // earlier / with higher confidence.
-                var hit: PatternMatcher.Hit? = null
-                if (FacebookBlockerEngine.isFacebookPackage(pkg)) {
-                    val fbHit = facebookBlocker.detect(
-                        root = root,
-                        screenHeight = screenHeight,
-                        screenWidth = screenWidth,
-                    )
-                    if (fbHit != null) {
-                        FacebookBlockerEngine.logHit(fbHit)
-                        if (fbHit.shouldBlock) {
-                            // Wrap the FacebookBlocker hit as a
-                            // PatternMatcher.Hit so the rest of the
-                            // pipeline (kick-out, status, learner)
-                            // is unchanged. The `node` field is
-                            // never used downstream — we pass `root`
-                            // because the Hit constructor requires
-                            // it, and the host owns `root`.
-                            hit = PatternMatcher.Hit(
-                                packageName = pkg,
-                                surface = PatternMatcher.Surface.FACEBOOK_REELS,
-                                confidence = fbHit.confidence,
-                                triggeredBy = "facebook:${fbHit.triggeredBy}",
-                                node = root,
-                                isTabHit = fbHit.isTabHit,
-                            )
-                        }
-                    }
-                }
-                if (hit == null) {
-                    hit = PatternMatcher.detect(pkg, root, screenHeight, screenWidth)
-                }
-                val verdictStr: String
-                if (hit != null) {
-                    scrollInterception.onSurfaceEntered(pkg, now)
-                    persistSurfaceEntered(pkg, now)
-                    if (hit.shouldBlock) {
-                        kickOutFromShort(
-                            pkg = pkg,
-                            surface = hit.surface,
-                            isTab = hit.isTabHit,
-                            reason = "slow:on:${hit.triggeredBy}",
-                        )
-                        verdictStr = "slow:on"
-                    } else {
-                        verdictStr = "slow:low_conf"
-                    }
-                    publishStatus(pkg, hit.surface, hit.confidence, hit.triggeredBy)
-                } else {
-                    scrollInterception.onSurfaceLeft(pkg)
-                    persistSurfaceLeft(pkg)
-                    overlay.dismiss()
-                    publishStatus(pkg, PatternMatcher.Surface.UNKNOWN, 0f, "ok")
-                    verdictStr = "slow:miss"
-                }
-                // Self-learning: even when detection didn't fire,
-                // check whether the tree contains a plausible
-                // full-screen player node. If yes, feed it to the
-                // learner so the next signature can be promoted.
-                if (activeLearner != null) {
-                    val candidate = PatternMatcher.findCandidateForLearner(
-                        learner = activeLearner,
-                        packageName = pkg,
-                        root = root,
-                        screenHeight = screenHeight,
-                        screenWidth = screenWidth,
-                    )
-                    if (candidate != null) {
-                        serviceScope.launch {
-                            activeLearner.observe(
-                                pkg = candidate.packageName,
-                                viewId = candidate.viewId,
-                                className = candidate.className,
-                            )
-                        }
-                    }
-                }
-                val slowMs = System.currentTimeMillis() - eventStart - fast.elapsedMs
-                BenchmarkLogger.onEvent(
-                    pkg, eventType, fastMs = fast.elapsedMs, slowMs = slowMs,
-                    verdict = verdictStr
-                )
-            } finally {
-                // SE-001: only recycle the root if WE allocated it.
-                // The host-owned preFetchedRoot is its responsibility.
-                if (ownedRoot != null) {
-                    try { ownedRoot.recycle() } catch (_: Exception) {}
-                }
+        if (!isFeedBlockingEnabled(pkg)) return
+
+        if (eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
+            if (root == null) return
+            // Smart Ignore: Skip Instagram Reels blocking if user is in DMs
+            if (pkg.startsWith("com.instagram") && isInInstagramDmsContext(root, pkg)) {
+                Timber.d("Shortstop: Skipping IG Reels block - DM context detected")
+                return
             }
-        } else {
-            // Allowed — no need to walk the tree.
-            scrollInterception.onSurfaceLeft(pkg)
-            persistSurfaceLeft(pkg)
-            overlay.dismiss()
-            publishStatus(pkg, PatternMatcher.Surface.UNKNOWN, 0f, fast.triggeredBy)
-            BenchmarkLogger.onEvent(
-                pkg, eventType, fastMs = fast.elapsedMs, slowMs = 0L,
-                verdict = "fast:off"
-            )
+            // YouTube-specific fast pre-check: scan for Shorts tokens before full search
+            val onFeed = if (pkg == "com.google.android.youtube" && cachedYoutubeMode == "shorts") {
+                hasAnyYouTubeShortsToken(root) || matcher.findFeedViewId(root, pkg, sig) != null
+            } else {
+                matcher.findFeedViewId(root, pkg, sig) != null
+            }
+            if (onFeed) {
+                if (lastTrackedPkg != pkg) startQuotaTracking(pkg)
+                handleFeedBlock(pkg, now)
+            } else if (lastTrackedPkg == pkg) {
+                stopQuotaTracking()
+            }
+        } else if (eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED) {
+            // Throttle content changes — YouTube/IG fire these very frequently
+            val last = lastContentChangeMs[pkg] ?: 0L
+            if (now - last < contentChangeThrottleMs) return
+            lastContentChangeMs[pkg] = now
+
+            if (root == null) return
+            // Smart Ignore: Skip Instagram Reels blocking if user is in DMs
+            if (pkg.startsWith("com.instagram") && isInInstagramDmsContext(root, pkg)) {
+                Timber.d("Shortstop: Skipping IG Reels block content change - DM context")
+                return
+            }
+            val onFeed = matcher.findFeedViewId(root, pkg, sig) != null
+            if (onFeed) {
+                if (lastTrackedPkg != pkg) startQuotaTracking(pkg)
+                handleFeedBlock(pkg, now)
+            } else if (lastTrackedPkg == pkg) {
+                stopQuotaTracking()
+            }
         }
     }
 
-    // ----------------------------------------------------------------------
-    // Internals
-    // ----------------------------------------------------------------------
+    private fun handleFullBlockCheck(pkg: String, now: Long) {
+        if (isFullBlockRequired(pkg)) {
+            redirectToHome(pkg, "full_block_window_change")
+        }
+    }
 
-    /**
-     * Per-package mode gate. Returns true if the user has *any*
-     * blocking mode enabled for this package. The full-mode path is
-     * still handled by the legacy `AppBlockerService` — Shortstop
-     * only triggers for surgical and break/quota paths.
-     */
-    private fun isAppBlockingEnabled(pkg: String): Boolean = when {
-        pkg.startsWith("com.facebook") -> cachedFacebookMode == "reels" || cachedFacebookMode == "full"
-        pkg == "com.google.android.youtube" -> cachedYoutubeMode == "shorts" || cachedYoutubeMode == "full"
-        pkg.startsWith("com.instagram") -> cachedInstagramMode == "reels" || cachedInstagramMode == "full"
+    private fun isFeedBlockingEnabled(pkg: String): Boolean = when {
+        pkg.startsWith("com.instagram") -> cachedInstagramMode == "reels"
+        pkg == "com.google.android.youtube" -> cachedYoutubeMode == "shorts"
+        pkg.startsWith("com.facebook") -> cachedFacebookMode == "reels"
+        pkg == "com.snapchat.android" -> cachedSnapchatBlocked
+        pkg == "com.twitter.android" || pkg == "com.x.android" -> cachedTwitterBlocked
         pkg.startsWith("com.zhiliaoapp") || pkg.startsWith("com.ss.android") -> cachedTiktokBlocked
-        pkg.startsWith("com.snapchat") -> cachedSnapchatBlocked
-        pkg.startsWith("com.twitter") || pkg.startsWith("com.x.android") -> cachedTwitterBlocked
         else -> false
     }
 
-    /**
-     * **Primary intervention** for short-form content detection.
-     *
-     * The user is **forcibly ejected** from the short clip and
-     * returned to the device's home screen. There is no in-place
-     * overlay, no "Close" button, no "Take a break" choice — the
-     * entire point of Shortstop is to interrupt the addictive loop,
-     * and giving the user an "OK" button defeats that. A brief
-     * Toast explains what just happened and then the user is free
-     * to launch any *other* app.
-     *
-     * The ejection is a two-step action:
-     *  1. [GLOBAL_ACTION_BACK] pops the short-video player off the
-     *     app's back stack (Reels viewer → Reels index → main feed).
-     *  2. After a short delay (so the BACK animation completes),
-     *     [GLOBAL_ACTION_HOME] returns the user to the launcher.
-     *     The delayed HOME also means: if the user re-launches the
-     *     app from Recents, they land on the app's main feed, not
-     *     back in the short-video player.
-     *
-     * The call is debounced per-package via [lastKickAt] so the
-     * user doesn't end up in a HOME-loop when a single event
-     * triggers multiple times in quick succession.
-     *
-     * @param pkg     the offending package
-     * @param surface which surface was matched
-     * @param isTab   true if the user landed on the section tab,
-     *                false if they were inside a specific short
-     * @param reason  short diagnostic string for logs
-     */
-    private fun kickOutFromShort(
-        pkg: String,
-        surface: PatternMatcher.Surface,
-        isTab: Boolean,
-        reason: String,
-    ) {
+    private fun isFullBlockRequired(pkg: String): Boolean {
+        if (cachedBlockedApps.contains(pkg)) return true
+        return when {
+            pkg == "com.snapchat.android" -> cachedSnapchatBlocked
+            pkg == "com.twitter.android" || pkg == "com.x.android" -> cachedTwitterBlocked
+            pkg.startsWith("com.zhiliaoapp") || pkg.startsWith("com.ss.android") -> cachedTiktokBlocked
+            pkg == "com.google.android.youtube" && cachedYoutubeMode == "full" -> true
+            pkg.startsWith("com.facebook") && cachedFacebookMode == "full" -> true
+            pkg.startsWith("com.instagram") && cachedInstagramMode == "full" -> true
+            else -> false
+        }
+    }
+
+    private fun handleFeedBlock(pkg: String, now: Long) {
+        val last = lastRedirectMs[pkg] ?: 0L
+        val cooldown = if (pkg == "com.google.android.youtube") youtubeFeedBlockCooldownMs else feedBlockCooldownMs
+        if (now - last < cooldown) return
+        lastRedirectMs[pkg] = now
+
+        val verdict = ruleEngine.evaluate(now)
+        host.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK)
+        val reason = if (verdict.shouldBlock) verdict.message else "permanent"
+        Timber.d("Shortstop: BACK from $pkg — $reason")
+
+        // Record strike for temp-ban logic
+        tempBan.recordStrike(pkg)
+
+        serviceScope.launch {
+            val app = host.applicationContext as GuardianApp
+            app.repository.recordBlock(pkg, matcher.surfaceFor(pkg).label, "shortstop_feed")
+        }
+    }
+
+    private fun redirectToHome(pkg: String, reason: String) {
         val now = System.currentTimeMillis()
-        val last = lastKickAt[pkg] ?: 0L
-        if (now - last < BlockingConfig.SHORTSTOP_KICKOUT_COOLDOWN_MS) {
+        val last = lastRedirectMs[pkg] ?: 0L
+        if (now - last < fullBlockCooldownMs) {
+            Timber.d("redirectToHome: cooldown active for $pkg (${now - last}ms ago)")
             return
         }
-        lastKickAt[pkg] = now
+        lastRedirectMs[pkg] = now
 
-        val surfaceLabel = surface.label
-
-        // **BATCH-P (fast kick)**: when we detected a *tab* hit
-        // (the user just tapped a Reels/Shorts section tab and
-        // the player hasn't actually started yet), skip the BACK
-        // step entirely. There's nothing on the back stack to pop,
-        // and skipping BACK saves a ~5 ms framework round-trip
-        // — bringing the tap→home latency under 10 ms.
-        if (isTab && BlockingConfig.SHORTSTOP_FAST_KICK_NO_DELAY) {
-            try {
-                host.performGlobalAction(AccessibilityService.GLOBAL_ACTION_HOME)
-            } catch (e: Exception) {
-                AppLogger.w("Shortstop: GLOBAL_ACTION_HOME (fast) failed: ${e.message}")
-            }
+        val handler = blockOverlayHandler
+        if (handler != null) {
+            Timber.d("redirectToHome: calling overlay handler for $pkg")
+            handler.showBlockOverlay(pkg)
         } else {
-            // 1) Pop the short-video player off the back stack.
-            //    We do this synchronously so the player is
-            //    destroyed before we move to HOME — without it,
-            //    the user could re-launch the app and find
-            //    themselves back in the same Reels / Shorts clip.
-            try {
-                host.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK)
-            } catch (e: Exception) {
-                AppLogger.w("Shortstop: GLOBAL_ACTION_BACK failed: ${e.message}")
-            }
-
-            // 2) Forced return to home. Small delay (30 ms in
-            //    BATCH-P, was 80 ms) so the BACK transition
-            //    queues cleanly before HOME is sent. The user
-            //    is not given a choice — this is the whole
-            //    point of Shortstop.
-            mainHandler.postDelayed({
-                try {
-                    host.performGlobalAction(AccessibilityService.GLOBAL_ACTION_HOME)
-                } catch (e: Exception) {
-                    AppLogger.w("Shortstop: GLOBAL_ACTION_HOME failed: ${e.message}")
-                }
-            }, BlockingConfig.SHORTSTOP_FORCE_HOME_DELAY_MS)
+            Timber.d("redirectToHome: no handler, HOME directly for $pkg")
+            host.performGlobalAction(AccessibilityService.GLOBAL_ACTION_HOME)
         }
+        Timber.w("Shortstop: block $pkg ($reason)")
 
-        // 3) Brief Toast message — explains why the user was sent
-        //    to home. The user is now on the launcher, so the
-        //    Toast is the only "feedback" they see.
-        val message = if (isTab) {
-            host.getString(R.string.shortstop_kickout_section, surfaceLabel)
-        } else {
-            host.getString(R.string.shortstop_kickout_video, surfaceLabel)
-        }
-        try {
-            Toast.makeText(host, message, Toast.LENGTH_LONG).show()
-        } catch (e: Exception) {
-            AppLogger.w("Shortstop: Toast failed: ${e.message}")
-        }
+        // Record strike for temp-ban logic
+        tempBan.recordStrike(pkg)
 
-        // 4) Persist the block event for analytics.
-        try {
+        serviceScope.launch {
             val app = host.applicationContext as GuardianApp
-            serviceScope.launch {
-                app.repository.recordBlock(pkg, surfaceLabel, "shorts_reels_block")
-            }
-        } catch (e: Exception) {
-            AppLogger.w("Shortstop: recordBlock failed: ${e.message}")
+            app.repository.recordBlock(pkg, "full_block", "shortstop_full")
         }
-
-        AppLogger.d("Shortstop: forced-home pkg=$pkg reason=$reason surface=$surfaceLabel tab=$isTab")
     }
 
-    private fun showFullScreenMask(pkg: String, title: String, message: String) {
-        val now = System.currentTimeMillis()
-        if (!overlay.canShowNow(now)) return
-        overlay.showFullScreen(
-            title = title,
-            subtitle = message,
-            onClose = {
-                try { host.performGlobalAction(AccessibilityService.GLOBAL_ACTION_HOME) } catch (_: Exception) {}
-            },
-            onTakeBreak = {
-                // The user accepted a break — start the 5-minute
-                // countdown via AppSettings, then send the user to
-                // home so they can pick a different activity.
-                try {
-                    val app = host.applicationContext as GuardianApp
-                    val settings = app.repository.getAppSettings()
-                    serviceScope.launch {
-                        settings.setShortstopBreakEndsAt(System.currentTimeMillis() + 5 * 60 * 1000L)
-                    }
-                } catch (e: Exception) {
-                    AppLogger.w("Shortstop: setBreakEndsAt failed: ${e.message}")
+    private fun startQuotaTracking(pkg: String) {
+        lastTrackedPkg = pkg
+        activeTrackingJob?.cancel()
+        activeTrackingJob = serviceScope.launch {
+            val settings = (host.applicationContext as GuardianApp).repository.getAppSettings()
+            while (isActive && lastTrackedPkg == pkg) {
+                delay(60_000L)
+                val spent = settings.shortstopMinutesSpentTodayFlow.first()
+                settings.setShortstopMinutesSpentToday(spent + 1)
+
+                if (ruleEngine.shouldForceBreak(spent + 1)) {
+                    settings.setShortstopBreakActive(true)
+                    settings.setShortstopBreakEndsAt(
+                        System.currentTimeMillis() + currentConfig.breakLengthMinutes * 60_000L
+                    )
                 }
-                try { host.performGlobalAction(AccessibilityService.GLOBAL_ACTION_HOME) } catch (_: Exception) {}
-            },
-        )
-    }
-
-    private fun ruleCopy(pkg: String, reason: RuleEngine.Verdict.Reason): String {
-        val label = matcher.surfaceFor(pkg).label
-        return when (reason) {
-            RuleEngine.Verdict.Reason.BREAK_ACTIVE -> host.getString(R.string.shortstop_reason_break)
-            RuleEngine.Verdict.Reason.DAILY_QUOTA_EXCEEDED -> host.getString(R.string.shortstop_reason_quota)
-            RuleEngine.Verdict.Reason.BLOCKED_HOURS -> host.getString(R.string.shortstop_reason_hours, label)
-            else -> label
+                if (ruleEngine.quotaExceeded(spent + 1)) {
+                    settings.setShortstopDailyQuotaExceeded(true)
+                }
+            }
         }
     }
 
-    /**
-     * Record that [pkg] entered a short-form surface at [now] (ms). The
-     * entry is kept in-memory in [surfaceEnteredMs] and is read by
-     * [persistSurfaceLeft] to compute minutes-spent.
-     *
-     * We don't write to DataStore here — entering is high-frequency
-     * and the value is only needed when the user *leaves* the surface.
-     */
-    private fun persistSurfaceEntered(pkg: String, now: Long) {
-        surfaceEnteredMs.putIfAbsent(pkg, now)
+    private fun stopQuotaTracking() {
+        activeTrackingJob?.cancel()
+        activeTrackingJob = null
+        lastTrackedPkg = null
+    }
+
+    /** Ultra-fast YouTube Shorts token check — scans viewIdResourceName for known Shorts tokens. */
+    private fun hasYouTubeShortsToken(node: AccessibilityNodeInfo?): Boolean {
+        if (node == null) return false
+        val viewId = node.viewIdResourceName
+        if (viewId == null) return false
+        return viewId.contains("reel_watch_fragment_root") ||
+               viewId.contains("shorts_player") ||
+               viewId.contains("reel_player") ||
+               viewId.contains("shorts_video_player_view") ||
+               viewId.contains("reels_player") ||
+               viewId.contains("reel_recycler") ||
+               viewId.contains("reel_player_page_controller")
+    }
+
+    /** Scans the entire tree for any YouTube Shorts token — fast pre-check before full search. */
+    private fun hasAnyYouTubeShortsToken(node: AccessibilityNodeInfo?): Boolean {
+        if (node == null) return false
+        if (hasYouTubeShortsToken(node)) return true
+        for (i in 0 until node.childCount) {
+            val child = node.getChild(i)
+            if (child != null) {
+                if (hasAnyYouTubeShortsToken(child)) {
+                    child.recycle()
+                    return true
+                }
+                child.recycle()
+            }
+        }
+        return false
+    }
+
+    // ─── Guardian Pattern: Periodic Re-verification (every 1000ms) ─────────
+
+    private fun startGuardianPattern() {
+        if (isGuardianRunning) return
+        isGuardianRunning = true
+        
+        guardianRunnable = object : Runnable {
+            override fun run() {
+                if (!isGuardianRunning) return
+                
+                serviceScope.launch {
+                    checkForegroundApp()
+                }
+                
+                guardianHandler.postDelayed(this, 1000L)
+            }
+        }
+        
+        guardianHandler.post(guardianRunnable!!)
+        Timber.d("Guardian Pattern started: periodic app verification every 1000ms")
+    }
+
+    private fun stopGuardianPattern() {
+        isGuardianRunning = false
+        guardianRunnable?.let { guardianHandler.removeCallbacks(it) }
+        guardianRunnable = null
+        Timber.d("Guardian Pattern stopped")
     }
 
     /**
-     * Record that [pkg] left the short-form surface and flush the
-     * accumulated minutes back to [AppSettings]. The minutes-spent
-     * counter is additive across all target apps (we don't track
-     * per-app — only the daily total matters for the quota).
-     *
-     * Idempotent: a second call without an intervening entered is a
-     * no-op.
+     * Guardian Pattern: Check current foreground app against blocked list.
+     * This runs every 1000ms to catch apps that slip through event-based detection.
+     * Uses rootInActiveWindow package (reliable on API 21+) instead of the
+     * deprecated ActivityManager.getRunningTasks() which only returns own tasks on API 29+.
      */
-    private fun persistSurfaceLeft(pkg: String) {
-        val entered = surfaceEnteredMs.remove(pkg) ?: return
-        val now = System.currentTimeMillis()
-        val deltaMin = ((now - entered) / 60_000L).toInt()
-        if (deltaMin <= 0) return
-        val total = cachedMinutesSpentToday + deltaMin
-        cachedMinutesSpentToday = total
+    private fun checkForegroundApp() {
+        if (!cachedShieldActive) return
+        if (cachedBlockedApps.isEmpty()) return
+
         try {
-            val app = host.applicationContext as GuardianApp
-            serviceScope.launch {
-                app.repository.getAppSettings().setShortstopMinutesSpentToday(total)
+            val root = host.rootInActiveWindow ?: return
+            val topPkg = root.packageName?.toString()
+            try { root.recycle() } catch (_: Exception) {}
+            if (topPkg != null && cachedBlockedApps.contains(topPkg)) {
+                Timber.w("Guardian Pattern: blocked app $topPkg detected in foreground, blocking")
+                redirectToHome(topPkg, "guardian_pattern")
             }
         } catch (e: Exception) {
-            AppLogger.w("Shortstop: persistSurfaceLeft failed: ${e.message}")
+            Timber.w(e, "Guardian Pattern check failed")
         }
+
+        // Also cleanup expired temp bans periodically
+        tempBan.cleanupExpired()
     }
 
-    /**
-     * SE-001: was `screenSize()` with no args, which performed a
-     * second `host.rootInActiveWindow` round-trip. Now accepts the
-     * pre-fetched root from the slow path; the caller still owns
-     * the node (no recycle inside).
-     */
-    private fun screenSize(preFetchedRoot: AccessibilityNodeInfo?): Pair<Int, Int> = try {
-        val m = host.resources.displayMetrics
-        // Audit #6: in split-screen / multi-window, use the
-        // active-window's bounds so the size heuristic produces
-        // sane ratios. We approximate that by reading the most
-        // recent root-node bounds when available; otherwise we
-        // fall back to the display dimensions.
-        if (preFetchedRoot != null) {
-            val b = Rect()
-            preFetchedRoot.getBoundsInScreen(b)
-            Pair(b.height().coerceAtLeast(0), b.width().coerceAtLeast(0))
-        } else {
-            Pair(m.heightPixels, m.widthPixels)
-        }
-    } catch (_: Exception) { Pair(0, 0) }
-
-    private fun publishStatus(
-        pkg: String,
-        surface: PatternMatcher.Surface,
-        confidence: Float,
-        reason: String,
-    ) {
-        _status.value = Status(
-            overlayShown = overlay.isShowing,
-            lastSurface = surface,
-            lastConfidence = confidence,
-            lastReason = reason,
-            targetPackage = pkg,
+    private fun isInInstagramDmsContext(root: AccessibilityNodeInfo?, pkg: String): Boolean {
+        if (root == null || !pkg.startsWith("com.instagram")) return false
+        // Instagram DM indicators (view IDs that indicate conversation/DM context)
+        val dmViewIds = listOf(
+            "direct_container", "thread_container", "message_composer",
+            "direct_thread", "inbox", "message_input", "composer_edit_text",
+            "direct_message_list", "thread_title", "message_bubble"
         )
+        for (viewId in dmViewIds) {
+            val matches = root.findAccessibilityNodeInfosByViewId("$pkg:id/$viewId")
+            if (matches.isNotEmpty()) {
+                matches.forEach { it.recycle() }
+                return true
+            }
+        }
+        // Fallback: check for content descriptions indicating DM context
+        fun checkNode(node: AccessibilityNodeInfo?): Boolean {
+            if (node == null) return false
+            val contentDesc = node.contentDescription?.toString()?.lowercase() ?: ""
+            if (contentDesc.contains("direct message") ||
+                contentDesc.contains("dm") ||
+                contentDesc.contains("chat") ||
+                contentDesc.contains("conversation") ||
+                contentDesc.contains("message") && contentDesc.contains("thread")) {
+                return true
+            }
+            for (i in 0 until node.childCount) {
+                val child = node.getChild(i) ?: continue
+                if (checkNode(child)) {
+                    child.recycle()
+                    return true
+                }
+                child.recycle()
+            }
+            return false
+        }
+        return checkNode(root)
     }
+
+    // ─── Lifecycle ────────────────────────────────────────────────────────
+
+    fun stop() {
+        serviceScope.cancel()
+        stopQuotaTracking()
+        stopGuardianPattern()
+    }
+
+    fun onInterrupt() = Unit
 }

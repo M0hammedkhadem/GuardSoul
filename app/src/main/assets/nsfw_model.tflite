@@ -1,0 +1,23 @@
+# Placeholder for NSFW TFLite Model
+# 
+# This file should be replaced with an actual TensorFlow Lite model for NSFW detection.
+# 
+# Expected model specification:
+# - Input: 224x224 RGB image (float32, normalized to [0,1] or [-1,1])
+# - Output: 5 classes [Drawing, Neutral, Sexy, Hentai, Porn]
+# - Architecture: MobileNetV2 or similar lightweight CNN
+# 
+# To generate a proper model:
+# 1. Train or obtain an NSFW classification model (e.g., from NSFWJS/MobileNetV2)
+# 2. Convert to TFLite format:
+#    ```python
+#    import tensorflow as tf
+#    converter = tf.lite.TFLiteConverter.from_saved_model('nsfw_model')
+#    converter.optimizations = [tf.lite.Optimize.DEFAULT]
+#    tflite_model = converter.convert()
+#    with open('nsfw_model.tflite', 'wb') as f:
+#        f.write(tflite_model)
+#    ```
+# 3. Place the resulting .tflite file here
+# 
+# The app will log a warning and skip AI scanning if this placeholder is detected.

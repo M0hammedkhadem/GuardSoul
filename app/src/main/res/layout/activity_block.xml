@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#0D1117">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center"
+        android:gravity="center_horizontal"
+        android:orientation="vertical"
+        android:paddingHorizontal="40dp">
+
+        <!-- Shield icon in dark red circle -->
+        <FrameLayout
+            android:layout_width="100dp"
+            android:layout_height="100dp"
+            android:background="@drawable/circle_bg"
+            android:gravity="center">
+
+            <TextView
+                android:layout_width="56dp"
+                android:layout_height="56dp"
+                android:layout_gravity="center"
+                android:gravity="center"
+                android:text="🛡"
+                android:textSize="36sp" />
+
+        </FrameLayout>
+
+        <!-- App Blocked title -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="28dp"
+            android:gravity="center"
+            android:text="App Blocked"
+            android:textColor="#FFFFFF"
+            android:textSize="24sp"
+            android:textStyle="bold" />
+
+        <!-- App name + message -->
+        <TextView
+            android:id="@+id/tv_overlay_app"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="14dp"
+            android:gravity="center"
+            android:lineSpacingExtra="4dp"
+            android:maxLines="3"
+            android:textColor="#9E9E9E"
+            android:textSize="15sp" />
+
+        <!-- Go Back button -->
+        <Button
+            android:id="@+id/btn_go_back"
+            android:layout_width="match_parent"
+            android:layout_height="56dp"
+            android:layout_marginTop="44dp"
+            android:backgroundTint="#4A80F0"
+            android:elevation="6dp"
+            android:text="Go Back"
+            android:textAllCaps="false"
+            android:textColor="#FFFFFF"
+            android:textSize="17sp"
+            android:textStyle="bold" />
+
+    </LinearLayout>
+
+</FrameLayout>

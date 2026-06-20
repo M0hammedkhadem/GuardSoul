@@ -1,218 +1,305 @@
 package com.agon.app.services
 
 import android.accessibilityservice.AccessibilityService
+import android.accessibilityservice.AccessibilityServiceInfo
+import android.content.Intent
+import android.os.Build
+import android.os.Handler
+import android.os.Looper
+import android.view.Gravity
+import android.view.LayoutInflater
+import android.view.View
+import android.view.WindowManager
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
-import com.agon.app.blocking.AiExplorerEngine
-import com.agon.app.blocking.BlockCooldownTracker
-import com.agon.app.blocking.ContentFilterEngine
+import android.widget.TextView
+import com.agon.app.GuardianApp
+import com.agon.app.R
+import com.agon.app.blocking.BlockOverlayHandler
+import com.agon.app.blocking.FacebookReelsEngine
+import com.agon.app.blocking.HaasEngine
+import com.agon.app.blocking.KeywordDetector
+import com.agon.app.blocking.SettingsBlockOverlay
 import com.agon.app.blocking.ShortstopEngine
-import com.agon.app.blocking.UninstallGuardEngine
-import com.agon.app.guardianApp
+import com.agon.app.ui.BlockActivity
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import timber.log.Timber
 
-/**
- * Unified accessibility service.
- *
- * **Why one service instead of two?**
- *
- * The previous design registered two accessibility services from
- * the same app:
- *  - [com.agon.app.services.GuardianAccessibilityService] for
- *    keyword/domain filtering + uninstall protection.
- *  - [com.agon.app.blocking.ShortstopAccessibilityService] for
- *    Reels / Shorts surgical blocking.
- *
- * That worked on AOSP but had real problems in the wild:
- *  - Some OEMs (notably Samsung One UI 5/6 and MIUI 14) refuse to
- *    bind two accessibility services from the same package
- *    simultaneously, or downgrade event delivery for the
- *    "secondary" service. The user would see one feature silently
- *    stop working.
- *  - Both services were observing the same stream of
- *    `AccessibilityEvent`s and each called `rootInActiveWindow`
- *    + `performGlobalAction` independently — duplicated work
- *    and competing `GLOBAL_ACTION_HOME` kicks.
- *  - The "settings say it's enabled" UI was unreliable because
- *    `isServiceEnabled()` had to be called for both classes.
- *
- * This single service is the fix. It is the only one registered
- * in [com.agon.app.AndroidManifest]. Inside the
- * [onAccessibilityEvent] callback it dispatches the event to
- * four engines:
- *  - [ContentFilterEngine] — keyword/domain scan.
- *  - [UninstallGuardEngine] — uninstall protection
- *    (Settings / Phone Manager / destructive buttons).
- *  - [ShortstopEngine] — short-video detection + kick-out.
- *  - [AiExplorerEngine] — on-device NSFW image classification
- *    via `AccessibilityService.takeScreenshot()`. Replaces the
- *    old MediaProjection-based [com.agon.app.AiScannerService].
- *
- * A single shared [bounceCooldown] is constructed here and
- * injected into the engines that perform home-bounce / block
- * actions (content filter + uninstall guard). Sharing the
- * tracker means that if both engines want to fire on the same
- * event burst, only one home animation actually happens —
- * preserving the original `lastBlockTime` cross-handler
- * behavior that lived on the old monolithic [com.agon.app.blocking.GuardianEngine].
- *
- * The engines are otherwise unchanged: each still runs its own
- * early-out checks, cooldowns, and settings subscriptions. The
- * engines never call `performGlobalAction` more than the shared
- * cooldown allows, so there is no kick fight.
- *
- * The service also keeps the legacy contract of a static
- * [current] reference (used by `AccessibilityUtils.isServiceEnabled`
- * and [com.agon.app.utils.BounceHelper]) and registers itself as
- * the global `accessibilityBounceDelegate` so any other code
- * that needs to pop the back stack can do so via
- * `BounceHelper.backToHome`.
- */
 class GuardSoulAccessibilityService : AccessibilityService() {
 
     companion object {
         @Volatile private var instance: GuardSoulAccessibilityService? = null
-
-        /**
-         * The currently bound service instance, or `null` if the
-         * service is not bound. Used by `AccessibilityUtils.isServiceEnabled`
-         * and the global bounce delegate.
-         */
         val current: GuardSoulAccessibilityService? get() = instance
     }
 
-    private lateinit var contentFilter: ContentFilterEngine
-    private lateinit var uninstallGuard: UninstallGuardEngine
     private lateinit var shortstop: ShortstopEngine
-    private lateinit var aiExplorer: AiExplorerEngine
+    private lateinit var facebookReels: FacebookReelsEngine
+    private lateinit var keywordDetector: KeywordDetector
+    private var haasEngine: HaasEngine? = null
+    private var settingsBlockOverlay: SettingsBlockOverlay? = null
+    private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
+    private val mainHandler = Handler(Looper.getMainLooper())
 
-    /**
-     * Shared cooldown for home-bounce / block-screen actions.
-     * 1.5 s matches the original [com.agon.app.blocking.GuardianEngine]
-     * `BLOCK_COOLDOWN_MS` so cross-handler dedup is preserved.
-     */
-    private val bounceCooldown = BlockCooldownTracker(cooldownMs = 1500L)
+    // Fallback overlay (non-interactive, used if BlockActivity fails)
+    private var fallbackOverlayView: View? = null
+    private var fallbackOverlayDismiss: Runnable? = null
 
     override fun onServiceConnected() {
         super.onServiceConnected()
         instance = this
-        contentFilter = ContentFilterEngine(this, bounceCooldown).also { it.start() }
-        uninstallGuard = UninstallGuardEngine(this, bounceCooldown).also { it.start() }
-        shortstop = ShortstopEngine(this).also { it.start() }
-        aiExplorer = AiExplorerEngine(this).also { it.start() }
-        // Register as the global bounce delegate so any other
-        // component can pop the back stack and drop the user on
-        // the home screen via `BounceHelper.backToHome`.
-        guardianApp()?.accessibilityBounceDelegate = this
+
+        val info = serviceInfo
+        if (info != null) {
+            info.apply {
+                eventTypes = AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED or
+                    AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED or
+                    AccessibilityEvent.TYPE_VIEW_CLICKED or
+                    AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED
+                feedbackType = AccessibilityServiceInfo.FEEDBACK_GENERIC
+                flags = AccessibilityServiceInfo.FLAG_REPORT_VIEW_IDS or
+                    AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS
+                notificationTimeout = 50
+                packageNames = null
+            }
+            setServiceInfo(info)
+        }
+
+        shortstop = ShortstopEngine(this).also {
+            it.blockOverlayHandler = BlockOverlayHandler { pkg -> blockApp(pkg) }
+            it.start()
+        }
+
+        facebookReels = FacebookReelsEngine(this).also {
+            it.start(this.applicationContext as com.agon.app.GuardianApp)
+        }
+
+        keywordDetector = KeywordDetector(this).also {
+            it.start()
+        }
+
+        // HAAS Engine: Hybrid AI-Accessibility Shield (replaces NsfwScannerService polling)
+        haasEngine = HaasEngine(this).also {
+            it.start()
+        }
+
+        // Settings Block Overlay: prevents access to GuardSoul's own app info / device admin settings
+        settingsBlockOverlay = SettingsBlockOverlay(this).also {
+            // Observe uninstall protection setting and enable/disable accordingly
+            val settings = (applicationContext as GuardianApp).repository.getAppSettings()
+            scope.launch {
+                settings.uninstallProtectionEnabledFlow.collect { enabled ->
+                    it.setEnabled(enabled)
+                }
+            }
+        }
+
+        createFallbackOverlay()
         Timber.d("GuardSoulAccessibilityService connected")
     }
 
     override fun onDestroy() {
         super.onDestroy()
+        hideFallbackOverlay()
         if (instance === this) instance = null
-        // Clear the global bounce delegate reference so other
-        // code falls back to the home intent rather than calling
-        // into a dead service.
-        if (guardianApp()?.accessibilityBounceDelegate === this) {
-            guardianApp()?.accessibilityBounceDelegate = null
-        }
-        if (::contentFilter.isInitialized) contentFilter.stop()
-        if (::uninstallGuard.isInitialized) uninstallGuard.stop()
-        if (::shortstop.isInitialized) shortstop.stop()
-        // AE-002: aiExplorer uses a TFLite Interpreter. Cancelling
-        // its scope is cooperative, so we must join on the in-flight
-        // inference job before closing the native handle, otherwise
-        // the process can crash mid-read.
-        if (::aiExplorer.isInitialized) {
-            // Use a per-call scope so the join doesn't depend on
-            // service teardown order. stopAndJoin() cancels the
-            // engine scope internally; we just wait for it to settle.
-            kotlinx.coroutines.runBlocking { aiExplorer.stopAndJoin() }
-        }
+        try { shortstop.stop() } catch (_: Exception) {}
+        try { facebookReels.stop() } catch (_: Exception) {}
+        try { keywordDetector.shutdown() } catch (_: Exception) {}
+        try { haasEngine?.stop() } catch (_: Exception) {}
+        try { settingsBlockOverlay?.destroy() } catch (_: Exception) {}
     }
 
-    /**
-     * A11Y-DISABLE-ALL-SERVICES: when the user toggles the
-     * accessibility service off in System Settings, the system
-     * calls [onUnbind] BEFORE [onDestroy]. We must stop every
-     * engine here so:
-     *   - the per-event hot path no longer wastes CPU on
-     *     accessibility events that never come,
-     *   - the AI explorer's TFLite interpreter is released
-     *     promptly (we want to drop the ~80 MB heap footprint
-     *     the moment the user disables us, not wait for the
-     *     system to actually destroy the service), and
-     *   - the bounce delegate on [guardianApp] is cleared so
-     *     a stale reference cannot survive across a rebind.
-     *
-     * [onUnbind] returning `true` is the system signal that
-     * we've released our resources. We then defer the actual
-     * [onDestroy] handling to the normal teardown path.
-     */
     override fun onUnbind(intent: android.content.Intent?): Boolean {
-        Timber.d("GuardSoulAccessibilityService: onUnbind, stopping all engines")
-        if (::contentFilter.isInitialized) contentFilter.stop()
-        if (::uninstallGuard.isInitialized) uninstallGuard.stop()
-        if (::shortstop.isInitialized) shortstop.stop()
-        if (::aiExplorer.isInitialized) {
-            // Best-effort join. onUnbind runs on the main thread,
-            // and we don't want to block the settings UI for the
-            // full TFLite release (can take 50-200 ms). Cap with
-            // withTimeoutOrNull so the worst case is bounded.
-            kotlinx.coroutines.runBlocking {
-                kotlinx.coroutines.withTimeoutOrNull(500L) {
-                    aiExplorer.stopAndJoin()
-                }
-            }
-        }
-        if (guardianApp()?.accessibilityBounceDelegate === this) {
-            guardianApp()?.accessibilityBounceDelegate = null
-        }
+        Timber.d("GuardSoulAccessibilityService: onUnbind")
+        hideFallbackOverlay()
+        try { shortstop.stop() } catch (_: Exception) {}
+        try { facebookReels.stop() } catch (_: Exception) {}
+        try { keywordDetector.shutdown() } catch (_: Exception) {}
+        try { haasEngine?.stop() } catch (_: Exception) {}
+        try { settingsBlockOverlay?.destroy() } catch (_: Exception) {}
         if (instance === this) instance = null
         return true
     }
 
     override fun onInterrupt() {
-        if (::contentFilter.isInitialized) contentFilter.onInterrupt()
-        if (::uninstallGuard.isInitialized) uninstallGuard.onInterrupt()
-        if (::shortstop.isInitialized) shortstop.onInterrupt()
-        if (::aiExplorer.isInitialized) aiExplorer.onInterrupt()
+        try { shortstop.onInterrupt() } catch (_: Exception) {}
+        try { facebookReels.onInterrupt() } catch (_: Exception) {}
+        try { keywordDetector.shutdown() } catch (_: Exception) {}
+        try { haasEngine?.onInterrupt() } catch (_: Exception) {}
+        try { settingsBlockOverlay?.hideOverlay() } catch (_: Exception) {}
     }
 
-    override fun onAccessibilityEvent(event: AccessibilityEvent) {
-        // CF-001: fetch the active root ONCE per event and pass the
-        // sealed node to every engine. The four engines previously
-        // each called `host.rootInActiveWindow` independently, which
-        // was 3 wasted IPC round-trips per a11y event (the cost of
-        // `rootInActiveWindow` is non-trivial — it crosses the
-        // accessibility service → app process boundary and seals a
-        // new AccessibilityNodeInfo per call).
-        //
-        // The root is only useful for the WINDOW_STATE_CHANGED /
-        // WINDOW_CONTENT_CHANGED events. For everything else, we
-        // still pass `null` so the engines' early-outs are
-        // unaffected.
-        val needsRoot = event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED ||
-            event.eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED
-        val root: AccessibilityNodeInfo? = if (needsRoot) rootInActiveWindow else null
+    fun blockApp(pkg: String) {
+        val appName = try {
+            val ai = packageManager.getApplicationInfo(pkg, 0)
+            packageManager.getApplicationLabel(ai).toString()
+        } catch (_: Exception) { pkg }
+
+        Timber.d("Blocking $appName ($pkg)")
+
+        performGlobalAction(GLOBAL_ACTION_HOME)
+
+        // Show block screen after HOME is processed
+        mainHandler.postDelayed({
+            try {
+                val intent = Intent(this, BlockActivity::class.java).apply {
+                    putExtra(BlockActivity.EXTRA_APP_NAME, appName)
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_NO_ANIMATION)
+                }
+                startActivity(intent)
+                Timber.d("BlockActivity started for $appName")
+            } catch (e: Exception) {
+                Timber.w(e, "BlockActivity failed, showing fallback overlay")
+                showFallbackOverlay(appName)
+            }
+        }, 150L)
+    }
+
+    // ── Fallback overlay (TYPE_ACCESSIBILITY_OVERLAY, non-interactive) ──
+
+    private fun createFallbackOverlay() {
         try {
-            // Order matters only marginally here — each engine does
-            // its own pre-checks (shield active, package is a
-            // target, etc.) before doing real work, so an early-out
-            // in one engine does not cost anything in the other. We
-            // run the content filter first because its package
-            // filter is the cheapest.
-            if (::contentFilter.isInitialized) contentFilter.onAccessibilityEvent(event, root)
-            if (::uninstallGuard.isInitialized) uninstallGuard.onAccessibilityEvent(event, root)
-            if (::shortstop.isInitialized) shortstop.onAccessibilityEvent(event, root)
-            if (::aiExplorer.isInitialized) aiExplorer.onAccessibilityEvent(event, root)
+            val inflater = getSystemService(LAYOUT_INFLATER_SERVICE) as LayoutInflater
+            fallbackOverlayView = inflater.inflate(R.layout.activity_block, null)
+            val type = if (Build.VERSION.SDK_INT >= 26)
+                WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY
+            else
+                WindowManager.LayoutParams.TYPE_SYSTEM_ALERT
+            val flags = WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
+            val params = WindowManager.LayoutParams(
+                WindowManager.LayoutParams.MATCH_PARENT,
+                WindowManager.LayoutParams.MATCH_PARENT,
+                type,
+                flags,
+                android.graphics.PixelFormat.TRANSLUCENT
+            ).apply { gravity = Gravity.FILL }
+            (getSystemService(WINDOW_SERVICE) as WindowManager).addView(fallbackOverlayView, params)
+            fallbackOverlayView?.visibility = View.GONE
+            Timber.d("Fallback overlay created")
+        } catch (e: Exception) {
+            Timber.w(e, "Fallback overlay creation failed")
+            fallbackOverlayView = null
+        }
+    }
+
+    private fun showFallbackOverlay(appName: String) {
+        if (fallbackOverlayView == null) return
+        try {
+            fallbackOverlayView?.findViewById<TextView>(R.id.tv_overlay_app)?.text =
+                "$appName is currently blocked by GuardSoul."
+            fallbackOverlayView?.visibility = View.VISIBLE
+            Timber.d("Fallback overlay shown for $appName")
+
+            fallbackOverlayDismiss?.let { mainHandler.removeCallbacks(it) }
+            val r = Runnable {
+                fallbackOverlayView?.visibility = View.GONE
+                Timber.d("Fallback overlay auto-dismissed")
+            }
+            fallbackOverlayDismiss = r
+            mainHandler.postDelayed(r, 10000L)
+        } catch (e: Exception) {
+            Timber.w(e, "showFallbackOverlay failed")
+        }
+    }
+
+    private fun hideFallbackOverlay() {
+        fallbackOverlayDismiss?.let { mainHandler.removeCallbacks(it) }
+        fallbackOverlayDismiss = null
+        fallbackOverlayView?.visibility = View.GONE
+    }
+
+    // ── Accessibility events ──
+
+    override fun onAccessibilityEvent(event: AccessibilityEvent) {
+        // Check shield state first - all features require shield to be active
+        val settings = (applicationContext as GuardianApp).repository.getAppSettings()
+        if (!settings.isShieldActiveSync()) return
+
+        val eventType = event.eventType
+        val pkg = event.packageName?.toString() ?: return
+
+        // Settings Block Overlay: prevent access to GuardSoul's own settings
+        if (eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED ||
+            eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED) {
+            val root = rootFromEvent(event, eventType)
+            try {
+                settingsBlockOverlay?.checkAndBlock(root.root, pkg)
+            } finally {
+                root.recycle()
+            }
+        }
+
+        // 0. Keyword Detection (runs on text changes for browsers and input fields)
+        if (eventType == AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED &&
+            ::keywordDetector.isInitialized) {
+            keywordDetector.onAccessibilityEvent(event)
+        }
+
+        // 0.5 HAAS Engine: Hybrid AI-Accessibility Shield (event-driven, battery-efficient)
+        haasEngine?.onAccessibilityEvent(event)
+
+        // 1. Facebook Reels — separate engine, handles its own full-block logic
+        if (::facebookReels.isInitialized) {
+            val rootInfo = rootFromEvent(event, eventType)
+            try {
+                facebookReels.onAccessibilityEvent(event, rootInfo.root)
+            } finally {
+                rootInfo.recycle()
+            }
+            // If Facebook handled it (full block or feed block), skip Shortstop for this event
+            if (pkg == "com.facebook.katana" || pkg == "com.facebook.lite") return
+        }
+
+        // 2. Shortstop (YouTube, Instagram, TikTok, Snapchat, Twitter/X)
+        if (!::shortstop.isInitialized) return
+
+        if (shortstop.tryFullBlock(pkg)) return
+
+        // Use event.source when available (VIEW_CLICKED, some window events) — avoids expensive rootInActiveWindow IPC
+        val source = event.source
+        val useSource = source != null && (eventType == AccessibilityEvent.TYPE_VIEW_CLICKED ||
+            eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED)
+
+        var root: AccessibilityNodeInfo?
+        var shouldRecycle = false
+        if (useSource) {
+            root = source
+        } else {
+            try {
+                root = rootInActiveWindow
+                shouldRecycle = root != null
+            } catch (e: Exception) {
+                Timber.w(e, "rootInActiveWindow failed")
+                root = null
+            }
+        }
+        try {
+            shortstop.onAccessibilityEvent(event, root, useSource)
         } finally {
-            // The host owns the node it fetched; recycle it here so
-            // none of the per-engine `try/finally` blocks need to
-            // track ownership.
-            if (root != null) {
+            if (shouldRecycle && root != null) {
                 try { root.recycle() } catch (_: Exception) {}
             }
+            // Don't recycle event.source — framework owns it
+        }
+    }
+
+    private class RootRef(val root: AccessibilityNodeInfo?, private val owned: Boolean) {
+        fun recycle() { if (owned && root != null) try { root.recycle() } catch (_: Exception) {} }
+    }
+
+    private fun rootFromEvent(event: AccessibilityEvent, eventType: Int): RootRef {
+        val source = event.source
+        if (source != null && (eventType == AccessibilityEvent.TYPE_VIEW_CLICKED ||
+            eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED)) {
+            return RootRef(source, false)
+        }
+        return try { RootRef(rootInActiveWindow, true) } catch (e: Exception) {
+            Timber.w(e, "rootInActiveWindow failed")
+            RootRef(null, false)
         }
     }
 }

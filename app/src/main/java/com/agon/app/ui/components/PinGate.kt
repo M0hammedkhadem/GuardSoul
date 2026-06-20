@@ -25,7 +25,6 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.agon.app.R
-import com.agon.app.utils.SecurityUtils
 import com.agon.app.ui.theme.*
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -114,7 +113,9 @@ fun PinEntryScreen(
             pin += digit
             error = false
             if (pin.length == 4) {
-                if (SecurityUtils.verifyPinAgainstHash(pin, storedHash)) {
+                val digest = java.security.MessageDigest.getInstance("SHA-256")
+                val enteredHash = digest.digest(pin.toByteArray()).joinToString("") { "%02x".format(it) }
+                if (enteredHash == storedHash) {
                     onPinVerified()
                 } else {
                     error = true

@@ -1,31 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
     <uses-permission android:name="android.permission.INTERNET" />
-    <uses-permission android:name="android.permission.WRITE_SETTINGS" />
-    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
-    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
-    <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
-    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
-    <!-- Issue #130: REBOOT is intentionally NOT requested. SafeModeBlocker
-         uses a safer device-lock (KeyguardManager) instead of a root
-         reboot to deter safe-mode tamper attempts. A REBOOT permission
-         would be a red flag in Play review (system-level privilege) and
-         is not actually used anywhere in the codebase. -->
+    <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS" tools:ignore="ProtectedPermissions" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
-    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
-
-    <uses-permission android:name="android.permission.BIND_DEVICE_ADMIN" />
-    <uses-permission android:name="android.permission.MANAGE_USERS" />
-    <uses-permission android:name="android.permission.INTERACT_ACROSS_USERS" />
-    <uses-permission android:name="android.permission.MANAGE_DEVICE_ADMINS" />
-
-    <uses-permission android:name="com.samsung.android.knox.permission.KNOX_MDM" />
-    <uses-permission android:name="com.samsung.android.knox.permission.KNOX_ENTERPRISE" />
 
     <application
         android:name=".GuardianApp"
@@ -46,34 +32,17 @@
         </activity>
 
         <activity
-            android:name=".ui.screens.BlockActivity"
+            android:name=".ui.BlockActivity"
             android:excludeFromRecents="true"
-            android:exported="false"
-            android:launchMode="singleInstance"
-            android:showWhenLocked="true"
-            android:turnScreenOn="true" />
+            android:taskAffinity=""
+            android:finishOnTaskLaunch="true"
+            android:theme="@android:style/Theme.Material.NoActionBar"
+            android:exported="false" />
 
-        <!--
-            GuardSoulAccessibilityService (unified)
-
-            Combines the former GuardianAccessibilityService (keyword /
-            domain filtering + uninstall protection) and
-            ShortstopAccessibilityService (Reels / Shorts / TikTok FYP /
-            Snapchat Spotlight / Twitter-X video surgical blocking)
-            into a single bound service. The two engines are composed
-            inside the service and dispatched in onAccessibilityEvent.
-
-            Why one service? Some OEMs (Samsung One UI 5/6, MIUI 14)
-            refuse to bind two accessibility services from the same
-            package simultaneously, or downgrade event delivery for
-            the secondary service. A single service side-steps that
-            limitation and also halves the per-event work (no more
-            two competing rootInActiveWindow walks).
-        -->
         <service
             android:name=".services.GuardSoulAccessibilityService"
             android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE"
-            android:exported="false">
+            android:exported="true">
             <intent-filter>
                 <action android:name="android.accessibilityservice.AccessibilityService" />
             </intent-filter>
@@ -83,217 +52,45 @@
         </service>
 
         <service
-            android:name=".PornBlockerService"
-            android:exported="false"
-            android:foregroundServiceType="specialUse">
-            <property
-                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
-                android:value="dns_content_filtering" />
-        </service>
-
-        <service
-            android:name=".DnsVpnService"
-            android:exported="false"
+            android:name=".services.DnsVpnService"
             android:permission="android.permission.BIND_VPN_SERVICE"
-            android:foregroundServiceType="systemExempted">
-        </service>
-
-        <service
-            android:name=".AppBlockerService"
-            android:exported="false"
-            android:foregroundServiceType="specialUse">
-            <property
-                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
-                android:value="app_usage_monitoring" />
-        </service>
-
-        <service
-            android:name=".data.remote.GuardianFcmService"
-            android:exported="false">
-            <intent-filter>
-                <action android:name="com.google.firebase.MESSAGING_EVENT" />
-            </intent-filter>
-        </service>
-
-        <receiver
-            android:name=".BootReceiver"
-            android:exported="true">
-            <intent-filter>
-                <action android:name="android.intent.action.BOOT_COMPLETED" />
-                <action android:name="android.intent.action.QUICKBOOT_POWERON" />
-                <!--
-                    MY_PACKAGE_REPLACED fires when the user updates the app.
-                    The system wipes all AlarmManager alarms owned by the
-                    previous APK on every install/update, so without this
-                    action the next scheduled transition would never fire.
-                    We re-arm schedules + restart services here for the
-                    same reason we do on BOOT_COMPLETED.
-                -->
-                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
-            </intent-filter>
-        </receiver>
-
-        <!--
-            ScheduleReceiver listens for MY_PACKAGE_REPLACED as a defense
-            in depth: if BootReceiver's onReceive is somehow unavailable
-            (rare OEM quirks where the system delivers MY_PACKAGE_REPLACED
-            before BOOT_COMPLETED handlers are ready), this filter lets
-            the receiver self-rescue by re-arming the schedule alarms.
-
-            The receiver's only *primary* trigger remains the explicit
-            AlarmManager setAlarmClock() call from ScheduleEnforcer —
-            this filter is purely the fallback path.
-        -->
-        <receiver
-            android:name=".receivers.ScheduleReceiver"
-            android:exported="false">
-            <intent-filter>
-                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
-            </intent-filter>
-        </receiver>
-
-        <!--
-            TimeTamperReceiver: detects manual clock changes that would
-            bypass deactivation-delay countdowns. Exported=true because
-            Android delivers these broadcasts to any registered listener;
-            we only act on a positive tamper signal (no false-positive
-            risk from external callers).
-        -->
-        <receiver
-            android:name=".receivers.TimeTamperReceiver"
-            android:exported="true">
-            <intent-filter>
-                <action android:name="android.intent.action.TIME_SET" />
-                <action android:name="android.intent.action.TIMEZONE_CHANGED" />
-                <action android:name="android.intent.action.DATE_CHANGED" />
-            </intent-filter>
-        </receiver>
-
-        <!--
-            UserSwitchReceiver: detects when a second user / guest profile
-            becomes foreground or is created. The system delivers these
-            broadcasts to any registered listener so we keep exported=true;
-            we only act on multi-user state (no false-positive risk).
-        -->
-        <receiver
-            android:name=".receivers.UserSwitchReceiver"
-            android:exported="true">
-            <intent-filter>
-                <action android:name="android.intent.action.USER_FOREGROUND" />
-                <action android:name="android.intent.action.USER_INFO_CHANGED" />
-                <action android:name="android.intent.action.USER_ADDED" />
-                <action android:name="android.intent.action.USER_REMOVED" />
-            </intent-filter>
-        </receiver>
-
-        <receiver
-            android:name=".GuardianDeviceAdminReceiver"
             android:exported="true"
-            android:permission="android.permission.BIND_DEVICE_ADMIN">
+            android:foregroundServiceType="specialUse" />
+
+        <service
+            android:name=".services.NsfwScannerService"
+            android:exported="false"
+            android:foregroundServiceType="mediaProjection" />
+
+        <service
+            android:name=".services.SelfHealingMonitor"
+            android:exported="false"
+            android:foregroundServiceType="specialUse" />
+
+        <receiver
+            android:name=".services.VpnStateReceiver"
+            android:exported="true"
+            android:enabled="true">
+            <intent-filter>
+                <action android:name="android.net.conn.CONNECTIVITY_CHANGE" />
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.LOCKED_BOOT_COMPLETED" />
+            </intent-filter>
+        </receiver>
+
+        <receiver
+            android:name=".admin.GuardianDeviceAdminReceiver"
+            android:permission="android.permission.BIND_DEVICE_ADMIN"
+            android:exported="true">
             <meta-data
                 android:name="android.app.device_admin"
-                android:resource="@xml/device_admin_receiver" />
+                android:resource="@xml/device_admin_policies" />
             <intent-filter>
                 <action android:name="android.app.action.DEVICE_ADMIN_ENABLED" />
                 <action android:name="android.app.action.DEVICE_ADMIN_DISABLED" />
+                <action android:name="android.app.action.DEVICE_ADMIN_DISABLE_REQUESTED" />
             </intent-filter>
         </receiver>
-
-        <!-- Issue #141: AdbReceiver should be private if possible, or protected -->
-        <receiver
-            android:name=".receivers.AdbReceiver"
-            android:exported="false">
-            <intent-filter>
-                <action android:name="android.hardware.usb.action.USB_STATE" />
-            </intent-filter>
-        </receiver>
-
-        <!-- Issue #142: Split IntentFilters to require data scheme for package events -->
-        <receiver
-            android:name=".receivers.CloneReceiver"
-            android:exported="true">
-            <intent-filter>
-                <action android:name="android.intent.action.PACKAGE_ADDED" />
-                <action android:name="android.intent.action.PACKAGE_REPLACED" />
-                <data android:scheme="package" />
-            </intent-filter>
-            <intent-filter>
-                <action android:name="android.intent.action.BOOT_COMPLETED" />
-            </intent-filter>
-        </receiver>
-
-        <!--
-            ShortsIntentReceiver: intercepts Shorts/Reels deep links from
-            browsers, chat apps, etc. and rewrites them to the host app's
-            main launcher activity. Exported because we must receive
-            VIEW intents from other apps.
-
-            The intent-filter is scoped to the exact hosts + path prefixes
-            the receiver's `SHORTS_URL_PATTERNS` actually matches. Using
-            bare <data android:scheme="https" /> / "http" without a host
-            would register us as a generic "open in" target for *every*
-            URL on the device, which both:
-              (a) violates Google Play's "Apps must not claim intents
-                  they don't handle" policy, and
-              (b) pollutes the system chooser for users.
-            The receiver's isShortsOrReelsPath() check stays as a second
-            defence in depth (e.g. for youtu.be / fb.watch short-URLs
-            where the path is opaque until resolution).
-        -->
-        <receiver
-            android:name=".receivers.ShortsIntentReceiver"
-            android:exported="true">
-            <intent-filter android:priority="1000">
-                <action android:name="android.intent.action.VIEW" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <category android:name="android.intent.category.BROWSABLE" />
-
-                <!-- YouTube Shorts player — both https and http -->
-                <data android:scheme="https" android:host="youtube.com"     android:pathPrefix="/shorts/" />
-                <data android:scheme="https" android:host="www.youtube.com" android:pathPrefix="/shorts/" />
-                <data android:scheme="https" android:host="m.youtube.com"   android:pathPrefix="/shorts/" />
-                <data android:scheme="https" android:host="youtu.be" />
-                <data android:scheme="http"  android:host="youtube.com"     android:pathPrefix="/shorts/" />
-                <data android:scheme="http"  android:host="www.youtube.com" android:pathPrefix="/shorts/" />
-                <data android:scheme="http"  android:host="m.youtube.com"   android:pathPrefix="/shorts/" />
-                <data android:scheme="http"  android:host="youtu.be" />
-
-                <!-- Facebook Reels — both https and http -->
-                <data android:scheme="https" android:host="facebook.com"     android:pathPrefix="/reel/" />
-                <data android:scheme="https" android:host="www.facebook.com" android:pathPrefix="/reel/" />
-                <data android:scheme="https" android:host="m.facebook.com"   android:pathPrefix="/reel/" />
-                <data android:scheme="https" android:host="fb.watch" />
-                <data android:scheme="http"  android:host="facebook.com"     android:pathPrefix="/reel/" />
-                <data android:scheme="http"  android:host="www.facebook.com" android:pathPrefix="/reel/" />
-                <data android:scheme="http"  android:host="m.facebook.com"   android:pathPrefix="/reel/" />
-                <data android:scheme="http"  android:host="fb.watch" />
-
-                <!-- Instagram Reels — both https and http -->
-                <data android:scheme="https" android:host="instagram.com"     android:pathPrefix="/reel/" />
-                <data android:scheme="https" android:host="www.instagram.com" android:pathPrefix="/reel/" />
-                <data android:scheme="http"  android:host="instagram.com"     android:pathPrefix="/reel/" />
-                <data android:scheme="http"  android:host="www.instagram.com" android:pathPrefix="/reel/" />
-
-                <!-- YouTube custom scheme — used by some YouTube clients / extensions -->
-                <data android:scheme="vnd.youtube" />
-            </intent-filter>
-        </receiver>
-
-        <provider
-            android:name="androidx.core.content.FileProvider"
-            android:authorities="${applicationId}.fileprovider"
-            android:exported="false"
-            android:grantUriPermissions="true">
-            <meta-data
-                android:name="android.support.FILE_PROVIDER_PATHS"
-                android:resource="@xml/file_paths" />
-        </provider>
-
-        <activity
-            android:name=".ui.screens.DeviceOwnerSetupActivity"
-            android:exported="false"
-            android:theme="@android:style/Theme.Material.Light.NoActionBar"
-            android:excludeFromRecents="true" />
 
     </application>
 

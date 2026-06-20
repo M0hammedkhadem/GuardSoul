@@ -1,546 +1,165 @@
 package com.agon.app.ui.screens
 
-import android.app.Activity
-import android.app.admin.DevicePolicyManager
-import android.content.ComponentName
-import android.content.Intent
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.expandVertically
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.VisibilityOff
+import androidx.compose.material.icons.filled.Security
+import androidx.compose.material.icons.filled.Scanner
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.runtime.rememberCoroutineScope
-import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.input.PasswordVisualTransformation
-import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.agon.app.GuardianDeviceAdminReceiver
 import com.agon.app.R
 import com.agon.app.ui.theme.*
 import com.agon.app.viewmodel.ContentViewModel
-import com.agon.app.viewmodel.PornBlockerDiagnostics
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ContentScreen(vm: ContentViewModel) {
-    val context = LocalContext.current
-    val pornBlockerActive by vm.pornBlocker.collectAsStateWithLifecycle()
-    val aiScannerActive by vm.aiScanner.collectAsStateWithLifecycle()
-    val isDeviceOwner by vm.isDeviceOwner.collectAsStateWithLifecycle()
-    val uninstallProtectionActive by vm.uninstallProtection.collectAsStateWithLifecycle()
-    val strongProtectionActive by vm.strongProtection.collectAsStateWithLifecycle()
-    val dpm = context.getSystemService(android.content.Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
-    val deviceAdminComponent = ComponentName(context, GuardianDeviceAdminReceiver::class.java)
-    val deviceAdminGranted = dpm.isAdminActive(deviceAdminComponent)
-    val scrollState = rememberScrollState()
+    val lifecycleOwner = LocalLifecycleOwner.current
 
-    var showStrongProtectionDialog by remember { mutableStateOf(false) }
-    var strongPinInput by remember { mutableStateOf("") }
-    var strongPinError by remember { mutableStateOf(false) }
-    var showStrongWarningDialog by remember { mutableStateOf(false) }
-    var showDiagnosticsDialog by remember { mutableStateOf(false) }
-    var diagnostics by remember { mutableStateOf<PornBlockerDiagnostics?>(null) }
-    val diagnosticsScope = rememberCoroutineScope()
-
-    val adminLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.StartActivityForResult()
-    ) { result ->
-        if (result.resultCode == Activity.RESULT_OK) {
-            vm.setUninstallProtection(true)
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                vm.refreshUninstallProtectionState()
+            }
         }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
-    Scaffold(
-        containerColor = background,
-        topBar = {
-            TopAppBar(
-                title = { Text(stringResource(R.string.screen_content_title), fontWeight = FontWeight.Bold) },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = background, titleContentColor = text)
-            )
-        }
-    ) { padding ->
-        Column(
-            modifier = Modifier.fillMaxSize().padding(padding).padding(16.dp).verticalScroll(scrollState),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+    val pornBlockerEnabled by vm.pornBlockerEnabled.collectAsStateWithLifecycle()
+    val aiExplorerEnabled by vm.aiExplorerEnabled.collectAsStateWithLifecycle()
+    val uninstallProtectionEnabled by vm.uninstallProtectionEnabled.collectAsStateWithLifecycle()
+
+    Box(Modifier.fillMaxSize().background(background)) {
+        LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(bottom = 32.dp)
         ) {
-            Surface(
-                color = warning.copy(alpha = 0.08f),
-                shape = RoundedCornerShape(8.dp),
-                border = BorderStroke(1.dp, warning.copy(alpha = 0.2f))
-            ) {
-                Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.Warning, null, tint = warning, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.width(8.dp))
-                    Text(stringResource(R.string.warning_content_filter), fontSize = 12.sp, color = textSecondary)
-                }
+            item {
+                Text(
+                    text = stringResource(R.string.screen_content_title),
+                    fontSize = 28.sp,
+                    fontWeight = FontWeight.Black,
+                    color = text,
+                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 24.dp)
+                )
             }
 
-            FeatureToggleCard(
-                title = stringResource(R.string.card_porn_blocker_title),
-                subtitle = stringResource(R.string.card_porn_blocker_subtitle),
-                isActive = pornBlockerActive,
-                activeBadge = when {
-                    !pornBlockerActive -> "OFF"
-                    isDeviceOwner -> stringResource(R.string.badge_dns_active)
-                    else -> stringResource(R.string.badge_keyword_active)
-                },
-                icon = Icons.Default.Security,
-                color = success,
-                onToggle = { active -> vm.setPornBlocker(active) }
-            ) {
-                Text(stringResource(R.string.dns_blocking_desc), fontSize = 12.sp, color = textSecondary)
-                if (pornBlockerActive && !isDeviceOwner) {
-                    Spacer(Modifier.height(6.dp))
-                    Text(
-                        text = stringResource(R.string.porn_block_requires_device_owner),
-                        fontSize = 11.sp,
-                        color = warning,
-                    )
-                }
-                Spacer(Modifier.height(10.dp))
-                // "Test filter" affordance — opens a diagnostics
-                // dialog with the live state of every component in
-                // the porn-blocker stack (DNS / VPN / A11y / blocklist
-                // counts). Helps the user verify the filter is
-                // actually engaged, not just the toggle.
-                OutlinedButton(
-                    onClick = {
-                        diagnosticsScope.launch {
-                            diagnostics = vm.runDiagnostics()
-                            showDiagnosticsDialog = true
-                        }
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(10.dp),
-                ) {
-                    Icon(
-                        Icons.Default.BugReport,
-                        null,
-                        modifier = Modifier.size(16.dp),
-                        tint = primary,
-                    )
-                    Spacer(Modifier.width(6.dp))
-                    Text(
-                        stringResource(R.string.test_blocker_run),
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = primary,
-                    )
-                }
+            item {
+                InfoCard(
+                    text = stringResource(R.string.warning_content_filter),
+                    icon = Icons.Default.VisibilityOff,
+                    color = Color(0xFFEF4444)
+                )
             }
 
-            FeatureToggleCard(
-                title = stringResource(R.string.card_ai_explorer_title),
-                subtitle = stringResource(R.string.card_ai_explorer_subtitle),
-                isActive = aiScannerActive,
-                activeBadge = if (aiScannerActive) stringResource(R.string.badge_on) else stringResource(R.string.badge_off),
-                icon = Icons.Default.Visibility,
-                color = accent,
-                onToggle = { active ->
-                    // The actual classification runs inside
-                    // [com.agon.app.blocking.AiExplorerEngine], driven
-                    // by the accessibility service. No MediaProjection
-                    // consent is required — the engine uses
-                    // AccessibilityNodeInfo.takeScreenshot() (API 33+)
-                    // which is system-granted, not user-granted.
-                    vm.setAiScanner(active)
-                }
-            ) {
-                Text(stringResource(R.string.privacy_ai_note), fontSize = 12.sp, color = textSecondary)
-                Spacer(Modifier.height(6.dp))
-                Text(stringResource(R.string.step_ai_capture), fontSize = 11.sp, color = textMuted)
-                Text(stringResource(R.string.step_ai_analyze), fontSize = 11.sp, color = textMuted)
-                Text(stringResource(R.string.step_ai_detect), fontSize = 11.sp, color = textMuted)
-                Text(stringResource(R.string.step_ai_ban), fontSize = 11.sp, color = textMuted)
+            item {
+                ContentToggleCard(
+                    title = stringResource(R.string.card_porn_blocker_title),
+                    subtitle = stringResource(R.string.card_porn_blocker_subtitle),
+                    enabled = pornBlockerEnabled,
+                    onToggle = vm::togglePornBlocker,
+                    icon = Icons.Default.Security,
+                    iconColor = Color(0xFF10B981)
+                )
             }
 
-            FeatureToggleCard(
-                title = stringResource(R.string.card_uninstall_title),
-                subtitle = stringResource(R.string.card_uninstall_subtitle),
-                isActive = uninstallProtectionActive,
-                activeBadge = if (deviceAdminGranted) stringResource(R.string.badge_protected) else stringResource(R.string.badge_not_protected),
-                icon = Icons.Default.AdminPanelSettings,
-                color = if (deviceAdminGranted) success else danger,
-                onToggle = { active ->
-                    if (active && !deviceAdminGranted) {
-                        val intent = Intent(DevicePolicyManager.ACTION_ADD_DEVICE_ADMIN).apply {
-                            putExtra(DevicePolicyManager.EXTRA_DEVICE_ADMIN, deviceAdminComponent)
-                            putExtra(DevicePolicyManager.EXTRA_ADD_EXPLANATION, context.getString(R.string.device_admin_explanation))
-                        }
-                        adminLauncher.launch(intent)
-                    } else {
-                        vm.setUninstallProtection(active)
-                    }
-                }
-            ) {
-                if (!deviceAdminGranted) {
-                    Surface(color = danger.copy(alpha = 0.1f), shape = RoundedCornerShape(6.dp), border = BorderStroke(1.dp, danger.copy(alpha = 0.2f))) {
-                        Text(stringResource(R.string.warning_admin_not_granted), fontSize = 11.sp, color = danger, modifier = Modifier.padding(8.dp))
-                    }
-                    Spacer(Modifier.height(8.dp))
-                }
-                ChecklistItem(stringResource(R.string.feature_app_settings_blocked))
-                ChecklistItem(stringResource(R.string.feature_device_admin_blocked))
-                ChecklistItem(stringResource(R.string.feature_dns_change_detected))
-                ChecklistItem(stringResource(R.string.feature_safe_mode_warning))
-                ChecklistItem(stringResource(R.string.feature_permission_removal_blocked))
+            item {
+                ContentToggleCard(
+                    title = stringResource(R.string.card_ai_explorer_title),
+                    subtitle = stringResource(R.string.card_ai_explorer_subtitle),
+                    enabled = aiExplorerEnabled,
+                    onToggle = vm::toggleAiExplorer,
+                    icon = Icons.Default.Scanner,
+                    iconColor = Color(0xFF8B5CF6)
+                )
             }
 
-            FeatureToggleCard(
-                title = stringResource(R.string.card_strong_protection_title),
-                subtitle = stringResource(R.string.card_strong_protection_subtitle),
-                isActive = strongProtectionActive,
-                activeBadge = if (strongProtectionActive) stringResource(R.string.badge_strong) else stringResource(R.string.badge_off),
-                icon = Icons.Default.Shield,
-                color = if (strongProtectionActive) warning else textMuted,
-                onToggle = { active ->
-                    if (active) {
-                        showStrongWarningDialog = true
-                    } else {
-                        strongPinInput = ""
-                        strongPinError = false
-                        showStrongProtectionDialog = true
-                    }
-                }
-            ) {
-                Surface(color = warning.copy(alpha = 0.08f), shape = RoundedCornerShape(6.dp), border = BorderStroke(1.dp, warning.copy(alpha = 0.2f))) {
-                    Text(stringResource(R.string.warning_strong_protection), fontSize = 11.sp, color = warning, modifier = Modifier.padding(8.dp))
-                }
-                Spacer(Modifier.height(8.dp))
-                if (vm.isKnoxDevice) {
-                    Surface(color = accent.copy(alpha = 0.1f), shape = RoundedCornerShape(6.dp)) {
-                        Text(stringResource(R.string.badge_knox_detected), fontSize = 11.sp, color = accent, modifier = Modifier.padding(8.dp))
-                    }
-                    Spacer(Modifier.height(8.dp))
-                }
-                ChecklistItem(stringResource(R.string.feature_pin_required_disable))
-                ChecklistItem(stringResource(R.string.feature_tamper_detection))
-                ChecklistItem(stringResource(R.string.feature_remote_alert))
-                ChecklistItem(stringResource(R.string.feature_os_suspension))
-                ChecklistItem(stringResource(R.string.feature_safe_mode_block))
-                Spacer(Modifier.height(12.dp))
-                Surface(
-                    color = primary.copy(alpha = 0.1f),
-                    shape = RoundedCornerShape(8.dp),
-                    modifier = Modifier.fillMaxWidth().clickable {
-                        val intent = Intent(context, DeviceOwnerSetupActivity::class.java)
-                        context.startActivity(intent)
-                    }
-                ) {
-                    Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.AdminPanelSettings, null, tint = primary, modifier = Modifier.size(18.dp))
-                        Spacer(Modifier.width(8.dp))
-                        Text(
-                            if (vm.isDeviceOwner()) "Device Owner: Active (tap for setup)"
-                            else "Set up Device Owner (ADB)",
-                            fontSize = 12.sp,
-                            color = primary
-                        )
-                    }
-                }
+            item {
+                ContentToggleCard(
+                    title = stringResource(R.string.card_uninstall_title),
+                    subtitle = stringResource(R.string.card_uninstall_subtitle),
+                    enabled = uninstallProtectionEnabled,
+                    onToggle = vm::toggleUninstallProtection,
+                    icon = Icons.Default.Lock,
+                    iconColor = Color(0xFFEF4444)
+                )
             }
-
-            Spacer(Modifier.height(16.dp))
         }
     }
-
-    PinEntryDialog(
-        show = showStrongWarningDialog,
-        title = stringResource(R.string.strong_warning_title),
-        message = stringResource(R.string.strong_warning_text),
-        confirmLabel = stringResource(R.string.btn_confirm),
-        input = strongPinInput,
-        onInputChange = { strongPinInput = it; strongPinError = false },
-        isError = strongPinError,
-        isPassword = true,
-        onDismiss = {
-            showStrongWarningDialog = false
-            strongPinInput = ""
-            strongPinError = false
-        },
-        onConfirm = {
-            val valid = vm.isDeviceAdminGranted() && GuardianDeviceAdminReceiver.verifyPinBeforeDisable(context, strongPinInput)
-            if (valid) {
-                vm.setStrongProtection(true)
-                showStrongWarningDialog = false
-                strongPinInput = ""
-            } else {
-                strongPinError = true
-            }
-        }
-    )
-
-    PinEntryDialog(
-        show = showStrongProtectionDialog,
-        title = stringResource(R.string.strong_disable_title),
-        message = stringResource(R.string.strong_disable_text),
-        confirmLabel = stringResource(R.string.btn_disable),
-        input = strongPinInput,
-        onInputChange = { strongPinInput = it; strongPinError = false },
-        isError = strongPinError,
-        isPassword = true,
-        onDismiss = {
-            showStrongProtectionDialog = false
-            strongPinInput = ""
-            strongPinError = false
-        },
-        onConfirm = {
-            val valid = GuardianDeviceAdminReceiver.verifyPinBeforeDisable(context, strongPinInput)
-            if (valid) {
-                vm.setStrongProtection(false)
-                showStrongProtectionDialog = false
-                strongPinInput = ""
-            } else {
-                strongPinError = true
-            }
-        }
-    )
-
-    if (showDiagnosticsDialog) {
-        diagnostics?.let { d ->
-            DiagnosticsDialog(
-                d = d,
-                onDismiss = {
-                    showDiagnosticsDialog = false
-                    diagnostics = null
-                },
-            )
-        }
-    }
-
 }
 
 @Composable
-private fun FeatureToggleCard(
+private fun InfoCard(text: String, icon: ImageVector, color: Color) {
+    Card(
+        modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
+        colors = CardDefaults.cardColors(containerColor = color.copy(alpha = 0.1f)),
+        shape = RoundedCornerShape(16.dp),
+        border = BorderStroke(1.dp, color.copy(alpha = 0.2f))
+    ) {
+        Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(text, color = color, fontSize = 14.sp, modifier = Modifier.weight(1f))
+            Spacer(Modifier.width(12.dp))
+            Icon(icon, null, tint = color, modifier = Modifier.size(24.dp))
+        }
+    }
+}
+
+@Composable
+private fun ContentToggleCard(
     title: String,
     subtitle: String,
-    isActive: Boolean,
-    activeBadge: String,
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    color: Color,
+    enabled: Boolean,
     onToggle: (Boolean) -> Unit,
-    content: @Composable ColumnScope.() -> Unit
+    icon: ImageVector,
+    iconColor: Color
 ) {
-    var expanded by remember { mutableStateOf(false) }
-
     Card(
+        modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
         colors = CardDefaults.cardColors(containerColor = card),
-        shape = RoundedCornerShape(16.dp),
-        border = BorderStroke(1.dp, if (isActive) color.copy(alpha = 0.5f) else cardBorder)
+        shape = RoundedCornerShape(20.dp),
+        border = BorderStroke(1.dp, cardBorder)
     ) {
-        Column(Modifier.fillMaxWidth()) {
-            Row(Modifier.fillMaxWidth().clickable { expanded = !expanded }.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                Box(Modifier.size(46.dp).clip(RoundedCornerShape(12.dp)).background(color.copy(alpha = 0.15f)), contentAlignment = Alignment.Center) {
-                    Icon(icon, null, tint = color, modifier = Modifier.size(24.dp))
-                }
-                Spacer(Modifier.width(12.dp))
-                Column(Modifier.weight(1f)) {
-                    Text(title, fontWeight = FontWeight.Bold, fontSize = 16.sp, color = text)
-                    Text(subtitle, fontSize = 12.sp, color = textSecondary)
-                }
+        Row(Modifier.padding(20.dp), verticalAlignment = Alignment.CenterVertically) {
+            Switch(
+                checked = enabled,
+                onCheckedChange = onToggle,
+                colors = SwitchDefaults.colors(
+                    checkedThumbColor = Color.White,
+                    checkedTrackColor = primary,
+                    uncheckedThumbColor = textMuted,
+                    uncheckedTrackColor = surfaceLight
+                )
+            )
+            Spacer(Modifier.width(20.dp))
+            Column(Modifier.weight(1f)) {
+                Text(title, fontWeight = FontWeight.Bold, color = text, fontSize = 18.sp)
+                Text(subtitle, color = textSecondary, fontSize = 13.sp, lineHeight = 18.sp)
             }
-            Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                Surface(color = if (isActive) color.copy(alpha = 0.1f) else surfaceLight, shape = RoundedCornerShape(6.dp), border = BorderStroke(1.dp, if (isActive) color.copy(alpha = 0.3f) else cardBorder)) {
-                    Text(activeBadge, fontSize = 10.sp, fontWeight = FontWeight.Bold, color = if (isActive) color else textMuted, modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp))
-                }
-                Spacer(Modifier.weight(1f))
-                Switch(checked = isActive, onCheckedChange = onToggle, colors = SwitchDefaults.colors(checkedTrackColor = color, checkedThumbColor = surface))
-            }
-            AnimatedVisibility(
-                visible = expanded,
-                enter = expandVertically() + fadeIn(),
-                exit = shrinkVertically() + fadeOut()
+            Spacer(Modifier.width(12.dp))
+            Box(
+                Modifier.size(40.dp).clip(RoundedCornerShape(10.dp)).background(iconColor.copy(alpha = 0.15f)),
+                contentAlignment = Alignment.Center
             ) {
-                Column(Modifier.padding(start = 16.dp, end = 16.dp, bottom = 16.dp)) {
-                    content()
-                }
+                Icon(icon, null, tint = iconColor, modifier = Modifier.size(20.dp))
             }
         }
-    }
-}
-
-@Composable
-private fun ChecklistItem(text: String) {
-    Row(Modifier.padding(vertical = 3.dp), verticalAlignment = Alignment.CenterVertically) {
-        Icon(Icons.Default.CheckCircle, null, tint = success, modifier = Modifier.size(16.dp))
-        Spacer(Modifier.width(8.dp))
-        Text(text, fontSize = 13.sp, color = textSecondary)
-    }
-}
-
-/**
- * "Filter diagnostics" dialog. Renders the [PornBlockerDiagnostics]
- * snapshot as a coloured checklist: green for ✓, orange for
- * ⚠, red for ✗. Tells the user exactly which layer of the filter
- * stack is (or isn't) working — so they don't have to guess whether
- * the toggle being on actually means the filter is engaged.
- */
-@Composable
-private fun DiagnosticsDialog(d: PornBlockerDiagnostics, onDismiss: () -> Unit) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(
-                    Icons.Default.HealthAndSafety,
-                    null,
-                    tint = primary,
-                    modifier = Modifier.size(20.dp),
-                )
-                Spacer(Modifier.width(8.dp))
-                Text(
-                    stringResource(R.string.test_blocker_title),
-                    fontWeight = FontWeight.Bold,
-                )
-            }
-        },
-        text = {
-            Column {
-                DiagnosticRow(
-                    ok = d.shieldActive,
-                    label = stringResource(
-                        if (d.shieldActive) R.string.test_blocker_shield_ok
-                        else R.string.test_blocker_shield_off
-                    ),
-                )
-                DiagnosticRow(
-                    ok = d.pornBlockerActive,
-                    // PIN-STRING-EQ: previously the "on" branch
-                    // returned a hardcoded English string and the
-                    // "off" branch used the resource. The hardcoded
-                    // string was not localized and (more importantly)
-                    // not aligned with the resource entry. We now use
-                    // a single resource with a %1$s placeholder.
-                    label = stringResource(R.string.test_blocker_toggle_state, if (d.pornBlockerActive) "on" else "off"),
-                )
-                if (d.pornBlockerActive) {
-                    DiagnosticRow(
-                        ok = d.privateDnsConfigured,
-                        label = stringResource(
-                            if (d.privateDnsConfigured) R.string.test_blocker_dns_ok
-                            else R.string.test_blocker_dns_pending
-                        ),
-                    )
-                    DiagnosticRow(
-                        ok = d.vpnEstablished,
-                        label = stringResource(
-                            if (d.vpnEstablished) R.string.test_blocker_vpn_ok
-                            else R.string.test_blocker_vpn_pending
-                        ),
-                    )
-                }
-                DiagnosticRow(
-                    ok = d.a11yServiceBound,
-                    label = stringResource(
-                        if (d.a11yServiceBound) R.string.test_blocker_a11y_ok
-                        else R.string.test_blocker_a11y_missing
-                    ),
-                )
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    stringResource(R.string.test_blocker_keyword_count, d.keywordCount),
-                    fontSize = 12.sp,
-                    color = textMuted,
-                )
-                Text(
-                    stringResource(R.string.test_blocker_domain_count, d.domainCount),
-                    fontSize = 12.sp,
-                    color = textMuted,
-                )
-            }
-        },
-        confirmButton = {
-            TextButton(onClick = onDismiss) {
-                Text(stringResource(R.string.btn_confirm), fontWeight = FontWeight.Bold)
-            }
-        },
-        containerColor = surface,
-        shape = RoundedCornerShape(20.dp),
-    )
-}
-
-@Composable
-private fun DiagnosticRow(ok: Boolean, label: String) {
-    val (icon, color) = when {
-        ok -> Icons.Default.CheckCircle to success
-        else -> Icons.Default.Warning to warning
-    }
-    Row(
-        Modifier.fillMaxWidth().padding(vertical = 4.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Icon(icon, null, tint = color, modifier = Modifier.size(18.dp))
-        Spacer(Modifier.width(10.dp))
-        Text(label, fontSize = 13.sp, color = text, modifier = Modifier.weight(1f))
-    }
-}
-
-@Composable
-private fun PinEntryDialog(
-    show: Boolean,
-    title: String,
-    message: String,
-    confirmLabel: String,
-    input: String,
-    onInputChange: (String) -> Unit,
-    isError: Boolean,
-    isPassword: Boolean,
-    onDismiss: () -> Unit,
-    onConfirm: () -> Unit
-) {
-    if (show) {
-        AlertDialog(
-            onDismissRequest = onDismiss,
-            title = { Text(title, fontWeight = FontWeight.Bold) },
-            text = {
-                Column {
-                    Text(message, fontSize = 13.sp, color = textSecondary)
-                    Spacer(Modifier.height(16.dp))
-                    OutlinedTextField(
-                        value = input,
-                        onValueChange = onInputChange,
-                        label = { Text(stringResource(R.string.pin_enter)) },
-                        visualTransformation = if (isPassword) PasswordVisualTransformation() else VisualTransformation.None,
-                        keyboardOptions = KeyboardOptions(
-                            keyboardType = if (isPassword) KeyboardType.NumberPassword else KeyboardType.Ascii
-                        ),
-                        singleLine = true,
-                        isError = isError,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                }
-            },
-            confirmButton = {
-                TextButton(onClick = onConfirm) { Text(confirmLabel) }
-            },
-            dismissButton = {
-                TextButton(onClick = onDismiss) { Text(stringResource(R.string.btn_cancel)) }
-            }
-        )
     }
 }

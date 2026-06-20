@@ -1,21 +1,5 @@
 package com.agon.app.ui.screens
 
-import android.app.Activity
-import android.app.admin.DevicePolicyManager
-import android.content.ComponentName
-import android.content.Intent
-import android.net.Uri
-import android.net.VpnService
-import android.os.Build
-import android.provider.Settings
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.spring
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.scaleIn
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -31,27 +15,23 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import android.app.Activity
 import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.agon.app.GuardianDeviceAdminReceiver
 import com.agon.app.R
 import com.agon.app.ui.theme.*
 import com.agon.app.utils.AccessibilityUtils
+import com.agon.app.utils.PermissionUtils
+import com.agon.app.utils.ServiceManager
 import com.agon.app.viewmodel.PermissionsViewModel
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.isActive
-import kotlinx.coroutines.launch
-import kotlin.math.roundToInt
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -61,125 +41,18 @@ fun PermissionsScreen(
 ) {
     val context = LocalContext.current
     val uiState by viewModel.uiState.collectAsState()
-    val scope = rememberCoroutineScope()
     val scrollState = rememberScrollState()
 
-    // Issue #135: Removed the infinite poll loop. 
-    // We now rely on the LifecycleEventObserver below to refresh states when the user returns to the app.
-
-    val requestNotificationLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestPermission()
-    ) { isGranted ->
-        viewModel.refreshPermissionStates()
-        if (isGranted) viewModel.advanceGrantAll()
-    }
-
-    val vpnLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.StartActivityForResult()
-    ) {
-        viewModel.refreshPermissionStates()
-        viewModel.advanceGrantAll()
-    }
-
-    val adminLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.StartActivityForResult()
-    ) {
-        viewModel.refreshPermissionStates()
-        viewModel.advanceGrantAll()
-    }
-
-    LaunchedEffect(uiState.currentGrantingPermission) {
-        val permission = uiState.currentGrantingPermission ?: return@LaunchedEffect
-        when (permission) {
-            "notifications" -> {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                    requestNotificationLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
-                } else {
-                    viewModel.advanceGrantAll()
-                }
-            }
-            "overlay" -> {
-                Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION).apply {
-                    data = Uri.parse("package:${context.packageName}")
-                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                    context.startActivity(this)
-                }
-            }
-            "usage_access" -> {
-                Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS).apply {
-                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                    context.startActivity(this)
-                }
-            }
-            "battery" -> {
-                Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
-                    data = Uri.parse("package:${context.packageName}")
-                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                    context.startActivity(this)
-                }
-            }
-            "write_settings" -> {
-                Intent(Settings.ACTION_MANAGE_WRITE_SETTINGS).apply {
-                    data = Uri.parse("package:${context.packageName}")
-                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                    context.startActivity(this)
-                }
-            }
-            "exact_alarm" -> {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                    Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM).apply {
-                        data = Uri.parse("package:${context.packageName}")
-                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                        context.startActivity(this)
-                    }
-                } else {
-                    viewModel.advanceGrantAll()
-                }
-            }
-            "accessibility" -> {
-                AccessibilityUtils.openAccessibilitySettings(context)
-            }
-            "vpn" -> {
-                val intent = VpnService.prepare(context)
-                if (intent != null) vpnLauncher.launch(intent)
-                else {
-                    viewModel.refreshPermissionStates()
-                    viewModel.advanceGrantAll()
-                }
-            }
-            "device_admin" -> {
-                Intent(DevicePolicyManager.ACTION_ADD_DEVICE_ADMIN).apply {
-                    putExtra(DevicePolicyManager.EXTRA_DEVICE_ADMIN, ComponentName(context, GuardianDeviceAdminReceiver::class.java))
-                    putExtra(DevicePolicyManager.EXTRA_ADD_EXPLANATION, context.getString(R.string.device_admin_explanation))
-                    adminLauncher.launch(this)
-                }
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                viewModel.refreshPermissionStates()
             }
         }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
-
-    val lifecycleOwner = LocalLifecycleOwner.current
-    LaunchedEffect(lifecycleOwner) {
-        snapshotFlow { lifecycleOwner.lifecycle.currentState }
-            .collect { state ->
-                if (state == Lifecycle.State.RESUMED) {
-                    viewModel.refreshPermissionStates()
-                    viewModel.advanceGrantAll()
-                }
-            }
-    }
-
-    val totalPermissions = 9
-    val grantedCount = listOf(
-        uiState.notificationGranted,
-        uiState.overlayGranted,
-        uiState.usageAccessGranted,
-        uiState.batteryOptimizationIgnored,
-        uiState.writeSettingsGranted,
-        uiState.exactAlarmGranted,
-        uiState.accessibilityGranted,
-        uiState.vpnGranted,
-        uiState.deviceAdminGranted
-    ).count { it }
 
     Scaffold(
         containerColor = background,
@@ -204,6 +77,18 @@ fun PermissionsScreen(
                 .padding(horizontal = 16.dp)
                 .verticalScroll(scrollState)
         ) {
+            val grantedCount = listOf(
+                uiState.accessibilityGranted,
+                uiState.vpnPrepared,
+                uiState.deviceAdminActive,
+                uiState.overlayPermission,
+                uiState.usageAccess,
+                uiState.batteryOptimization,
+                uiState.notificationsGranted
+            ).count { it }
+            val totalCount = 7
+            val allGranted = grantedCount == totalCount
+
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 colors = CardDefaults.cardColors(containerColor = card),
@@ -216,29 +101,23 @@ fun PermissionsScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(stringResource(R.string.card_permission_status), fontWeight = FontWeight.Bold, color = text, fontSize = 16.sp)
-                        Text(stringResource(R.string.permissions_progress, grantedCount, totalPermissions), color = if (grantedCount == totalPermissions) success else warning, fontWeight = FontWeight.Bold)
+                        Text(
+                            stringResource(R.string.permissions_progress, grantedCount, totalCount),
+                            color = if (allGranted) success else warning,
+                            fontWeight = FontWeight.Bold
+                        )
                     }
-                    Spacer(modifier = Modifier.height(12.dp))
-                    LinearProgressIndicator(
-                        progress = { grantedCount / totalPermissions.toFloat() },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(8.dp)
-                            .clip(RoundedCornerShape(4.dp)),
-                        color = if (grantedCount == totalPermissions) success else warning,
-                        trackColor = surfaceLight
-                    )
                     Spacer(modifier = Modifier.height(12.dp))
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(
-                            imageVector = if (grantedCount == totalPermissions) Icons.Default.CheckCircle else Icons.Default.Info,
+                            imageVector = if (allGranted) Icons.Default.CheckCircle else Icons.Default.Info,
                             contentDescription = null,
-                            tint = if (grantedCount == totalPermissions) success else textSecondary,
+                            tint = if (allGranted) success else textSecondary,
                             modifier = Modifier.size(16.dp)
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
-                            text = if (grantedCount == totalPermissions) stringResource(R.string.status_all_granted) else stringResource(R.string.status_grant_permissions),
+                            text = if (allGranted) stringResource(R.string.status_all_granted) else stringResource(R.string.status_grant_permissions),
                             color = textSecondary,
                             fontSize = 13.sp
                         )
@@ -248,269 +127,108 @@ fun PermissionsScreen(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            if (grantedCount < totalPermissions) {
-                GrantAllButton(
-                    grantedCount = grantedCount,
-                    totalCount = totalPermissions,
-                    isGrantingAll = uiState.isGrantingAll,
-                    grantAllProgress = uiState.grantAllProgress,
-                    grantAllTotal = uiState.grantAllTotal,
-                    onStartGrantAll = { viewModel.startGrantAll() },
-                )
-                Spacer(modifier = Modifier.height(16.dp))
-            }
-
-            // --- List of Permissions ---
-
-            PermissionCard(
-                title = stringResource(R.string.perm_notifications),
-                desc = stringResource(R.string.desc_notifications),
-                instruction = stringResource(R.string.instruction_notifications),
-                color = accent,
-                icon = Icons.Default.Notifications,
-                isGranted = uiState.notificationGranted,
-                isCurrentInGrantAll = uiState.isGrantingAll && uiState.currentGrantingPermission == "notifications",
-                onGrant = {
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                        requestNotificationLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
-                    }
-                }
-            )
-            Spacer(modifier = Modifier.height(12.dp))
-
-            PermissionCard(
-                title = stringResource(R.string.perm_overlay),
-                desc = stringResource(R.string.desc_overlay),
-                instruction = stringResource(R.string.instruction_overlay),
-                color = warning,
-                icon = Icons.Default.Layers,
-                isGranted = uiState.overlayGranted,
-                isCurrentInGrantAll = uiState.isGrantingAll && uiState.currentGrantingPermission == "overlay",
-                onGrant = {
-                    Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION).apply {
-                        data = Uri.parse("package:${context.packageName}")
-                        context.startActivity(this)
-                    }
-                }
-            )
-            Spacer(modifier = Modifier.height(12.dp))
-
-            PermissionCard(
-                title = stringResource(R.string.perm_usage),
-                desc = stringResource(R.string.desc_usage),
-                instruction = stringResource(R.string.instruction_usage),
-                color = primary,
-                icon = Icons.Default.DataUsage,
-                isGranted = uiState.usageAccessGranted,
-                isCurrentInGrantAll = uiState.isGrantingAll && uiState.currentGrantingPermission == "usage_access",
-                onGrant = {
-                    context.startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS))
-                }
-            )
-            Spacer(modifier = Modifier.height(12.dp))
-
-            PermissionCard(
-                title = stringResource(R.string.perm_battery),
-                desc = stringResource(R.string.desc_battery),
-                instruction = stringResource(R.string.instruction_battery),
-                color = success,
-                icon = Icons.Default.BatteryChargingFull,
-                isGranted = uiState.batteryOptimizationIgnored,
-                isCurrentInGrantAll = uiState.isGrantingAll && uiState.currentGrantingPermission == "battery",
-                onGrant = {
-                    Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
-                        data = Uri.parse("package:${context.packageName}")
-                        context.startActivity(this)
-                    }
-                }
-            )
-            Spacer(modifier = Modifier.height(12.dp))
-
-            PermissionCard(
-                title = stringResource(R.string.perm_write_settings),
-                desc = stringResource(R.string.desc_write_settings),
-                instruction = stringResource(R.string.instruction_write_settings),
-                color = danger,
-                icon = Icons.Default.Settings,
-                isGranted = uiState.writeSettingsGranted,
-                isCurrentInGrantAll = uiState.isGrantingAll && uiState.currentGrantingPermission == "write_settings",
-                onGrant = {
-                    Intent(Settings.ACTION_MANAGE_WRITE_SETTINGS).apply {
-                        data = Uri.parse("package:${context.packageName}")
-                        context.startActivity(this)
-                    }
-                }
-            )
-            Spacer(modifier = Modifier.height(12.dp))
-
-            PermissionCard(
-                title = stringResource(R.string.perm_exact_alarm),
-                desc = stringResource(R.string.desc_exact_alarm),
-                instruction = stringResource(R.string.instruction_exact_alarm),
-                color = warning,
-                icon = Icons.Default.Alarm,
-                isGranted = uiState.exactAlarmGranted,
-                isCurrentInGrantAll = uiState.isGrantingAll && uiState.currentGrantingPermission == "exact_alarm",
-                onGrant = {
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                        Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM).apply {
-                            data = Uri.parse("package:${context.packageName}")
-                            context.startActivity(this)
-                        }
-                    }
-                }
-            )
-            Spacer(modifier = Modifier.height(12.dp))
-
+            // 1. Accessibility Service Card
             PermissionCard(
                 title = stringResource(R.string.perm_accessibility),
-                desc = stringResource(R.string.desc_accessibility),
+                description = stringResource(R.string.desc_accessibility),
                 instruction = stringResource(R.string.instruction_accessibility),
-                color = primary,
-                icon = Icons.Default.Accessibility,
                 isGranted = uiState.accessibilityGranted,
-                isCurrentInGrantAll = uiState.isGrantingAll && uiState.currentGrantingPermission == "accessibility",
-                onGrant = {
-                    AccessibilityUtils.openAccessibilitySettings(context)
-                }
+                icon = Icons.Default.Accessibility,
+                onGrantClick = { AccessibilityUtils.openAccessibilitySettings(context) }
             )
-            Spacer(modifier = Modifier.height(12.dp))
 
+            // 2. VPN Card
             PermissionCard(
                 title = stringResource(R.string.perm_vpn),
-                desc = stringResource(R.string.desc_vpn),
+                description = stringResource(R.string.desc_vpn),
                 instruction = stringResource(R.string.instruction_vpn),
-                color = accent,
-                icon = Icons.Default.VpnKey,
-                isGranted = uiState.vpnGranted,
-                isCurrentInGrantAll = uiState.isGrantingAll && uiState.currentGrantingPermission == "vpn",
-                onGrant = {
-                    val intent = VpnService.prepare(context)
-                    if (intent != null) vpnLauncher.launch(intent)
-                    else viewModel.refreshPermissionStates()
+                isGranted = uiState.vpnPrepared,
+                icon = Icons.Default.VpnLock,
+                onGrantClick = {
+                    val activity = context as? Activity
+                        ?: (context.applicationContext as? com.agon.app.GuardianApp)?.currentActivity
+                    if (activity != null) {
+                        ServiceManager.prepareVpn(activity, ServiceManager.REQUEST_VPN_PERMISSION)
+                    }
                 }
             )
-            Spacer(modifier = Modifier.height(12.dp))
 
+            // 3. Device Admin Card
             PermissionCard(
                 title = stringResource(R.string.perm_device_admin),
-                desc = stringResource(R.string.desc_device_admin),
+                description = stringResource(R.string.desc_device_admin),
                 instruction = stringResource(R.string.instruction_device_admin),
-                color = danger,
+                isGranted = uiState.deviceAdminActive,
                 icon = Icons.Default.Security,
-                isGranted = uiState.deviceAdminGranted,
-                isCurrentInGrantAll = uiState.isGrantingAll && uiState.currentGrantingPermission == "device_admin",
-                onGrant = {
-                    Intent(DevicePolicyManager.ACTION_ADD_DEVICE_ADMIN).apply {
-                        putExtra(DevicePolicyManager.EXTRA_DEVICE_ADMIN, ComponentName(context, GuardianDeviceAdminReceiver::class.java))
-                        putExtra(DevicePolicyManager.EXTRA_ADD_EXPLANATION, context.getString(R.string.device_admin_explanation))
-                        adminLauncher.launch(this)
+                onGrantClick = { ServiceManager.activateDeviceAdmin(context) }
+            )
+
+            // 4. Overlay Card
+            PermissionCard(
+                title = stringResource(R.string.perm_overlay),
+                description = stringResource(R.string.desc_overlay),
+                instruction = stringResource(R.string.instruction_overlay),
+                isGranted = uiState.overlayPermission,
+                icon = Icons.Default.Layers,
+                onGrantClick = { PermissionUtils.openOverlaySettings(context) }
+            )
+
+            // 5. Usage Stats Card
+            PermissionCard(
+                title = stringResource(R.string.perm_usage),
+                description = stringResource(R.string.desc_usage),
+                instruction = stringResource(R.string.instruction_usage),
+                isGranted = uiState.usageAccess,
+                icon = Icons.Default.GridView,
+                onGrantClick = { PermissionUtils.openUsageAccessSettings(context) }
+            )
+
+            // 6. Battery Optimization Card
+            PermissionCard(
+                title = stringResource(R.string.perm_battery),
+                description = stringResource(R.string.desc_battery),
+                instruction = stringResource(R.string.instruction_battery),
+                isGranted = uiState.batteryOptimization,
+                icon = Icons.Default.BatteryAlert,
+                onGrantClick = { PermissionUtils.openBatteryOptimizationSettings(context) }
+            )
+
+            // 7. Notifications Card
+            PermissionCard(
+                title = stringResource(R.string.perm_notifications),
+                description = stringResource(R.string.desc_notifications),
+                instruction = stringResource(R.string.instruction_notifications),
+                isGranted = uiState.notificationsGranted,
+                icon = Icons.Default.Notifications,
+                onGrantClick = {
+                    val activity = context as? Activity
+                        ?: (context.applicationContext as? com.agon.app.GuardianApp)?.currentActivity
+                    if (activity != null && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+                        PermissionUtils.requestNotificationsPermission(activity)
+                    } else {
+                        PermissionUtils.openNotificationSettings(context)
                     }
                 }
             )
 
             Spacer(modifier = Modifier.height(32.dp))
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.Center,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Icon(Icons.Default.Lock, contentDescription = null, tint = textMuted, modifier = Modifier.size(16.dp))
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(stringResource(R.string.privacy_permissions_note), color = textMuted, fontSize = 12.sp)
-            }
-            Spacer(modifier = Modifier.height(32.dp))
         }
     }
 }
 
 @Composable
-private fun GrantAllButton(
-    grantedCount: Int,
-    totalCount: Int,
-    isGrantingAll: Boolean,
-    grantAllProgress: Int,
-    grantAllTotal: Int,
-    onStartGrantAll: () -> Unit,
-) {
-    Button(
-        onClick = onStartGrantAll,
-        modifier = Modifier.fillMaxWidth().height(52.dp),
-        shape = RoundedCornerShape(12.dp),
-        colors = ButtonDefaults.buttonColors(containerColor = primary),
-        enabled = !isGrantingAll
-    ) {
-        if (isGrantingAll) {
-            CircularProgressIndicator(
-                modifier = Modifier.size(20.dp),
-                color = surface,
-                strokeWidth = 2.dp
-            )
-            Spacer(modifier = Modifier.width(8.dp))
-            Text(
-                text = stringResource(R.string.grant_all_in_progress, grantAllProgress, grantAllTotal),
-                fontWeight = FontWeight.Bold
-            )
-        } else {
-            Icon(Icons.Default.Checklist, contentDescription = null, modifier = Modifier.size(20.dp))
-            Spacer(modifier = Modifier.width(8.dp))
-            Text(
-                text = stringResource(R.string.btn_grant_all, grantedCount, totalCount),
-                fontWeight = FontWeight.Bold
-            )
-        }
-    }
-}
-
-@Composable
-fun PermissionCard(
+private fun PermissionCard(
     title: String,
-    desc: String,
+    description: String,
     instruction: String,
-    color: Color,
-    icon: ImageVector,
     isGranted: Boolean,
-    isCurrentInGrantAll: Boolean = false,
-    onGrant: () -> Unit = {},
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    onGrantClick: () -> Unit
 ) {
-    val scope = rememberCoroutineScope()
-    var shakeTrigger by remember { mutableIntStateOf(0) }
-    val shakeOffset = remember { androidx.compose.animation.core.Animatable(0f) }
-
-    LaunchedEffect(shakeTrigger) {
-        if (shakeTrigger > 0) {
-            shakeOffset.animateTo(8f)
-            shakeOffset.animateTo(-8f)
-            shakeOffset.animateTo(4f)
-            shakeOffset.animateTo(-4f)
-            shakeOffset.animateTo(0f)
-        }
-    }
-
-    val checkScale by animateFloatAsState(
-        targetValue = if (isGranted) 1f else 0f,
-        animationSpec = spring(
-            dampingRatio = Spring.DampingRatioMediumBouncy,
-            stiffness = Spring.StiffnessLow
-        )
-    )
-
     Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .offset { IntOffset(shakeOffset.value.roundToInt(), 0) },
-        colors = CardDefaults.cardColors(
-            containerColor = if (isCurrentInGrantAll) color.copy(alpha = 0.08f) else card
-        ),
-        border = BorderStroke(
-            1.dp,
-            when {
-                isCurrentInGrantAll -> color
-                isGranted -> color.copy(alpha = 0.5f)
-                else -> cardBorder
-            }
-        )
+        modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+        colors = CardDefaults.cardColors(containerColor = card),
+        border = BorderStroke(1.dp, if (isGranted) success.copy(alpha = 0.5f) else cardBorder)
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -518,116 +236,81 @@ fun PermissionCard(
                     modifier = Modifier
                         .size(46.dp)
                         .clip(RoundedCornerShape(12.dp))
-                        .background(color.copy(alpha = 0.15f)),
+                        .background(primary.copy(alpha = 0.15f)),
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
                         imageVector = icon,
                         contentDescription = null,
-                        tint = if (isGranted) color else color.copy(alpha = 0.6f)
+                        tint = primary
                     )
                 }
                 Spacer(modifier = Modifier.width(16.dp))
                 Column(modifier = Modifier.weight(1f)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            text = title,
-                            fontWeight = FontWeight.Bold,
-                            color = text,
-                            fontSize = 16.sp
-                        )
-                        AnimatedVisibility(
-                            visible = isGranted,
-                            enter = scaleIn(animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy)) + fadeIn()
-                        ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Box(
-                                    modifier = Modifier
-                                        .size(20.dp)
-                                        .scale(checkScale)
-                                        .clip(CircleShape)
-                                        .background(success),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.Check,
-                                        contentDescription = stringResource(R.string.contentdesc_check),
-                                        tint = surface,
-                                        modifier = Modifier.size(14.dp)
-                                    )
-                                }
-                            }
-                        }
-                        if (!isGranted) {
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Surface(
-                                color = danger.copy(alpha = 0.1f),
-                                shape = RoundedCornerShape(4.dp),
-                                border = BorderStroke(1.dp, danger.copy(alpha = 0.3f))
+                    Text(
+                        text = title,
+                        fontWeight = FontWeight.Bold,
+                        color = text,
+                        fontSize = 16.sp
+                    )
+                    if (isGranted) {
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(
+                                modifier = Modifier
+                                    .size(20.dp)
+                                    .clip(CircleShape)
+                                    .background(success),
+                                contentAlignment = Alignment.Center
                             ) {
-                                Text(
-                                    text = stringResource(R.string.badge_required),
-                                    color = danger,
-                                    fontSize = 9.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
+                                Icon(
+                                    imageVector = Icons.Default.Check,
+                                    contentDescription = null,
+                                    tint = surface,
+                                    modifier = Modifier.size(14.dp)
                                 )
                             }
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(stringResource(R.string.status_granted), color = success, fontSize = 13.sp)
                         }
+                    } else {
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = description,
+                            color = textSecondary,
+                            fontSize = 12.sp
+                        )
                     }
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(text = desc, color = textSecondary, fontSize = 13.sp, lineHeight = 18.sp)
                 }
             }
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            Surface(
-                color = surfaceLight,
-                shape = RoundedCornerShape(8.dp),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text(
-                    text = instruction,
-                    color = textMuted,
-                    fontSize = 12.sp,
-                    modifier = Modifier.padding(12.dp)
-                )
-            }
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            Button(
-                onClick = {
-                    if (!isGranted) {
-                        scope.launch { shakeTrigger++ }
-                    }
-                    onGrant()
-                },
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = when {
-                        isCurrentInGrantAll -> color
-                        isGranted -> color.copy(alpha = 0.1f)
-                        else -> color
-                    },
-                    contentColor = if (isGranted) color else surface
-                ),
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(12.dp)
-            ) {
-                if (isCurrentInGrantAll) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(18.dp),
-                        color = surface,
-                        strokeWidth = 2.dp
+            if (!isGranted) {
+                Spacer(modifier = Modifier.height(16.dp))
+                Surface(
+                    color = surfaceLight,
+                    shape = RoundedCornerShape(8.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        text = instruction,
+                        color = textMuted,
+                        fontSize = 12.sp,
+                        modifier = Modifier.padding(12.dp)
                     )
-                    Spacer(modifier = Modifier.width(8.dp))
                 }
-                if (isGranted) {
-                    Text(stringResource(R.string.btn_granted), fontWeight = FontWeight.Bold)
-                } else {
-                    Text(stringResource(R.string.btn_grant_permission), fontWeight = FontWeight.Bold)
+                Spacer(modifier = Modifier.height(16.dp))
+                Button(
+                    onClick = onGrantClick,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = primary,
+                        contentColor = surface
+                    ),
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Text(
+                        stringResource(R.string.btn_grant_permission),
+                        fontWeight = FontWeight.Bold
+                    )
                 }
             }
         }

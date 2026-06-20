@@ -53,6 +53,7 @@ fun SocialScreen(vm: SocialViewModel) {
     val facebookMode by vm.facebookMode.collectAsStateWithLifecycle()
     val blocksToday by vm.blocksToday.collectAsStateWithLifecycle()
     val blocksPerApp by vm.blocksPerApp.collectAsStateWithLifecycle()
+    val accessibilityServiceRunning by vm.accessibilityServiceRunning.collectAsStateWithLifecycle()
     val instagramServiceRunning by vm.instagramServiceRunning.collectAsStateWithLifecycle()
     val youtubeServiceRunning by vm.youtubeServiceRunning.collectAsStateWithLifecycle()
     val facebookServiceRunning by vm.facebookServiceRunning.collectAsStateWithLifecycle()
@@ -61,6 +62,8 @@ fun SocialScreen(vm: SocialViewModel) {
     var showYoutubeSheet by remember { mutableStateOf(false) }
     var showFacebookSheet by remember { mutableStateOf(false) }
     var showAccessibilityDialog by remember { mutableStateOf(false) }
+    var showAppSheet by remember { mutableStateOf(false) }
+    val blockedApps by vm.blockedApps.collectAsStateWithLifecycle()
     var snackbarSeq by remember { mutableIntStateOf(0) }
     var snackbarMessage by remember { mutableStateOf("") }
     val snackbarHostState = remember { SnackbarHostState() }
@@ -114,7 +117,7 @@ fun SocialScreen(vm: SocialViewModel) {
                     "reels" to Triple(Icons.Default.Warning, stringResource(R.string.badge_partial), warning)
                 ),
                 serviceRunning = instagramMode != "off" && instagramServiceRunning,
-                onClick = { if (instagramMode != "off" && !instagramServiceRunning) showAccessibilityDialog = true else showInstagramSheet = true }
+                onClick = { if (!accessibilityServiceRunning) showAccessibilityDialog = true else showInstagramSheet = true }
             )
             if (instagramMode == "reels") {
                 InfoBox(stringResource(R.string.info_instagram))
@@ -128,7 +131,7 @@ fun SocialScreen(vm: SocialViewModel) {
                 mode = youtubeMode,
                 badgeMap = mapOf("off" to Triple(Icons.Default.CheckCircle, stringResource(R.string.badge_open), success), "full" to Triple(Icons.Default.Cancel, stringResource(R.string.badge_blocked_upper), danger), "shorts" to Triple(Icons.Default.Warning, stringResource(R.string.badge_partial), warning)),
                 serviceRunning = youtubeMode != "off" && youtubeServiceRunning,
-                onClick = { if (youtubeMode != "off" && !youtubeServiceRunning) showAccessibilityDialog = true else showYoutubeSheet = true }
+                onClick = { if (!accessibilityServiceRunning) showAccessibilityDialog = true else showYoutubeSheet = true }
             )
             if (youtubeMode == "shorts") {
                 InfoBox(stringResource(R.string.info_youtube))
@@ -142,7 +145,7 @@ fun SocialScreen(vm: SocialViewModel) {
                 mode = facebookMode,
                 badgeMap = mapOf("off" to Triple(Icons.Default.CheckCircle, stringResource(R.string.badge_open), success), "full" to Triple(Icons.Default.Cancel, stringResource(R.string.badge_blocked_upper), danger), "reels" to Triple(Icons.Default.Warning, stringResource(R.string.badge_partial), warning)),
                 serviceRunning = facebookMode != "off" && facebookServiceRunning,
-                onClick = { if (facebookMode != "off" && !facebookServiceRunning) showAccessibilityDialog = true else showFacebookSheet = true }
+                onClick = { if (!accessibilityServiceRunning) showAccessibilityDialog = true else showFacebookSheet = true }
             )
             if (facebookMode == "reels") {
                 InfoBox(stringResource(R.string.info_facebook))
@@ -209,6 +212,46 @@ fun SocialScreen(vm: SocialViewModel) {
                 InfoBox(stringResource(R.string.shortstop_reason_hours, ""))
             }
 
+            // =========================================================
+            // Blocked Apps — general full-app blocking (Shortstop style)
+            // =========================================================
+            Spacer(Modifier.height(24.dp))
+            SectionHeader(Icons.Default.Shield, stringResource(R.string.blocked_apps_title), accent)
+            Spacer(Modifier.height(4.dp))
+            blockedApps.forEach { pkg ->
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = card),
+                        shape = RoundedCornerShape(12.dp),
+                        border = BorderStroke(1.dp, cardBorder),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.Cancel, stringResource(R.string.contentdesc_blocked), tint = danger, modifier = Modifier.size(20.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text(pkg, color = text, fontSize = 13.sp, modifier = Modifier.weight(1f))
+                        }
+                    }
+                    Spacer(Modifier.width(8.dp))
+                    FilledTonalIconButton(onClick = { vm.toggleBlockedApp(pkg) }) {
+                        Text("×", color = danger, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+            Spacer(Modifier.height(8.dp))
+            OutlinedButton(
+                onClick = { showAppSheet = true },
+                border = BorderStroke(1.dp, accent),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Icon(Icons.Default.Block, stringResource(R.string.blocked_apps_add), tint = accent, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(8.dp))
+                Text(stringResource(R.string.blocked_apps_add), color = accent)
+            }
+
             Spacer(Modifier.height(32.dp))
         }
     }
@@ -255,6 +298,41 @@ fun SocialScreen(vm: SocialViewModel) {
                 ),
                 onSelect = { vm.setFacebookMode(it); showFacebookSheet = false; snackbarMessage = if (it == "off") blockedOff else blockedOn; snackbarSeq++ }
             )
+        }
+    }
+
+    if (showAppSheet) {
+        val installedApps = remember {
+            context.packageManager.getInstalledApplications(0)
+                .filter { (it.flags and android.content.pm.ApplicationInfo.FLAG_SYSTEM) == 0 }
+                .map { context.packageManager.getApplicationLabel(it).toString() to it.packageName }
+                .sortedBy { it.first }
+        }
+        ModalBottomSheet(onDismissRequest = { showAppSheet = false }, containerColor = surface) {
+            Column(Modifier.fillMaxWidth().padding(24.dp)) {
+                Text(stringResource(R.string.blocked_apps_add), fontSize = 20.sp, fontWeight = FontWeight.Bold, color = text)
+                Spacer(Modifier.height(8.dp))
+                Column(Modifier.heightIn(max = 400.dp).verticalScroll(rememberScrollState())) {
+                    installedApps.forEach { (label, pkg) ->
+                        val isBlocked = blockedApps.contains(pkg)
+                        Row(
+                            modifier = Modifier.fillMaxWidth().clickable { vm.toggleBlockedApp(pkg) }.padding(vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Checkbox(checked = isBlocked, onCheckedChange = { vm.toggleBlockedApp(pkg) }, colors = CheckboxDefaults.colors(checkedColor = accent))
+                            Spacer(Modifier.width(8.dp))
+                            Column {
+                                Text(label, color = text, fontSize = 14.sp)
+                                Text(pkg, color = textMuted, fontSize = 11.sp)
+                            }
+                        }
+                    }
+                }
+                Spacer(Modifier.height(16.dp))
+                TextButton(onClick = { showAppSheet = false }, modifier = Modifier.align(Alignment.End)) {
+                    Text(stringResource(R.string.btn_done))
+                }
+            }
         }
     }
 

@@ -3,22 +3,12 @@ package com.agon.app.blocking
 import java.util.Calendar
 
 /**
- * Shortstop §3.4 — Smart Scheduling.
+ * Scheduling and quota rules for short-form feed blocking.
  *
- * The rule engine decides whether a short-form content block should
- * be applied *right now* for a given package. Inputs:
- *
- *  1. **Blocked hours** — the user can specify hours of the day
- *     (e.g. 09:00–17:00) when all short-form blocking is active.
- *  2. **Daily quota** — a cap (in minutes) of how much time the
- *     user can spend on Reels/Shorts in a 24-hour rolling window.
- *  3. **Break reminders** — after every N minutes on a short-form
- *     surface, force a 5-minute break.
- *
- * State for #2 and #3 is persisted by the accessibility service
- * through [com.agon.app.data.settings.AppSettings] (so it survives
- * process death); this engine is **stateless** and only evaluates
- * the current snapshot of inputs.
+ * Supports three modes (matching the Shortstop app):
+ *  1. Blocked hours — scheduled blocking during focus hours.
+ *  2. Daily quota — timer-based limit (minutes per day).
+ *  3. Break reminders — forced breaks after N minutes of browsing.
  */
 class RuleEngine(
     private val config: Config = Config(),
