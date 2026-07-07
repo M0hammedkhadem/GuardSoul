@@ -140,7 +140,6 @@ object PermissionUtils {
     fun syncPermissionsWithCache(context: Context, appSettings: AppSettings) {
         syncScope.launch {
             appSettings.setPermAccessibility(isAccessibilityGranted(context))
-            appSettings.setVpnPermissionGranted(ServiceManager.isVpnPrepared(context))
         }
     }
 }

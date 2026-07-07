@@ -30,6 +30,7 @@ import com.agon.app.ui.theme.*
 import com.agon.app.viewmodel.ListCategory
 import com.agon.app.viewmodel.ListsViewModel
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ListsScreen(vm: ListsViewModel) {
     val context = LocalContext.current

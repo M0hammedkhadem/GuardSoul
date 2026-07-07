@@ -89,6 +89,8 @@
     <string name="app_facebook">فيسبوك</string>
     <string name="info_youtube">عندما يفتح المستخدم مقطع Shorts أو يدخل إلى قسم Shorts، سيتم إعادة توجيهه بصمت إلى الصفحة الرئيسية ليوتيوب دون إشعار.</string>
     <string name="info_facebook">حماية من 3 طبقات: حظر فوري عند النقر على علامة التبويب، حظر التمرير الأفقي من الصفحة الرئيسية، وشبكة أمان مبنية على المحتوى. مقاطع Reels المضمنة في المنشورات مسموح بها - فقط قسم Reels الكامل محظور.</string>
+    <string name="info_facebook_deep_links">روابط Reels المشتركة (من واتساب، تيليجرام، إلخ) محظورة تلقائياً أيضاً.</string>
+    <string name="info_facebook_full_mode">فيسبوك محظور بالكامل. سيتم إغلاق التطبيق فوراً عند فتحه.</string>
     <string name="btn_launch_facebook_wrapper">فتح غلاف فيسبوك</string>
     <string name="sheet_youtube_title">تقييد يوتيوب</string>
     <string name="sheet_facebook_title">تقييد فيسبوك</string>
@@ -126,6 +128,8 @@
     <string name="section_quick_access">وصول سريع</string>
     <string name="section_status_overview">نظرة عامة على الحالة</string>
     <string name="section_social_blocked">وسائل التواصل المحظورة</string>
+    <string name="social_blocked_on">:block %s مفعّل</string>
+    <string name="social_blocked_off">:block %s معطّل</string>
     <string name="section_video_blocked">منصات الفيديو المحظورة</string>
     <string name="section_blocked_apps">التطبيقات المحظورة</string>
     <string name="section_time_limited_apps">التطبيقات المحددة بوقت</string>
@@ -154,6 +158,11 @@
 
     <!-- شاشة فلتر المحتوى -->
     <string name="screen_content_title">فلتر المحتوى</string>
+    <string name="content_filter_warning">تقوم المرشحات بحظر المحتوى الصريح والمواقع البالغة ونتائج البحث غير الآمنة عبر جميع المتصفحات والتطبيقات</string>
+    <string name="card_content_porn_blocker_desc">يقوم بتفعيل تصفية البحث الآمن عبر VPN على Google وYouTube وجميع المتصفحات. يحظر نتائج البحث الصريحة</string>
+    <string name="card_content_ai_explorer_desc">يستخدم الذكاء الاصطناعي لفحص شاشتك كل 3 ثوانٍ. المحتوى الصريح المكتشف → إغلاق التطبيق وإشعار. 3 اكتشافات في 4 دقائق → حظر التطبيق لمدة 15 دقيقة</string>
+    <string name="card_content_uninstall_protection_title">حماية الإزالة</string>
+    <string name="card_content_uninstall_protection_desc">يمنع حذف جارديان. يحظر الوصول لإعدادات التطبيق وإزالة مشرف الجهاز وتغييرات DNS وتجاوز الوضع الآمن</string>
     <string name="warning_content_filter">تقوم المرشحات بحظر المحتوى الصريح والمواقع الإباحية ونتائج البحث غير الآمنة عبر جميع المتصفحات والتطبيقات.</string>
     <string name="card_porn_blocker_title">حظر الإباحية</string>
     <string name="card_porn_blocker_subtitle">يفعّل فلترة البحث الآمن عبر VPN على Google ويوتيوب وجميع المتصفحات. يحظر نتائج البحث الصريحة.</string>
@@ -441,6 +450,7 @@
 
     <!-- الشاشة الرئيسية - تنسيق العد التنازلي والتأخير -->
     <string name="countdown_days_hours_minutes">%1$dي %2$dس %3$dد</string>
+    <string name="countdown_days_hours_minutes_seconds">%1$dي %2$dس %3$dد %4$dث</string>
     <string name="countdown_hours_minutes_seconds">%1$dس %2$dد %3$dث</string>
     <string name="countdown_minutes_seconds">%1$dد %2$dث</string>
     <string name="delay_one_month">شهر واحد</string>
@@ -634,4 +644,8 @@
     <string name="settings_block_app_info_desc">لا يمكنك الوصول إلى إعدادات GuardSoul أثناء تفعيل حماية الإلغاء.</string>
     <string name="settings_block_device_admin_title">⛔ تم حظر الوصول</string>
     <string name="settings_block_device_admin_desc">إعدادات مشرف الجهاز محظورة لحماية GuardSoul.</string>
+
+    <!-- Feed Block Overlay (Shorts/Reels blocking message) -->
+    <string name="feed_block_message">🚫 تم حظر هذا المحتوى القصير من GuardSoul.</string>
+    <string name="feed_block_keyword">🚫 تم الحظر من GuardSoul — تم اكتشاف كلمة ممنوعة.</string>
 </resources>

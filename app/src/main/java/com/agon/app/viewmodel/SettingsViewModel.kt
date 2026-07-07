@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.agon.app.guardianApp
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 class SettingsViewModel(application: Application) : AndroidViewModel(application) {
@@ -15,10 +16,6 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
 
     fun resetAllSettings() = viewModelScope.launch {
         repo.resetAllSettings()
-    }
-
-    fun resetStatistics() = viewModelScope.launch {
-        repo.clearAllEvents()
     }
 
     fun setStrictMode(enabled: Boolean) = viewModelScope.launch {

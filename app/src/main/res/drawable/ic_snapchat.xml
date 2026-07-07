@@ -1,0 +1,18 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="48dp"
+    android:height="48dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <!-- Ghost body -->
+    <path
+        android:pathData="M12,3c-3.5,0 -6,2.5 -6,5.5v4.5c0,0.8 -0.5,1.2 -1,1.5c-0.3,0.2 -0.5,0.5 -0.5,0.8c0,0.5 0.5,0.8 1,0.8c0.3,0 0.5,-0.1 0.8,-0.2c0.5,-0.3 1,-0.5 1.7,-0.5c0.5,0 1,0.1 1.5,0.3c0.8,0.3 1.5,0.7 2.5,0.7s1.7,-0.4 2.5,-0.7c0.5,-0.2 1,-0.3 1.5,-0.3c0.7,0 1.2,0.2 1.7,0.5c0.3,0.1 0.5,0.2 0.8,0.2c0.5,0 1,-0.3 1,-0.8c0,-0.3 -0.2,-0.6 -0.5,-0.8c-0.5,-0.3 -1,-0.7 -1,-1.5v-4.5c0,-3 -2.5,-5.5 -6,-5.5z"
+        android:fillColor="#FFFC00" />
+    <!-- Left eye -->
+    <path
+        android:pathData="M9.5,8m-0.8,0a0.8,0.8 0,1 1,1.6 0a0.8,0.8 0,1 1,-1.6 0"
+        android:fillColor="#000000" />
+    <!-- Right eye -->
+    <path
+        android:pathData="M14.5,8m-0.8,0a0.8,0.8 0,1 1,1.6 0a0.8,0.8 0,1 1,-1.6 0"
+        android:fillColor="#000000" />
+</vector>

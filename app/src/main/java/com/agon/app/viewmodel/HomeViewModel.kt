@@ -5,16 +5,12 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.agon.app.data.settings.AppSettings
 import com.agon.app.guardianApp
-import com.agon.app.services.SelfHealingMonitor
 import com.agon.app.utils.ServiceManager
-import com.agon.app.utils.ShieldPermissionValidator
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
-import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import java.security.MessageDigest
-import timber.log.Timber
 
 class HomeViewModel(application: Application) : AndroidViewModel(application) {
     private val repo = (application.guardianApp()!!).repository
@@ -29,10 +25,6 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
 
     val trialMode: StateFlow<Boolean> = settings.trialModeFlow
-        .distinctUntilChanged()
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
-
-    val testMode: StateFlow<Boolean> = settings.testModeFlow
         .distinctUntilChanged()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
 
@@ -76,28 +68,12 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
     val pinError: StateFlow<Boolean> = _pinError.asStateFlow()
 
     private var countdownJob: Job? = null
-    private val _permissionError = MutableStateFlow<String>("")
-    val permissionError: StateFlow<String> = _permissionError.asStateFlow()
-    
-    private val _showPermissionDialog = MutableStateFlow(false)
-    val showPermissionDialog: StateFlow<Boolean> = _showPermissionDialog.asStateFlow()
-    
-    private val _missingPermissions = MutableStateFlow<List<ShieldPermissionValidator.MissingPermission>>(emptyList())
-    val missingPermissions: StateFlow<List<ShieldPermissionValidator.MissingPermission>> = _missingPermissions.asStateFlow()
 
     fun toggleShield() {
         viewModelScope.launch {
             val current = shieldActive.value
             if (!current) {
-                // Check all required permissions before enabling shield
-                val result = ShieldPermissionValidator.checkAllPermissions(getApplication())
-                if (result.allGranted) {
-                    activateShield()
-                } else {
-                    _missingPermissions.value = result.missingPermissions
-                    _permissionError.value = "يجب منح جميع الأذونات المطلوبة للميزات المفعلة"
-                    _showPermissionDialog.value = true
-                }
+                activateShield()
             } else {
                 startDeactivation()
             }
@@ -111,32 +87,9 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
             settings.setShieldActivatedAt(now)
             settings.setShieldActive(true)
             ServiceManager.setShieldActive(getApplication(), true)
-            // Start self-healing monitor
-            try {
-                SelfHealingMonitor.start(getApplication())
-            } catch (e: Exception) {
-                Timber.w(e, "Failed to start SelfHealingMonitor")
-            }
         }
     }
     
-    fun dismissPermissionDialog() {
-        _showPermissionDialog.value = false
-        _permissionError.value = ""
-        _missingPermissions.value = emptyList()
-    }
-    
-    fun openPermissionAction(actionIndex: Int) {
-        val permissions = _missingPermissions.value
-        if (actionIndex < permissions.size) {
-            val missing = permissions[actionIndex]
-            try {
-                missing.action(getApplication())
-            } catch (e: Exception) {
-                Timber.e(e, "Failed to open permission action")
-            }
-        }
-    }
 
     fun startDeactivation() {
         if (trialMode.value || deactivationDelay.value <= 0) {
@@ -205,12 +158,6 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
             _countdownActive.value = false
             _countdownEndAt.value = 0L
             ServiceManager.setShieldActive(getApplication(), false)
-            // Stop self-healing monitor
-            try {
-                SelfHealingMonitor.stop(getApplication())
-            } catch (e: Exception) {
-                Timber.w(e, "Failed to stop SelfHealingMonitor")
-            }
         }
     }
 
@@ -219,14 +166,6 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
             emit(Unit)
             delay(intervalMs)
         }
-    }
-
-    fun toggleTrialMode() {
-        viewModelScope.launch { settings.setTrialMode(!trialMode.value) }
-    }
-
-    fun toggleTestMode() {
-        viewModelScope.launch { settings.setTestMode(!testMode.value) }
     }
 
     fun setDeactivationDelay(days: Int) {

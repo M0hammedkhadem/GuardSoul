@@ -29,48 +29,10 @@
 }
 
 # ---------------------------------------
-# Firebase (Auth, Realtime Database, FCM)
-# ---------------------------------------
--keep class com.agon.app.data.firebase.** { *; }
--keep class com.google.firebase.** { *; }
--keep class com.google.android.gms.** { *; }
--keepclassmembers class * {
-    @com.google.firebase.database.IgnoreExtraProperties <fields>;
-}
-
-# ---------------------------------------
-# TensorFlow Lite (JNI needs exact names)
-# ---------------------------------------
--keep class org.tensorflow.lite.** { *; }
--keepclassmembers class org.tensorflow.lite.** { *; }
-
-# ---------------------------------------
 # AccessibilityService subclasses
 # ---------------------------------------
 -keep class * extends android.accessibilityservice.AccessibilityService { *; }
 -keepclassmembers class * extends android.accessibilityservice.AccessibilityService { *; }
-
-# ---------------------------------------
-# VpnService subclass
-# ---------------------------------------
--keep class * extends android.net.VpnService { *; }
--keepclassmembers class * extends android.net.VpnService { *; }
-
-# ---------------------------------------
-# BroadcastReceivers
-# ---------------------------------------
--keep class * extends android.content.BroadcastReceiver { *; }
--keepclassmembers class * extends android.content.BroadcastReceiver {
-    public void onReceive(android.content.Context, android.content.Intent);
-}
-
-# ---------------------------------------
-# WorkManager Workers
-# ---------------------------------------
--keep class * extends androidx.work.Worker { *; }
--keepclassmembers class * extends androidx.work.Worker {
-    public <init>(android.content.Context, androidx.work.WorkerParameters);
-}
 
 # ---------------------------------------
 # EncryptedSharedPreferences (security-crypto)
@@ -117,7 +79,7 @@
 -keepclassmembers class androidx.compose.** { *; }
 
 # ---------------------------------------
-# Gson / serialization models
+# Serialization models
 # ---------------------------------------
 -keepclassmembers class * {
     @kotlinx.serialization.Serializable <fields>;
@@ -125,45 +87,3 @@
 -keepclassmembers class * {
     @kotlinx.serialization.Transient <fields>;
 }
-
-# ---------------------------------------
-# Google Play Billing
-# ---------------------------------------
--keep class com.android.billingclient.** { *; }
--keepclassmembers class com.android.billingclient.** { *; }
--keep class com.google.android.gms.ads.identifier.** { *; }
-
-# ---------------------------------------
-# Firebase Crashlytics + Analytics
-# ---------------------------------------
--keep class com.google.firebase.crashlytics.** { *; }
--keep class com.google.firebase.analytics.** { *; }
--keepclassmembers class ** {
-    @com.google.firebase.crashlytics.annotations.Suppress <fields>;
-}
-
-# ---------------------------------------
-# Google Play In-App Review / In-App Update
-# ---------------------------------------
--keep class com.google.android.play.core.** { *; }
--keepclassmembers class com.google.android.play.core.** { *; }
-
-# ---------------------------------------
-# User Messaging Platform (UMP / GDPR)
-# ---------------------------------------
--keep class com.google.android.ump.** { *; }
--keepclassmembers class com.google.android.ump.** { *; }
-
-# ---------------------------------------
-# Suppress warnings for optional / split-library references
-# ---------------------------------------
--dontwarn com.google.android.gms.common.annotation.NoNullnessRewrite
--dontwarn com.google.api.client.http.GenericUrl
--dontwarn com.google.api.client.http.HttpHeaders
--dontwarn com.google.api.client.http.HttpRequest
--dontwarn com.google.api.client.http.HttpRequestFactory
--dontwarn com.google.api.client.http.HttpResponse
--dontwarn com.google.api.client.http.HttpTransport
--dontwarn com.google.api.client.http.javanet.NetHttpTransport$Builder
--dontwarn com.google.api.client.http.javanet.NetHttpTransport
--dontwarn org.joda.time.Instant

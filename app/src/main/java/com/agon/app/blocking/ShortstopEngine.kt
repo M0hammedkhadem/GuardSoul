@@ -6,517 +6,342 @@ import android.view.accessibility.AccessibilityNodeInfo
 import com.agon.app.GuardianApp
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import timber.log.Timber
 import java.util.concurrent.ConcurrentHashMap
 
-/** Called when a full app block is triggered */
-fun interface BlockOverlayHandler {
-    fun showBlockOverlay(pkg: String)
-}
-
 class ShortstopEngine(private val host: AccessibilityService) {
 
     @Volatile var blockOverlayHandler: BlockOverlayHandler? = null
+    @Volatile var feedBlockOverlay: FeedBlockOverlay? = null
 
     private val serviceScope = CoroutineScope(Dispatchers.Default + SupervisorJob())
     private val matcher = PatternMatcher()
-    private val tempBan = TempBanManager.getInstance(host.applicationContext)
-
-    // Cached YouTube signature for hot path — avoids map lookup on every event
-    private val youtubeSig: PatternMatcher.Signature? = matcher.signatureFor("com.google.android.youtube")
-
-    private var ruleEngine = RuleEngine()
-    @Volatile private var currentConfig = RuleEngine.Config()
-
-    private val lastRedirectMs = ConcurrentHashMap<String, Long>()
-    private val feedBlockCooldownMs = 500L
-    private val youtubeFeedBlockCooldownMs = 200L  // aggressive for YouTube Shorts
-    private val fullBlockCooldownMs = 1500L
-
-    // Throttle WINDOW_CONTENT_CHANGED per package (fires rapidly in YouTube/IG)
-    private val lastContentChangeMs = ConcurrentHashMap<String, Long>()
-    private val contentChangeThrottleMs = 200L
-
-    private var activeTrackingJob: Job? = null
-    private var lastTrackedPkg: String? = null
-
-    // Guardian Pattern: periodic re-verification every 1000ms
-    private val guardianHandler = android.os.Handler(android.os.Looper.getMainLooper())
-    private var guardianRunnable: Runnable? = null
-    private var isGuardianRunning = false
 
     @Volatile private var cachedShieldActive = false
-    @Volatile private var cachedInstagramMode = "off"
     @Volatile private var cachedYoutubeMode = "off"
     @Volatile private var cachedFacebookMode = "off"
-    @Volatile private var cachedSnapchatBlocked = false
-    @Volatile private var cachedTwitterBlocked = false
-    @Volatile private var cachedTiktokBlocked = false
     @Volatile private var cachedBlockedApps: Set<String> = emptySet()
 
+    private val facebookPackages = setOf("com.facebook.katana", "com.facebook.lite")
+
+    private var whitelist: WhitelistCache? = null
+
+    @Volatile private var blockedReelsSurface: String? = null
+    @Volatile private var blockedShortsSurface: String? = null
+    @Volatile private var blockedFullSurface: String? = null
+
+    private val lastReelsBlockMs = ConcurrentHashMap<String, Long>()
+    private val lastShortsBlockMs = ConcurrentHashMap<String, Long>()
+    private val lastFullBlockMs = ConcurrentHashMap<String, Long>()
+
+    private val baseCooldownMs = 2000L
+    private val shortsCooldownMs = 1500L
+    private val fullBlockCooldownMs = 1000L
+
+    // ----- Escalation system -----
+    private val consecutiveAttempts = ConcurrentHashMap<String, Int>()
+    private val attemptWindowStart = ConcurrentHashMap<String, Long>()
+    private val slidingWindowMs = 30_000L
+    private val maxAttemptsBeforeHome = 2
+    private val maxAttemptsBeforeTempFullBlock = 3
+
+    private val tempFullBlockUntil = ConcurrentHashMap<String, Long>()
+    private val tempFullBlockDurationMs = 30_000L
+
+    private enum class EscalationLevel {
+        BACK,
+        DOUBLE_BACK,
+        BACK_THEN_HOME,
+        TEMPORARY_FULL_BLOCK,
+        ALREADY_TEMP_BLOCKED,
+    }
+
     fun start() {
+        val app = host.applicationContext as? GuardianApp ?: run {
+            Timber.e("Shortstop: host application is not GuardianApp")
+            return
+        }
+        whitelist = WhitelistCache(app, serviceScope)
+
         serviceScope.launch {
-            val app = host.applicationContext as GuardianApp
             val settings = app.repository.getAppSettings()
-
-            // Initialize from current values to avoid race condition
-            cachedShieldActive = settings.shieldActiveFlow.first()
-            cachedInstagramMode = settings.instagramModeFlow.first()
-            cachedYoutubeMode = settings.youtubeModeFlow.first()
-            cachedFacebookMode = settings.facebookModeFlow.first()
-            cachedSnapchatBlocked = settings.socialSnapchatFlow.first()
-            cachedTwitterBlocked = settings.socialTwitterFlow.first()
-            cachedTiktokBlocked = settings.socialTiktokFlow.first()
-            cachedBlockedApps = settings.blockedAppsFlow.first()
-            Timber.d("ShortstopEngine initialized: shield=$cachedShieldActive, tiktok=$cachedTiktokBlocked, blockedApps=${cachedBlockedApps.size}")
-
             launch { settings.shieldActiveFlow.collect { cachedShieldActive = it } }
-            launch { settings.instagramModeFlow.collect { cachedInstagramMode = it } }
             launch { settings.youtubeModeFlow.collect { cachedYoutubeMode = it } }
             launch { settings.facebookModeFlow.collect { cachedFacebookMode = it } }
-            launch { settings.socialSnapchatFlow.collect { cachedSnapchatBlocked = it } }
-            launch { settings.socialTwitterFlow.collect { cachedTwitterBlocked = it } }
-            launch { settings.socialTiktokFlow.collect { cachedTiktokBlocked = it } }
             launch { settings.blockedAppsFlow.collect { cachedBlockedApps = it } }
-
-            launch {
-                combine(
-                    settings.shortstopDailyQuotaExceededFlow,
-                    settings.shortstopBreakActiveFlow,
-                    settings.shortstopMinutesSpentTodayFlow,
-                    settings.shortstopDailyQuotaMinutesFlow,
-                    settings.shortstopBreakIntervalMinutesFlow,
-                    settings.shortstopBreakLengthMinutesFlow,
-                    settings.shortstopBlockedHourActiveFlow
-                ) { flows: Array<Any> ->
-                    RuleEngine.Config(
-                        dailyQuotaExceeded = flows[0] as Boolean,
-                        breakActive = flows[1] as Boolean,
-                        minutesSpentToday = flows[2] as Int,
-                        dailyQuotaMinutes = flows[3] as Int,
-                        breakIntervalMinutes = flows[4] as Int,
-                        breakLengthMinutes = flows[5] as Int,
-                        blockedHourActive = flows[6] as Boolean
-                    )
-                }.collect {
-                    currentConfig = it
-                    ruleEngine = RuleEngine(it)
-                }
-            }
-
-            // Start Guardian Pattern: periodic re-verification every 1000ms
-            startGuardianPattern()
         }
     }
 
-    /** Fast path: full app block using only package name — no rootInActiveWindow needed. */
-    fun tryFullBlock(pkg: String): Boolean {
-        if (!cachedShieldActive) {
-            Timber.d("tryFullBlock: shield inactive, skip $pkg")
-            return false
-        }
-        // Check temp ban first — if app is in cooldown, block immediately
-        if (tempBan.isInCooldown(pkg)) {
-            Timber.w("tryFullBlock: $pkg is in TEMP BAN cooldown, blocking immediately")
-            redirectToHome(pkg, "temp_ban_cooldown")
-            return true
-        }
-        // Facebook Reels now handled by dedicated FacebookReelsEngine
-        if (pkg == "com.facebook.katana" || pkg == "com.facebook.lite") return false
-
-        if (matcher.signatureFor(pkg) == null) {
-            if (isFullBlockRequired(pkg)) {
-                Timber.d("tryFullBlock: block $pkg (no signature)")
-                redirectToHome(pkg, "full_block_window_change")
-                return true
-            }
-            Timber.d("tryFullBlock: no block needed for $pkg (no signature)")
-            return false
-        }
-        if (isFullBlockRequired(pkg)) {
-            Timber.d("tryFullBlock: block $pkg (has signature)")
-            redirectToHome(pkg, "full_block")
-            return true
-        }
-        Timber.d("tryFullBlock: feed-only $pkg, not full-blocked")
-        return false
+    fun stop() {
+        serviceScope.cancel()
     }
 
-    fun onAccessibilityEvent(
-        event: AccessibilityEvent,
-        root: AccessibilityNodeInfo?,
-        sourceIsEventSource: Boolean = false
-    ) {
+    fun onAccessibilityEvent(event: AccessibilityEvent, root: AccessibilityNodeInfo?) {
         if (!cachedShieldActive) return
+
         val pkg = event.packageName?.toString() ?: return
-        // Check temp ban for any targeted package
-        if (tempBan.isInCooldown(pkg)) {
-            Timber.w("Shortstop: $pkg is in TEMP BAN, forcing HOME")
-            redirectToHome(pkg, "temp_ban_feed")
-            return
-        }
-        // Facebook Reels now handled by dedicated FacebookReelsEngine
-        if (pkg == "com.facebook.katana" || pkg == "com.facebook.lite") return
+        whitelist?.let { if (it.isAppAllowed(pkg)) return }
+
         val now = System.currentTimeMillis()
-        val eventType = event.eventType
 
-        // Fast path: VIEW_CLICKED — user tapped a Shorts thumbnail/tab. Check event.source directly.
-        if (eventType == AccessibilityEvent.TYPE_VIEW_CLICKED) {
-            val source = event.source
-            if (source != null) {
-                // Fast pre-check: YouTube Shorts tokens on the clicked node itself
-                if (pkg == "com.google.android.youtube" && cachedYoutubeMode == "shorts" && !isFullBlockRequired(pkg)) {
-                    if (hasYouTubeShortsToken(source)) {
-                        if (lastTrackedPkg != pkg) startQuotaTracking(pkg)
-                        handleFeedBlock(pkg, now)
-                        return
-                    }
-                    // Also walk up to 2 ancestors (Shorts player often parent/sibling of thumbnail)
-                    var ancestor = source.parent
-                    var depth = 0
-                    while (ancestor != null && depth < 2) {
-                        if (hasYouTubeShortsToken(ancestor)) {
-                            if (lastTrackedPkg != pkg) startQuotaTracking(pkg)
-                            handleFeedBlock(pkg, now)
-                            return
-                        }
-                        ancestor = ancestor.parent
-                        depth++
-                    }
-                }
-
-                // General case for other curated packages
-                val sig = matcher.signatureFor(pkg)
-                if (sig != null && isFeedBlockingEnabled(pkg) && !isFullBlockRequired(pkg)) {
-                    // Check clicked node + up to 2 ancestors
-                    if (matcher.findFeedViewId(source, pkg, sig) != null) {
-                        if (lastTrackedPkg != pkg) startQuotaTracking(pkg)
-                        handleFeedBlock(pkg, now)
-                        return
-                    }
-                    var ancestor = source.parent
-                    var depth = 0
-                    while (ancestor != null && depth < 2) {
-                        if (matcher.findFeedViewId(ancestor, pkg, sig) != null) {
-                            if (lastTrackedPkg != pkg) startQuotaTracking(pkg)
-                            handleFeedBlock(pkg, now)
-                            return
-                        }
-                        ancestor = ancestor.parent
-                        depth++
-                    }
-                }
-            }
-            // Also handle full-block check for clicks on full-blocked apps
-            if (isFullBlockRequired(pkg)) {
-                redirectToHome(pkg, "full_block_click")
-                return
-            }
-            return
-        }
-
-        val sig = matcher.signatureFor(pkg)
-        if (sig == null) {
-            if (eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
-                handleFullBlockCheck(pkg, now)
+        // Check temporary full block first.
+        val tempBlockUntil = tempFullBlockUntil[pkg] ?: 0L
+        if (now < tempBlockUntil) {
+            if (pkg in facebookPackages) {
+                handleTempFullBlock(pkg, now)
             }
             return
         }
 
         if (isFullBlockRequired(pkg)) {
-            redirectToHome(pkg, "full_block")
+            handleFullBlock(pkg, now)
             return
         }
 
-        if (!isFeedBlockingEnabled(pkg)) return
+        // YouTube Shorts.
+        if (pkg == "com.google.android.youtube" && cachedYoutubeMode == "shorts") {
+            if (root != null) handleYouTubeShorts(root, pkg, now)
+            return
+        }
 
-        if (eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
-            if (root == null) return
-            // Smart Ignore: Skip Instagram Reels blocking if user is in DMs
-            if (pkg.startsWith("com.instagram") && isInInstagramDmsContext(root, pkg)) {
-                Timber.d("Shortstop: Skipping IG Reels block - DM context detected")
+        // Facebook Reels (partial block).
+        if (pkg in facebookPackages && cachedFacebookMode == "reels") {
+            handleFacebookReels(event, root, pkg, now)
+        }
+    }
+
+    private fun handleYouTubeShorts(root: AccessibilityNodeInfo, pkg: String, now: Long) {
+        val sig = matcher.signatureFor(pkg) ?: return
+        val result = matcher.findFeedViewIdWithConfidence(root, pkg, sig)
+        if (result != null && result.isReliable) {
+            Timber.d("[Shortstop] YouTube Shorts matched: ${result.token} (${result.method.label}, conf=${result.confidence})")
+            handleFeedBlock(pkg, now)
+        } else {
+            blockedShortsSurface = null
+        }
+    }
+
+    private fun handleFacebookReels(event: AccessibilityEvent, root: AccessibilityNodeInfo?, pkg: String, now: Long) {
+        val sig = matcher.signatureFor(pkg) ?: return
+
+        // Phase 1: Check window title (fast, no tree traversal needed).
+        val titleResult = matcher.detectFromWindowTitle(event, pkg, sig)
+        Timber.d("[Shortstop] FB window title check: ${getWindowTitleSafe(event)} -> $titleResult")
+
+        // Phase 2: Check view tree (if root available).
+        val treeResult = if (root != null) {
+            matcher.findFeedViewIdWithConfidence(root, pkg, sig)
+        } else null
+
+        // Combine results: use the highest confidence.
+        val bestResult = listOfNotNull(titleResult, treeResult).maxByOrNull { it.confidence }
+
+        if (bestResult != null && bestResult.isReliable) {
+            Timber.d("[Shortstop] FB Reels detected: ${bestResult.token} (${bestResult.method.label}, conf=${bestResult.confidence})")
+            handleFacebookReelsBlock(now, pkg, bestResult.token)
+            return
+        }
+
+        // Edge case: two medium signals can combine to cross threshold.
+        if (treeResult != null && titleResult != null) {
+            val combined = treeResult.confidence + titleResult.confidence * (1f - treeResult.confidence)
+            if (combined >= 0.7f) {
+                Timber.d("[Shortstop] FB Reels combined detection: conf=$combined")
+                handleFacebookReelsBlock(now, pkg, "combined")
                 return
             }
-            // YouTube-specific fast pre-check: scan for Shorts tokens before full search
-            val onFeed = if (pkg == "com.google.android.youtube" && cachedYoutubeMode == "shorts") {
-                hasAnyYouTubeShortsToken(root) || matcher.findFeedViewId(root, pkg, sig) != null
-            } else {
-                matcher.findFeedViewId(root, pkg, sig) != null
-            }
-            if (onFeed) {
-                if (lastTrackedPkg != pkg) startQuotaTracking(pkg)
-                handleFeedBlock(pkg, now)
-            } else if (lastTrackedPkg == pkg) {
-                stopQuotaTracking()
-            }
-        } else if (eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED) {
-            // Throttle content changes — YouTube/IG fire these very frequently
-            val last = lastContentChangeMs[pkg] ?: 0L
-            if (now - last < contentChangeThrottleMs) return
-            lastContentChangeMs[pkg] = now
+        }
 
-            if (root == null) return
-            // Smart Ignore: Skip Instagram Reels blocking if user is in DMs
-            if (pkg.startsWith("com.instagram") && isInInstagramDmsContext(root, pkg)) {
-                Timber.d("Shortstop: Skipping IG Reels block content change - DM context")
-                return
-            }
-            val onFeed = matcher.findFeedViewId(root, pkg, sig) != null
-            if (onFeed) {
-                if (lastTrackedPkg != pkg) startQuotaTracking(pkg)
-                handleFeedBlock(pkg, now)
-            } else if (lastTrackedPkg == pkg) {
-                stopQuotaTracking()
+        // Clear blocked surface after delay (only if no new block occurred).
+        if (blockedReelsSurface == pkg) {
+            val priorLast = lastReelsBlockMs[pkg] ?: 0L
+            serviceScope.launch {
+                delay(1200)
+                val currentLast = lastReelsBlockMs[pkg] ?: 0L
+                if (currentLast <= priorLast) {
+                    blockedReelsSurface = null
+                    Timber.d("[Shortstop] FB Reels surface cleared for $pkg")
+                }
             }
         }
     }
 
-    private fun handleFullBlockCheck(pkg: String, now: Long) {
-        if (isFullBlockRequired(pkg)) {
-            redirectToHome(pkg, "full_block_window_change")
+    private fun handleFacebookReelsBlock(now: Long, pkg: String, token: String) {
+        if (blockedReelsSurface == pkg) return
+
+        val last = lastReelsBlockMs[pkg] ?: 0L
+        val adaptiveCooldown = if (consecutiveAttempts[pkg] ?: 0 > 0) {
+            baseCooldownMs * ((consecutiveAttempts[pkg] ?: 1).coerceAtMost(5))
+        } else baseCooldownMs
+
+        if (now - last < adaptiveCooldown) return
+
+        blockedReelsSurface = pkg
+        lastReelsBlockMs[pkg] = now
+
+        val label = if (pkg == "com.facebook.lite") "Facebook Lite Reels" else "Facebook Reels"
+
+        val level = escalationLevelFor(pkg, now)
+        Timber.w("Shortstop: $label Block level=$level token=$token attempts=${consecutiveAttempts[pkg]}")
+
+        when (level) {
+            EscalationLevel.BACK -> {
+                host.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK)
+            }
+            EscalationLevel.DOUBLE_BACK -> {
+                host.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK)
+                serviceScope.launch {
+                    delay(150)
+                    host.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK)
+                }
+            }
+            EscalationLevel.BACK_THEN_HOME -> {
+                host.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK)
+                serviceScope.launch {
+                    delay(200)
+                    host.performGlobalAction(AccessibilityService.GLOBAL_ACTION_HOME)
+                }
+            }
+            EscalationLevel.TEMPORARY_FULL_BLOCK -> {
+                tempFullBlockUntil[pkg] = now + tempFullBlockDurationMs
+                host.performGlobalAction(AccessibilityService.GLOBAL_ACTION_HOME)
+                blockOverlayHandler?.showBlockOverlay(pkg)
+                serviceScope.launch {
+                    delay(tempFullBlockDurationMs)
+                    tempFullBlockUntil.remove(pkg)
+                    Timber.d("[Shortstop] FB temporary full block expired for $pkg")
+                }
+            }
+            EscalationLevel.ALREADY_TEMP_BLOCKED -> return
+        }
+
+        feedBlockOverlay?.show()
+
+        serviceScope.launch {
+            runCatching {
+                (host.applicationContext as GuardianApp)
+                    .repository.recordBlock(pkg, label, if (level == EscalationLevel.TEMPORARY_FULL_BLOCK) "temp_full_block" else "social_feed")
+            }.onFailure { Timber.e(it, "recordBlock failed") }
         }
     }
 
-    private fun isFeedBlockingEnabled(pkg: String): Boolean = when {
-        pkg.startsWith("com.instagram") -> cachedInstagramMode == "reels"
-        pkg == "com.google.android.youtube" -> cachedYoutubeMode == "shorts"
-        pkg.startsWith("com.facebook") -> cachedFacebookMode == "reels"
-        pkg == "com.snapchat.android" -> cachedSnapchatBlocked
-        pkg == "com.twitter.android" || pkg == "com.x.android" -> cachedTwitterBlocked
-        pkg.startsWith("com.zhiliaoapp") || pkg.startsWith("com.ss.android") -> cachedTiktokBlocked
-        else -> false
+    private fun escalationLevelFor(pkg: String, now: Long): EscalationLevel {
+        // Check if temporarily full-blocked.
+        if (now < (tempFullBlockUntil[pkg] ?: 0L)) {
+            return EscalationLevel.ALREADY_TEMP_BLOCKED
+        }
+
+        // Reset attempt counter if window expired.
+        val windowStart = attemptWindowStart[pkg] ?: now
+        if (now - windowStart > slidingWindowMs) {
+            consecutiveAttempts[pkg] = 0
+            attemptWindowStart[pkg] = now
+        } else if (attemptWindowStart[pkg] == null) {
+            attemptWindowStart[pkg] = now
+        }
+
+        val attempts = (consecutiveAttempts[pkg] ?: 0) + 1
+        consecutiveAttempts[pkg] = attempts
+
+        return when {
+            attempts > maxAttemptsBeforeTempFullBlock -> {
+                consecutiveAttempts[pkg] = 0
+                EscalationLevel.TEMPORARY_FULL_BLOCK
+            }
+            attempts > maxAttemptsBeforeHome -> EscalationLevel.BACK_THEN_HOME
+            attempts > 1 -> EscalationLevel.DOUBLE_BACK
+            else -> EscalationLevel.BACK
+        }
+    }
+
+    private fun handleTempFullBlock(pkg: String, now: Long) {
+        if (blockedFullSurface == pkg) return
+
+        val last = lastFullBlockMs[pkg] ?: 0L
+        if (now - last < fullBlockCooldownMs) return
+
+        blockedFullSurface = pkg
+        lastFullBlockMs[pkg] = now
+
+        Timber.w("Shortstop: Temp Full Block for $pkg")
+        host.performGlobalAction(AccessibilityService.GLOBAL_ACTION_HOME)
+        blockOverlayHandler?.showBlockOverlay(pkg)
+
+        serviceScope.launch {
+            delay(fullBlockCooldownMs)
+            blockedFullSurface = null
+        }
     }
 
     private fun isFullBlockRequired(pkg: String): Boolean {
         if (cachedBlockedApps.contains(pkg)) return true
-        return when {
-            pkg == "com.snapchat.android" -> cachedSnapchatBlocked
-            pkg == "com.twitter.android" || pkg == "com.x.android" -> cachedTwitterBlocked
-            pkg.startsWith("com.zhiliaoapp") || pkg.startsWith("com.ss.android") -> cachedTiktokBlocked
-            pkg == "com.google.android.youtube" && cachedYoutubeMode == "full" -> true
-            pkg.startsWith("com.facebook") && cachedFacebookMode == "full" -> true
-            pkg.startsWith("com.instagram") && cachedInstagramMode == "full" -> true
-            else -> false
+        if (pkg == "com.google.android.youtube" && cachedYoutubeMode == "full") return true
+        if (pkg in facebookPackages && cachedFacebookMode == "full") return true
+        return false
+    }
+
+    private fun handleFullBlock(pkg: String, now: Long) {
+        if (blockedFullSurface == pkg) return
+
+        val last = lastFullBlockMs[pkg] ?: 0L
+        if (now - last < fullBlockCooldownMs) return
+
+        blockedFullSurface = pkg
+        lastFullBlockMs[pkg] = now
+
+        Timber.w("Shortstop: Full Block for $pkg")
+        blockOverlayHandler?.showBlockOverlay(pkg)
+
+        serviceScope.launch {
+            runCatching {
+                (host.applicationContext as GuardianApp)
+                    .repository.recordBlock(pkg, "Full Block", "app_list_block")
+            }.onFailure { Timber.e(it, "recordBlock failed") }
+        }
+
+        serviceScope.launch {
+            delay(fullBlockCooldownMs)
+            blockedFullSurface = null
         }
     }
 
     private fun handleFeedBlock(pkg: String, now: Long) {
-        val last = lastRedirectMs[pkg] ?: 0L
-        val cooldown = if (pkg == "com.google.android.youtube") youtubeFeedBlockCooldownMs else feedBlockCooldownMs
-        if (now - last < cooldown) return
-        lastRedirectMs[pkg] = now
+        if (blockedShortsSurface == pkg) return
 
-        val verdict = ruleEngine.evaluate(now)
+        val last = lastShortsBlockMs[pkg] ?: 0L
+        if (now - last < shortsCooldownMs) return
+
+        blockedShortsSurface = pkg
+        lastShortsBlockMs[pkg] = now
+
+        Timber.w("Shortstop: YouTube Shorts Block")
+
         host.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK)
-        val reason = if (verdict.shouldBlock) verdict.message else "permanent"
-        Timber.d("Shortstop: BACK from $pkg — $reason")
-
-        // Record strike for temp-ban logic
-        tempBan.recordStrike(pkg)
+        feedBlockOverlay?.show()
 
         serviceScope.launch {
-            val app = host.applicationContext as GuardianApp
-            app.repository.recordBlock(pkg, matcher.surfaceFor(pkg).label, "shortstop_feed")
+            runCatching {
+                (host.applicationContext as GuardianApp)
+                    .repository.recordBlock(pkg, "YouTube Shorts", "social_feed")
+            }.onFailure { Timber.e(it, "recordBlock failed") }
         }
     }
+}
 
-    private fun redirectToHome(pkg: String, reason: String) {
-        val now = System.currentTimeMillis()
-        val last = lastRedirectMs[pkg] ?: 0L
-        if (now - last < fullBlockCooldownMs) {
-            Timber.d("redirectToHome: cooldown active for $pkg (${now - last}ms ago)")
-            return
-        }
-        lastRedirectMs[pkg] = now
+fun interface BlockOverlayHandler {
+    fun showBlockOverlay(pkg: String)
+}
 
-        val handler = blockOverlayHandler
-        if (handler != null) {
-            Timber.d("redirectToHome: calling overlay handler for $pkg")
-            handler.showBlockOverlay(pkg)
-        } else {
-            Timber.d("redirectToHome: no handler, HOME directly for $pkg")
-            host.performGlobalAction(AccessibilityService.GLOBAL_ACTION_HOME)
-        }
-        Timber.w("Shortstop: block $pkg ($reason)")
-
-        // Record strike for temp-ban logic
-        tempBan.recordStrike(pkg)
-
-        serviceScope.launch {
-            val app = host.applicationContext as GuardianApp
-            app.repository.recordBlock(pkg, "full_block", "shortstop_full")
-        }
+private fun getWindowTitleSafe(event: AccessibilityEvent): String? {
+    if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.P) return null
+    return try {
+        val getter = AccessibilityEvent::class.java.getMethod("getWindowTitle")
+        getter.invoke(event)?.toString()
+    } catch (_: Exception) {
+        null
     }
-
-    private fun startQuotaTracking(pkg: String) {
-        lastTrackedPkg = pkg
-        activeTrackingJob?.cancel()
-        activeTrackingJob = serviceScope.launch {
-            val settings = (host.applicationContext as GuardianApp).repository.getAppSettings()
-            while (isActive && lastTrackedPkg == pkg) {
-                delay(60_000L)
-                val spent = settings.shortstopMinutesSpentTodayFlow.first()
-                settings.setShortstopMinutesSpentToday(spent + 1)
-
-                if (ruleEngine.shouldForceBreak(spent + 1)) {
-                    settings.setShortstopBreakActive(true)
-                    settings.setShortstopBreakEndsAt(
-                        System.currentTimeMillis() + currentConfig.breakLengthMinutes * 60_000L
-                    )
-                }
-                if (ruleEngine.quotaExceeded(spent + 1)) {
-                    settings.setShortstopDailyQuotaExceeded(true)
-                }
-            }
-        }
-    }
-
-    private fun stopQuotaTracking() {
-        activeTrackingJob?.cancel()
-        activeTrackingJob = null
-        lastTrackedPkg = null
-    }
-
-    /** Ultra-fast YouTube Shorts token check — scans viewIdResourceName for known Shorts tokens. */
-    private fun hasYouTubeShortsToken(node: AccessibilityNodeInfo?): Boolean {
-        if (node == null) return false
-        val viewId = node.viewIdResourceName
-        if (viewId == null) return false
-        return viewId.contains("reel_watch_fragment_root") ||
-               viewId.contains("shorts_player") ||
-               viewId.contains("reel_player") ||
-               viewId.contains("shorts_video_player_view") ||
-               viewId.contains("reels_player") ||
-               viewId.contains("reel_recycler") ||
-               viewId.contains("reel_player_page_controller")
-    }
-
-    /** Scans the entire tree for any YouTube Shorts token — fast pre-check before full search. */
-    private fun hasAnyYouTubeShortsToken(node: AccessibilityNodeInfo?): Boolean {
-        if (node == null) return false
-        if (hasYouTubeShortsToken(node)) return true
-        for (i in 0 until node.childCount) {
-            val child = node.getChild(i)
-            if (child != null) {
-                if (hasAnyYouTubeShortsToken(child)) {
-                    child.recycle()
-                    return true
-                }
-                child.recycle()
-            }
-        }
-        return false
-    }
-
-    // ─── Guardian Pattern: Periodic Re-verification (every 1000ms) ─────────
-
-    private fun startGuardianPattern() {
-        if (isGuardianRunning) return
-        isGuardianRunning = true
-        
-        guardianRunnable = object : Runnable {
-            override fun run() {
-                if (!isGuardianRunning) return
-                
-                serviceScope.launch {
-                    checkForegroundApp()
-                }
-                
-                guardianHandler.postDelayed(this, 1000L)
-            }
-        }
-        
-        guardianHandler.post(guardianRunnable!!)
-        Timber.d("Guardian Pattern started: periodic app verification every 1000ms")
-    }
-
-    private fun stopGuardianPattern() {
-        isGuardianRunning = false
-        guardianRunnable?.let { guardianHandler.removeCallbacks(it) }
-        guardianRunnable = null
-        Timber.d("Guardian Pattern stopped")
-    }
-
-    /**
-     * Guardian Pattern: Check current foreground app against blocked list.
-     * This runs every 1000ms to catch apps that slip through event-based detection.
-     * Uses rootInActiveWindow package (reliable on API 21+) instead of the
-     * deprecated ActivityManager.getRunningTasks() which only returns own tasks on API 29+.
-     */
-    private fun checkForegroundApp() {
-        if (!cachedShieldActive) return
-        if (cachedBlockedApps.isEmpty()) return
-
-        try {
-            val root = host.rootInActiveWindow ?: return
-            val topPkg = root.packageName?.toString()
-            try { root.recycle() } catch (_: Exception) {}
-            if (topPkg != null && cachedBlockedApps.contains(topPkg)) {
-                Timber.w("Guardian Pattern: blocked app $topPkg detected in foreground, blocking")
-                redirectToHome(topPkg, "guardian_pattern")
-            }
-        } catch (e: Exception) {
-            Timber.w(e, "Guardian Pattern check failed")
-        }
-
-        // Also cleanup expired temp bans periodically
-        tempBan.cleanupExpired()
-    }
-
-    private fun isInInstagramDmsContext(root: AccessibilityNodeInfo?, pkg: String): Boolean {
-        if (root == null || !pkg.startsWith("com.instagram")) return false
-        // Instagram DM indicators (view IDs that indicate conversation/DM context)
-        val dmViewIds = listOf(
-            "direct_container", "thread_container", "message_composer",
-            "direct_thread", "inbox", "message_input", "composer_edit_text",
-            "direct_message_list", "thread_title", "message_bubble"
-        )
-        for (viewId in dmViewIds) {
-            val matches = root.findAccessibilityNodeInfosByViewId("$pkg:id/$viewId")
-            if (matches.isNotEmpty()) {
-                matches.forEach { it.recycle() }
-                return true
-            }
-        }
-        // Fallback: check for content descriptions indicating DM context
-        fun checkNode(node: AccessibilityNodeInfo?): Boolean {
-            if (node == null) return false
-            val contentDesc = node.contentDescription?.toString()?.lowercase() ?: ""
-            if (contentDesc.contains("direct message") ||
-                contentDesc.contains("dm") ||
-                contentDesc.contains("chat") ||
-                contentDesc.contains("conversation") ||
-                contentDesc.contains("message") && contentDesc.contains("thread")) {
-                return true
-            }
-            for (i in 0 until node.childCount) {
-                val child = node.getChild(i) ?: continue
-                if (checkNode(child)) {
-                    child.recycle()
-                    return true
-                }
-                child.recycle()
-            }
-            return false
-        }
-        return checkNode(root)
-    }
-
-    // ─── Lifecycle ────────────────────────────────────────────────────────
-
-    fun stop() {
-        serviceScope.cancel()
-        stopQuotaTracking()
-        stopGuardianPattern()
-    }
-
-    fun onInterrupt() = Unit
 }

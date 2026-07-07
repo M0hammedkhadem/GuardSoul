@@ -187,6 +187,8 @@
     <string name="info_instagram">Only Reels are blocked. Other Instagram features remain accessible.</string>
     <string name="info_youtube">Only Shorts are blocked. Regular videos are still accessible.</string>
     <string name="info_facebook">Only Reels are blocked in Facebook. Feed and messages remain available.</string>
+    <string name="info_facebook_deep_links">Shared Reels links (from WhatsApp, Telegram, etc.) are also blocked automatically.</string>
+    <string name="info_facebook_full_mode">Facebook is completely blocked. The app will close immediately when opened.</string>
     <string name="summary_blocks_today">Total blocks today</string>
     <string name="card_how_it_works">How it works?</string>
     <string name="row_how_full_block">Blocks the app entirely on launch.</string>
@@ -598,7 +600,12 @@
     <string name="screen_home_title">Welcome back</string>
     <string name="screen_home_subtitle">Your shield is watching over you</string>
     <string name="screen_settings_title">Settings</string>
-    <string name="screen_content_title">Content Blocker</string>
+    <string name="screen_content_title">Content Filter</string>
+    <string name="content_filter_warning">Filters block explicit content, adult websites, and unsafe search results across all browsers and apps</string>
+    <string name="card_content_porn_blocker_desc">Activates VPN-based safe search filtering on Google, YouTube, and all browsers. Blocks explicit search results</string>
+    <string name="card_content_ai_explorer_desc">Uses AI to scan your screen every 3 seconds. Explicit content detected → app closed &amp; notified. 3 detections in 4 min → 15 min app ban</string>
+    <string name="card_content_uninstall_protection_title">Uninstall Protection</string>
+    <string name="card_content_uninstall_protection_desc">Prevents deletion of Guardian. Blocks access to app settings, Device Admin removal, DNS changes, safe mode bypass</string>
     <string name="screen_block_title">Blocked</string>
 
     <!-- Sections -->
@@ -638,6 +645,8 @@
     <string name="countdown_days_hours_minutes_seconds">%1$dd %2$02d:%3$02d:%4$02d</string>
 
     <!-- Settings Block Overlay -->
+    <string name="settings_block_title">⛔ Access Blocked</string>
+    <string name="settings_block_desc">Access to %1$s is restricted to protect GuardSoul security settings.</string>
     <string name="settings_block_app_info_title">⛔ Access Blocked</string>
     <string name="settings_block_app_info_desc">You cannot access GuardSoul settings while uninstall protection is active.</string>
     <string name="settings_block_device_admin_title">⛔ Access Blocked</string>
@@ -818,5 +827,8 @@
     <string name="blocked_apps_title">Blocked Apps</string>
     <string name="blocked_apps_add">Block an App</string>
     <string name="btn_done">Done</string>
-</resources>
 
+    <!-- Feed Block Overlay (Shorts/Reels blocking message) -->
+    <string name="feed_block_message">🚫 This short content was blocked by GuardSoul.</string>
+    <string name="feed_block_keyword">🚫 Blocked by GuardSoul — keyword detected.</string>
+</resources>

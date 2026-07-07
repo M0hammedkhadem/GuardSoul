@@ -6,8 +6,7 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
     id("org.jetbrains.kotlin.plugin.serialization")
     id("com.google.devtools.ksp")
-    id("com.google.gms.google-services")
-    id("com.google.firebase.crashlytics")
+
 }
 
 val keystoreProperties = Properties()
@@ -26,10 +25,6 @@ android {
     compileSdk = 36
     buildToolsVersion = "36.0.0"
 
-    androidResources {
-        noCompress += "tflite"
-    }
-
     defaultConfig {
         applicationId = "com.agon.app"
         minSdk = 26
@@ -37,12 +32,6 @@ android {
         versionCode = 100
         versionName = "1.0.0"
         buildConfigField("boolean", "IS_DEBUG_BUILD", "false")
-
-        // SaaS Billing: replace these in production with real Play Console SKUs
-        buildConfigField("String", "SKU_PRO_MONTHLY", "\"guardsoul_pro_monthly\"")
-        buildConfigField("String", "SKU_PRO_YEARLY", "\"guardsoul_pro_yearly\"")
-        buildConfigField("String", "SKU_PREMIUM_MONTHLY", "\"guardsoul_premium_monthly\"")
-        buildConfigField("String", "SKU_PREMIUM_YEARLY", "\"guardsoul_premium_yearly\"")
     }
 
     signingConfigs {
@@ -99,9 +88,7 @@ android {
         buildConfig = true
     }
 
-    ksp {
-        arg("room.schemaLocation", "$projectDir/schemas")
-    }
+
 }
 
 dependencies {
@@ -120,9 +107,6 @@ dependencies {
 
     implementation("androidx.core:core-ktx:1.16.0")
 
-    implementation("io.coil-kt.coil3:coil-compose:3.3.0")
-    implementation("io.coil-kt.coil3:coil-network-okhttp:3.3.0")
-
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.9.0")
 
     implementation("androidx.datastore:datastore-preferences:1.2.0")
@@ -140,44 +124,9 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.10.1")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.1")
 
-    // Firebase BoM
-    implementation(platform("com.google.firebase:firebase-bom:33.12.0"))
-    implementation("com.google.firebase:firebase-auth")
-    implementation("com.google.firebase:firebase-database")
-    implementation("com.google.firebase:firebase-firestore")
-    implementation("com.google.firebase:firebase-messaging")
-
-    // WorkManager
-    implementation("androidx.work:work-runtime-ktx:2.10.0")
-
     // Koin DI
     implementation("io.insert-koin:koin-android:4.0.2")
     implementation("io.insert-koin:koin-androidx-compose:4.0.2")
-
-    // MPAndroidChart
-    implementation("com.github.PhilJay:MPAndroidChart:v3.1.0")
-
-    implementation("org.tensorflow:tensorflow-lite:2.16.1")
-    implementation("org.tensorflow:tensorflow-lite-support:0.4.4")
-    implementation("org.tensorflow:tensorflow-lite-metadata:0.4.4")
-
-    // Google Play Billing (SaaS monetization)
-    implementation("com.android.billingclient:billing-ktx:7.1.1")
-
-    // Firebase Crashlytics (SaaS reliability)
-    implementation("com.google.firebase:firebase-crashlytics")
-    implementation("com.google.firebase:firebase-analytics")
-
-    // Google Play In-App Review (SaaS growth)
-    implementation("com.google.android.play:review:2.0.2")
-    implementation("com.google.android.play:review-ktx:2.0.2")
-
-    // Google Play In-App Update (seamless upgrades between releases)
-    implementation("com.google.android.play:app-update:2.1.0")
-    implementation("com.google.android.play:app-update-ktx:2.1.0")
-
-    // User Messaging Platform (GDPR / consent)
-    implementation("com.google.android.ump:user-messaging-platform:2.2.0")
 
     debugImplementation("androidx.compose.ui:ui-tooling")
 

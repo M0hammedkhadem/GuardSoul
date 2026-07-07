@@ -42,7 +42,6 @@ fun SettingsScreen(
     val settings = app.repository.getAppSettings()
     val scrollState = rememberScrollState()
 
-    val strictMode by settings.strictModeFlow.collectAsState(initial = false)
     val delayDays by settings.deactivationDelayFlow.collectAsState(initial = 0)
     var showDelayDialog by remember { mutableStateOf(false) }
     var showLanguageDialog by remember { mutableStateOf(false) }
@@ -83,26 +82,13 @@ fun SettingsScreen(
                     SettingsRow(icon = Icons.Default.VpnKey, title = stringResource(R.string.row_permissions_settings), onClick = onNavigateToPermissions)
                     HorizontalDivider(color = cardBorder)
                     SettingsRow(icon = Icons.Default.Lock, title = stringResource(R.string.profile_pin_protection), onClick = onNavigateToPinSetup)
-                }
-            }
-
-            HorizontalDivider(color = cardBorder, modifier = Modifier.padding(vertical = 16.dp))
-
-            Text(stringResource(R.string.section_data_management), fontWeight = FontWeight.Bold, color = textSecondary, modifier = Modifier.padding(bottom = 12.dp, start = 4.dp))
-
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = card),
-                border = BorderStroke(1.dp, cardBorder)
-            ) {
-                Column {
-                    SettingsRow(icon = Icons.Default.DeleteOutline, title = stringResource(R.string.btn_reset_statistics)) { vm?.resetStatistics() }
                     HorizontalDivider(color = cardBorder)
                     SettingsRow(icon = Icons.Default.Restore, title = stringResource(R.string.btn_reset_all_settings)) { vm?.resetAllSettings() }
                 }
             }
 
-            Spacer(modifier = Modifier.height(16.dp))
+            HorizontalDivider(color = cardBorder, modifier = Modifier.padding(vertical = 16.dp))
+
             Text("Protection", fontWeight = FontWeight.Bold, color = textSecondary, modifier = Modifier.padding(bottom = 12.dp, start = 4.dp))
 
             Card(
@@ -111,26 +97,6 @@ fun SettingsScreen(
                 border = BorderStroke(1.dp, cardBorder)
             ) {
                 Column {
-                    // Strict Mode toggle
-                    Row(
-                        modifier = Modifier.fillMaxWidth().clickable {
-                            vm?.setStrictMode(!strictMode)
-                        }.padding(16.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(imageVector = Icons.Default.Security, contentDescription = null, tint = primary, modifier = Modifier.size(24.dp))
-                        Spacer(modifier = Modifier.width(16.dp))
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(text = "Strict Mode", color = text, fontSize = 16.sp)
-                            Text(text = "Require PIN to change settings", color = textSecondary, fontSize = 12.sp)
-                        }
-                        Switch(
-                            checked = strictMode,
-                            onCheckedChange = { vm?.setStrictMode(it) },
-                            colors = SwitchDefaults.colors(checkedTrackColor = primary)
-                        )
-                    }
-                    HorizontalDivider(color = cardBorder)
                     // Deactivation Delay chooser
                     Row(
                         modifier = Modifier.fillMaxWidth().clickable { showDelayDialog = true }.padding(16.dp),

@@ -53,11 +53,6 @@ fun HomeScreen(
     val deactivationDelay by vm.deactivationDelay.collectAsStateWithLifecycle()
     val showPinDialog by vm.showPinDialog.collectAsStateWithLifecycle()
     val pinError by vm.pinError.collectAsStateWithLifecycle()
-    val trialMode by vm.trialMode.collectAsStateWithLifecycle()
-    val testMode by vm.testMode.collectAsStateWithLifecycle()
-    val showPermissionDialog by vm.showPermissionDialog.collectAsStateWithLifecycle()
-    val missingPermissions by vm.missingPermissions.collectAsStateWithLifecycle()
-    val permissionError by vm.permissionError.collectAsStateWithLifecycle()
 
     var pinInput by remember { mutableStateOf("") }
     var showDelayDialog by remember { mutableStateOf(false) }
@@ -86,6 +81,16 @@ fun HomeScreen(
                         else vm.startDeactivation()
                     }
                 )
+            }
+
+            if (countdownActive) {
+                item {
+                    CountdownBanner(
+                        remainingSeconds = remainingSeconds,
+                        onCancel = { vm.cancelDeactivation() }
+                    )
+                    Spacer(Modifier.height(12.dp))
+                }
             }
 
             item {
@@ -134,28 +139,6 @@ fun HomeScreen(
                 )
             }
 
-            // Trial Mode tile (if active or test mode)
-            if (trialMode || testMode) {
-                item {
-                    Spacer(Modifier.height(12.dp))
-                    ActionTile(
-                        title = if (trialMode) stringResource(R.string.trial_mode_title) else stringResource(R.string.test_mode_title),
-                        subtitle = if (trialMode) stringResource(R.string.trial_mode_subtitle) else stringResource(R.string.test_mode_subtitle),
-                        icon = Icons.Default.FlashOn,
-                        iconColor = Color(0xFF3B82F6),
-                        trailingContent = {
-                            Text(
-                                if (trialMode) stringResource(R.string.trial_mode_on) else stringResource(R.string.test_mode_on),
-                                fontWeight = FontWeight.Bold,
-                                color = Color(0xFF3B82F6),
-                                fontSize = 13.sp
-                            )
-                        },
-                        onClick = { vm.toggleTrialMode() }
-                    )
-                }
-            }
-
             item {
                 Spacer(Modifier.height(12.dp))
                 ActionTile(
@@ -197,48 +180,6 @@ fun HomeScreen(
         )
     }
 
-    if (showPermissionDialog) {
-        AlertDialog(
-            onDismissRequest = { vm.dismissPermissionDialog() },
-            title = { Text("أذونات مطلوبة", fontWeight = FontWeight.Bold) },
-            text = {
-                Column {
-                    Text(permissionError, color = textSecondary)
-                    Spacer(Modifier.height(16.dp))
-                    missingPermissions.forEachIndexed { index, missing ->
-                        Card(
-                            colors = CardDefaults.cardColors(containerColor = card),
-                            border = BorderStroke(1.dp, cardBorder),
-                            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(12.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(missing.permissionName, fontWeight = FontWeight.Bold, color = text, fontSize = 14.sp)
-                                    Text(missing.description, color = textSecondary, fontSize = 12.sp)
-                                }
-                                Button(
-                                    onClick = { vm.openPermissionAction(index) },
-                                    shape = RoundedCornerShape(8.dp),
-                                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
-                                ) {
-                                    Text("منح")
-                                }
-                            }
-                        }
-                    }
-                }
-            },
-            confirmButton = {
-                TextButton(onClick = { vm.dismissPermissionDialog() }) {
-                    Text(stringResource(R.string.btn_done))
-                }
-            },
-            containerColor = surface,
-            shape = RoundedCornerShape(24.dp)
-        )
     if (showDelayDialog) {
         AlertDialog(
             onDismissRequest = { showDelayDialog = false },
@@ -551,11 +492,66 @@ fun PinVerifyDialog(
 }
 
 @Composable
+private fun CountdownBanner(remainingSeconds: Int, onCancel: () -> Unit) {
+    Card(
+        colors = CardDefaults.cardColors(containerColor = card),
+        shape = RoundedCornerShape(20.dp),
+        border = BorderStroke(1.dp, cardBorder),
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp)
+    ) {
+        Column(Modifier.padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(
+                stringResource(R.string.shield_deactivation_title),
+                fontWeight = FontWeight.Bold,
+                color = Color(0xFFEF4444),
+                fontSize = 18.sp
+            )
+            Spacer(Modifier.height(8.dp))
+            Text(
+                stringResource(R.string.shield_deactivation_desc),
+                color = textSecondary,
+                fontSize = 13.sp
+            )
+            Spacer(Modifier.height(12.dp))
+            Text(
+                text = formatCountdown(remainingSeconds),
+                fontSize = 36.sp,
+                fontWeight = FontWeight.Black,
+                color = Color(0xFFEF4444)
+            )
+            Spacer(Modifier.height(12.dp))
+            Button(
+                onClick = onCancel,
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF7C3AED)),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Text(stringResource(R.string.btn_cancel_deactivation))
+            }
+        }
+    }
+}
+
+@Composable
+private fun formatCountdown(totalSeconds: Int): String {
+    val days = totalSeconds / 86400
+    val hours = (totalSeconds % 86400) / 3600
+    val minutes = (totalSeconds % 3600) / 60
+    val seconds = totalSeconds % 60
+    return if (days > 0) {
+        stringResource(R.string.countdown_days_hours_minutes_seconds, days, hours, minutes, seconds)
+    } else if (hours > 0) {
+        stringResource(R.string.countdown_hours_minutes_seconds, hours, minutes, seconds)
+    } else {
+        stringResource(R.string.countdown_minutes_seconds, minutes, seconds)
+    }
+}
+
+@Composable
 private fun deactivationDelayLabel(days: Int): String = when (days) {
     0 -> stringResource(R.string.delay_no_delay)
     2 -> stringResource(R.string.delay_2_days)
     7 -> stringResource(R.string.delay_7_days)
     15 -> stringResource(R.string.delay_15_days)
-    30 -> "30 " + stringResource(R.string.stat_days) // Quick fallback
+    30 -> stringResource(R.string.delay_1_month)
     else -> "$days " + stringResource(R.string.stat_days)
 }

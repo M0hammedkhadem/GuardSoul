@@ -1,0 +1,10 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <!-- Shield shape -->
+    <path
+        android:pathData="M12,2L4,6v5c0,5.55 3.84,10.74 8,12c4.16,-1.26 8,-6.45 8,-12V6L12,2zM10.99,15.18L7.4,11.6l1.41,-1.41l2.17,2.17l5.09,-5.09l1.41,1.41L10.99,15.18z"
+        android:fillColor="#10B981" />
+</vector>

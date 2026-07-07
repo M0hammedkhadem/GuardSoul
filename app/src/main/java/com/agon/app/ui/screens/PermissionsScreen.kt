@@ -30,7 +30,6 @@ import com.agon.app.R
 import com.agon.app.ui.theme.*
 import com.agon.app.utils.AccessibilityUtils
 import com.agon.app.utils.PermissionUtils
-import com.agon.app.utils.ServiceManager
 import com.agon.app.viewmodel.PermissionsViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -79,14 +78,12 @@ fun PermissionsScreen(
         ) {
             val grantedCount = listOf(
                 uiState.accessibilityGranted,
-                uiState.vpnPrepared,
-                uiState.deviceAdminActive,
                 uiState.overlayPermission,
                 uiState.usageAccess,
                 uiState.batteryOptimization,
                 uiState.notificationsGranted
             ).count { it }
-            val totalCount = 7
+            val totalCount = 5
             val allGranted = grantedCount == totalCount
 
             Card(
@@ -137,33 +134,7 @@ fun PermissionsScreen(
                 onGrantClick = { AccessibilityUtils.openAccessibilitySettings(context) }
             )
 
-            // 2. VPN Card
-            PermissionCard(
-                title = stringResource(R.string.perm_vpn),
-                description = stringResource(R.string.desc_vpn),
-                instruction = stringResource(R.string.instruction_vpn),
-                isGranted = uiState.vpnPrepared,
-                icon = Icons.Default.VpnLock,
-                onGrantClick = {
-                    val activity = context as? Activity
-                        ?: (context.applicationContext as? com.agon.app.GuardianApp)?.currentActivity
-                    if (activity != null) {
-                        ServiceManager.prepareVpn(activity, ServiceManager.REQUEST_VPN_PERMISSION)
-                    }
-                }
-            )
-
-            // 3. Device Admin Card
-            PermissionCard(
-                title = stringResource(R.string.perm_device_admin),
-                description = stringResource(R.string.desc_device_admin),
-                instruction = stringResource(R.string.instruction_device_admin),
-                isGranted = uiState.deviceAdminActive,
-                icon = Icons.Default.Security,
-                onGrantClick = { ServiceManager.activateDeviceAdmin(context) }
-            )
-
-            // 4. Overlay Card
+            // 2. Overlay Card
             PermissionCard(
                 title = stringResource(R.string.perm_overlay),
                 description = stringResource(R.string.desc_overlay),
@@ -173,7 +144,7 @@ fun PermissionsScreen(
                 onGrantClick = { PermissionUtils.openOverlaySettings(context) }
             )
 
-            // 5. Usage Stats Card
+            // 4. Usage Stats Card
             PermissionCard(
                 title = stringResource(R.string.perm_usage),
                 description = stringResource(R.string.desc_usage),
@@ -183,7 +154,7 @@ fun PermissionsScreen(
                 onGrantClick = { PermissionUtils.openUsageAccessSettings(context) }
             )
 
-            // 6. Battery Optimization Card
+            // 5. Battery Optimization Card
             PermissionCard(
                 title = stringResource(R.string.perm_battery),
                 description = stringResource(R.string.desc_battery),
@@ -193,7 +164,7 @@ fun PermissionsScreen(
                 onGrantClick = { PermissionUtils.openBatteryOptimizationSettings(context) }
             )
 
-            // 7. Notifications Card
+            // 6. Notifications Card
             PermissionCard(
                 title = stringResource(R.string.perm_notifications),
                 description = stringResource(R.string.desc_notifications),

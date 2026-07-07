@@ -2,6 +2,7 @@ package com.agon.app
 
 import android.app.Activity
 import android.content.Context
+import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -32,17 +33,21 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import com.agon.app.ui.BlockActivity
 import com.agon.app.ui.components.PinGate
 import com.agon.app.ui.screens.*
 import com.agon.app.ui.theme.*
 import com.agon.app.utils.AccessibilityUtils
 import com.agon.app.utils.PermissionUtils
+import com.agon.app.utils.ServiceManager
 import com.agon.app.viewmodel.*
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -78,19 +83,32 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun handleIntent(intent: android.content.Intent?) {
-        if (intent?.action == "com.agon.app.REACTIVATE_DEVICE_ADMIN") {
-            com.agon.app.utils.ServiceManager.activateDeviceAdmin(this)
-        }
-    }
+        if (intent == null) return
+        val uri = intent.data ?: return
+        val url = uri.toString()
 
-    override fun onActivityResult(requestCode: Int, resultCode: Int, data: android.content.Intent?) {
-        super.onActivityResult(requestCode, resultCode, data)
-        if (requestCode == 1001) {
-            com.agon.app.utils.ServiceManager.handleMediaProjectionResult(this, resultCode, data, requestCode)
-        } else if (requestCode == com.agon.app.utils.ServiceManager.REQUEST_VPN_PERMISSION ||
-            requestCode == com.agon.app.utils.ServiceManager.REQUEST_VPN_FROM_SHIELD
-        ) {
-            com.agon.app.utils.ServiceManager.handleVpnPermissionResult(this, resultCode)
+        val isReelsLink = url.contains("facebook.com/reel/") ||
+            url.contains("fb.watch/") ||
+            url.contains("facebook.com/share/v/")
+
+        if (isReelsLink) {
+            val app = application as GuardianApp
+            val settings = app.repository.getAppSettings()
+            val shieldActive = settings.isShieldActiveSync()
+
+            if (shieldActive) {
+                val facebookMode = kotlinx.coroutines.runBlocking {
+                    settings.facebookModeFlow.first()
+                }
+                if (facebookMode == "reels" || facebookMode == "full") {
+                    val blockIntent = Intent(this@MainActivity, BlockActivity::class.java).apply {
+                        putExtra(BlockActivity.EXTRA_APP_NAME, "Facebook Reels")
+                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_NO_ANIMATION)
+                    }
+                    startActivity(blockIntent)
+                    finish()
+                }
+            }
         }
     }
 
@@ -116,7 +134,7 @@ fun MainApp(
 
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
-    val isBottomNavVisible = currentRoute in listOf("home", "lists", "content", "social")
+    val isBottomNavVisible = currentRoute in listOf("home", "lists", "social", "content")
 
     val onboardingComplete by settings.onboardingCompleteFlow.collectAsState(initial = initialOnboardingComplete)
     val pinHash by settings.pinHashFlow.collectAsState(initial = "")
@@ -242,6 +260,8 @@ fun MainApp(
                     )
                 }
             }
+
+
         }
     }
 }
@@ -252,19 +272,19 @@ fun BottomNav(navController: NavHostController) {
     val currentRoute = navBackStackEntry?.destination?.route
     val layoutDirection = LocalLayoutDirection.current
 
-    // Unified visual order: Lists | Content | Social | Shield (Shield always far right)
+    // Unified visual order: Lists | Social | Shield (Shield always far right)
     // In RTL, Row lays out right-to-left, so we reverse the list for RTL
     val items = if (layoutDirection == LayoutDirection.Rtl) {
         listOf(
             BottomNavItem("home", Icons.Default.Shield, stringResource(R.string.nav_shield)),
             BottomNavItem("social", Icons.Default.PhoneAndroid, stringResource(R.string.nav_social)),
-            BottomNavItem("content", Icons.Default.VisibilityOff, stringResource(R.string.nav_content)),
+            BottomNavItem("content", Icons.Default.Block, stringResource(R.string.nav_content)),
             BottomNavItem("lists", Icons.AutoMirrored.Filled.List, stringResource(R.string.nav_lists)),
         )
     } else {
         listOf(
             BottomNavItem("lists", Icons.AutoMirrored.Filled.List, stringResource(R.string.nav_lists)),
-            BottomNavItem("content", Icons.Default.VisibilityOff, stringResource(R.string.nav_content)),
+            BottomNavItem("content", Icons.Default.Block, stringResource(R.string.nav_content)),
             BottomNavItem("social", Icons.Default.PhoneAndroid, stringResource(R.string.nav_social)),
             BottomNavItem("home", Icons.Default.Shield, stringResource(R.string.nav_shield)),
         )

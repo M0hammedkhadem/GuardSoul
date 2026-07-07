@@ -14,9 +14,8 @@ private val Context.settingsStore by preferencesDataStore(name = "app_settings")
 class AppSettings(private val context: Context) {
     val encryptedPrefs: EncryptedPrefs = EncryptedPrefs(context)
 
-    // In-memory cache for shield state — updated every time the shield state changes.
-    // Used to avoid runBlocking deadlocks in AccessibilityService (main thread).
     @Volatile private var shieldActiveCache: Boolean = false
+    @Volatile private var trialModeCache: Boolean = false
 
     private object Keys {
         val ONBOARDING_COMPLETE = booleanPreferencesKey("onboarding_complete")
@@ -31,20 +30,8 @@ class AppSettings(private val context: Context) {
         val LAST_ACTIVE_DATE = longPreferencesKey("last_active_date")
         val LAST_SHIELD_ENABLED_DAY = longPreferencesKey("last_shield_enabled_day")
 
-        val INSTAGRAM_MODE = stringPreferencesKey("instagram_mode")
         val YOUTUBE_MODE = stringPreferencesKey("youtube_mode")
-        val FACEBOOK_MODE = stringPreferencesKey("facebook_mode")
-        val SOCIAL_SNAPCHAT = booleanPreferencesKey("social_snapchat")
-        val SOCIAL_TWITTER = booleanPreferencesKey("social_twitter")
-        val SOCIAL_TIKTOK = booleanPreferencesKey("social_tiktok")
         val SHORTS_BLOCK_ACTION = stringPreferencesKey("shorts_block_action")
-
-        val AI_EXPLORER_ENABLED = booleanPreferencesKey("ai_explorer_enabled")
-        val UNINSTALL_PROTECTION_ENABLED = booleanPreferencesKey("uninstall_protection_enabled")
-        val SAFE_SEARCH_ENABLED = booleanPreferencesKey("safe_search_enabled")
-        val SAFE_SEARCH_DNS_STATUS = stringPreferencesKey("safe_search_dns_status")
-        val KEYWORD_BLOCKING_ENABLED = booleanPreferencesKey("keyword_blocking_enabled")
-        val VPN_PERMISSION_GRANTED = booleanPreferencesKey("vpn_permission_granted")
 
         val STRICT_MODE = booleanPreferencesKey("strict_mode")
         val STRICT_MODE_COOLDOWN_END_AT = longPreferencesKey("strict_mode_cooldown_end_at")
@@ -58,14 +45,18 @@ class AppSettings(private val context: Context) {
         val BLOCKED_WEBSITES = stringPreferencesKey("blocked_websites")
         val BLOCKED_KEYWORDS = stringPreferencesKey("blocked_keywords")
 
-        val SHORTSTOP_BLOCKED_HOUR_ACTIVE = booleanPreferencesKey("shortstop_blocked_hour_active")
-        val SHORTSTOP_DAILY_QUOTA_EXCEEDED = booleanPreferencesKey("shortstop_daily_quota_exceeded")
-        val SHORTSTOP_BREAK_ACTIVE = booleanPreferencesKey("shortstop_break_active")
-        val SHORTSTOP_DAILY_QUOTA_MIN = intPreferencesKey("shortstop_daily_quota_min")
-        val SHORTSTOP_BREAK_INTERVAL_MIN = intPreferencesKey("shortstop_break_interval_min")
-        val SHORTSTOP_BREAK_LENGTH_MIN = intPreferencesKey("shortstop_break_length_min")
-        val SHORTSTOP_MINUTES_SPENT_TODAY = intPreferencesKey("shortstop_minutes_spent_today")
-        val SHORTSTOP_BREAK_ENDS_AT = longPreferencesKey("shortstop_break_ends_at")
+        val WHITELIST_APPS = stringPreferencesKey("whitelist_apps")
+        val WHITELIST_WEBSITES = stringPreferencesKey("whitelist_websites")
+
+        val PORN_BLOCKER_ENABLED = booleanPreferencesKey("porn_blocker_enabled")
+        val AI_EXPLORER_ENABLED = booleanPreferencesKey("ai_explorer_enabled")
+        val UNINSTALL_PROTECTION_ENABLED = booleanPreferencesKey("uninstall_protection_enabled")
+
+        val INSTAGRAM_BLOCKED = booleanPreferencesKey("instagram_blocked")
+        val SNAPCHAT_BLOCKED = booleanPreferencesKey("snapchat_blocked")
+        val TWITTER_BLOCKED = booleanPreferencesKey("twitter_blocked")
+        val TIKTOK_BLOCKED = booleanPreferencesKey("tiktok_blocked")
+        val FACEBOOK_MODE = stringPreferencesKey("facebook_mode")
     }
 
     val onboardingCompleteFlow: Flow<Boolean> = context.settingsStore.data.map { it[Keys.ONBOARDING_COMPLETE] ?: false }
@@ -81,32 +72,11 @@ class AppSettings(private val context: Context) {
     val lastActiveDateFlow: Flow<Long> = context.settingsStore.data.map { it[Keys.LAST_ACTIVE_DATE] ?: 0L }
     val lastShieldEnabledDayFlow: Flow<Long> = context.settingsStore.data.map { it[Keys.LAST_SHIELD_ENABLED_DAY] ?: 0L }
 
-    val instagramModeFlow: Flow<String> = context.settingsStore.data.map { it[Keys.INSTAGRAM_MODE] ?: "off" }
     val youtubeModeFlow: Flow<String> = context.settingsStore.data.map { it[Keys.YOUTUBE_MODE] ?: "off" }
-    val facebookModeFlow: Flow<String> = context.settingsStore.data.map { it[Keys.FACEBOOK_MODE] ?: "off" }
-    val socialSnapchatFlow: Flow<Boolean> = context.settingsStore.data.map { it[Keys.SOCIAL_SNAPCHAT] ?: false }
-    val socialTwitterFlow: Flow<Boolean> = context.settingsStore.data.map { it[Keys.SOCIAL_TWITTER] ?: false }
-    val socialTiktokFlow: Flow<Boolean> = context.settingsStore.data.map { it[Keys.SOCIAL_TIKTOK] ?: false }
     val shortsBlockActionFlow: Flow<String> = context.settingsStore.data.map { it[Keys.SHORTS_BLOCK_ACTION] ?: "redirect" }
-
-    val aiExplorerEnabledFlow: Flow<Boolean> = context.settingsStore.data.map { it[Keys.AI_EXPLORER_ENABLED] ?: false }
-    val uninstallProtectionEnabledFlow: Flow<Boolean> = context.settingsStore.data.map { it[Keys.UNINSTALL_PROTECTION_ENABLED] ?: false }
-    val safeSearchEnabledFlow: Flow<Boolean> = context.settingsStore.data.map { it[Keys.SAFE_SEARCH_ENABLED] ?: false }
-    val safeSearchDnsStatusFlow: Flow<String> = context.settingsStore.data.map { it[Keys.SAFE_SEARCH_DNS_STATUS] ?: "inactive" }
-    val keywordBlockingEnabledFlow: Flow<Boolean> = context.settingsStore.data.map { it[Keys.KEYWORD_BLOCKING_ENABLED] ?: false }
-    val vpnPermissionGrantedFlow: Flow<Boolean> = context.settingsStore.data.map { it[Keys.VPN_PERMISSION_GRANTED] ?: false }
 
     val strictModeFlow: Flow<Boolean> = context.settingsStore.data.map { it[Keys.STRICT_MODE] ?: false }
     val strictModeCooldownEndAtFlow: Flow<Long> = context.settingsStore.data.map { it[Keys.STRICT_MODE_COOLDOWN_END_AT] ?: 0L }
-
-    val shortstopBlockedHourActiveFlow: Flow<Boolean> = context.settingsStore.data.map { it[Keys.SHORTSTOP_BLOCKED_HOUR_ACTIVE] ?: false }
-    val shortstopDailyQuotaExceededFlow: Flow<Boolean> = context.settingsStore.data.map { it[Keys.SHORTSTOP_DAILY_QUOTA_EXCEEDED] ?: false }
-    val shortstopBreakActiveFlow: Flow<Boolean> = context.settingsStore.data.map { it[Keys.SHORTSTOP_BREAK_ACTIVE] ?: false }
-    val shortstopDailyQuotaMinutesFlow: Flow<Int> = context.settingsStore.data.map { it[Keys.SHORTSTOP_DAILY_QUOTA_MIN] ?: 10 }
-    val shortstopBreakIntervalMinutesFlow: Flow<Int> = context.settingsStore.data.map { it[Keys.SHORTSTOP_BREAK_INTERVAL_MIN] ?: 15 }
-    val shortstopBreakLengthMinutesFlow: Flow<Int> = context.settingsStore.data.map { it[Keys.SHORTSTOP_BREAK_LENGTH_MIN] ?: 5 }
-    val shortstopMinutesSpentTodayFlow: Flow<Int> = context.settingsStore.data.map { it[Keys.SHORTSTOP_MINUTES_SPENT_TODAY] ?: 0 }
-    val shortstopBreakEndsAtFlow: Flow<Long> = context.settingsStore.data.map { it[Keys.SHORTSTOP_BREAK_ENDS_AT] ?: 0L }
 
     val permAccessibilityFlow: Flow<Boolean> = context.settingsStore.data.map { it[Keys.PERM_ACCESSIBILITY] ?: false }
 
@@ -123,6 +93,25 @@ class AppSettings(private val context: Context) {
         try { Json.decodeFromString<Set<String>>(raw) } catch (_: Exception) { emptySet() }
     }
 
+    val whitelistAppsFlow: Flow<Set<String>> = context.settingsStore.data.map { prefs ->
+        val raw = prefs[Keys.WHITELIST_APPS] ?: "[]"
+        try { Json.decodeFromString<Set<String>>(raw) } catch (_: Exception) { emptySet() }
+    }
+    val whitelistWebsitesFlow: Flow<Set<String>> = context.settingsStore.data.map { prefs ->
+        val raw = prefs[Keys.WHITELIST_WEBSITES] ?: "[]"
+        try { Json.decodeFromString<Set<String>>(raw) } catch (_: Exception) { emptySet() }
+    }
+
+    val pornBlockerEnabledFlow: Flow<Boolean> = context.settingsStore.data.map { it[Keys.PORN_BLOCKER_ENABLED] ?: false }
+    val aiExplorerEnabledFlow: Flow<Boolean> = context.settingsStore.data.map { it[Keys.AI_EXPLORER_ENABLED] ?: false }
+    val uninstallProtectionEnabledFlow: Flow<Boolean> = context.settingsStore.data.map { it[Keys.UNINSTALL_PROTECTION_ENABLED] ?: false }
+
+    val instagramBlockedFlow: Flow<Boolean> = context.settingsStore.data.map { it[Keys.INSTAGRAM_BLOCKED] ?: false }
+    val snapchatBlockedFlow: Flow<Boolean> = context.settingsStore.data.map { it[Keys.SNAPCHAT_BLOCKED] ?: false }
+    val twitterBlockedFlow: Flow<Boolean> = context.settingsStore.data.map { it[Keys.TWITTER_BLOCKED] ?: false }
+    val tiktokBlockedFlow: Flow<Boolean> = context.settingsStore.data.map { it[Keys.TIKTOK_BLOCKED] ?: false }
+    val facebookModeFlow: Flow<String> = context.settingsStore.data.map { it[Keys.FACEBOOK_MODE] ?: "off" }
+
     suspend fun setBlockedApps(apps: Set<String>) {
         context.settingsStore.edit { it[Keys.BLOCKED_APPS] = Json.encodeToString(apps) }
     }
@@ -132,6 +121,23 @@ class AppSettings(private val context: Context) {
     suspend fun setBlockedKeywords(keywords: Set<String>) {
         context.settingsStore.edit { it[Keys.BLOCKED_KEYWORDS] = Json.encodeToString(keywords) }
     }
+
+    suspend fun setWhitelistApps(apps: Set<String>) {
+        context.settingsStore.edit { it[Keys.WHITELIST_APPS] = Json.encodeToString(apps) }
+    }
+    suspend fun setWhitelistWebsites(websites: Set<String>) {
+        context.settingsStore.edit { it[Keys.WHITELIST_WEBSITES] = Json.encodeToString(websites) }
+    }
+
+    suspend fun setPornBlockerEnabled(v: Boolean) { context.settingsStore.edit { it[Keys.PORN_BLOCKER_ENABLED] = v } }
+    suspend fun setAiExplorerEnabled(v: Boolean) { context.settingsStore.edit { it[Keys.AI_EXPLORER_ENABLED] = v } }
+    suspend fun setUninstallProtectionEnabled(v: Boolean) { context.settingsStore.edit { it[Keys.UNINSTALL_PROTECTION_ENABLED] = v } }
+
+    suspend fun setInstagramBlocked(v: Boolean) { context.settingsStore.edit { it[Keys.INSTAGRAM_BLOCKED] = v } }
+    suspend fun setSnapchatBlocked(v: Boolean) { context.settingsStore.edit { it[Keys.SNAPCHAT_BLOCKED] = v } }
+    suspend fun setTwitterBlocked(v: Boolean) { context.settingsStore.edit { it[Keys.TWITTER_BLOCKED] = v } }
+    suspend fun setTiktokBlocked(v: Boolean) { context.settingsStore.edit { it[Keys.TIKTOK_BLOCKED] = v } }
+    suspend fun setFacebookMode(v: String) { context.settingsStore.edit { it[Keys.FACEBOOK_MODE] = v } }
 
     suspend fun isAppBlocked(pkg: String): Boolean {
         val raw = context.settingsStore.data.first()[Keys.BLOCKED_APPS] ?: "[]"
@@ -144,7 +150,10 @@ class AppSettings(private val context: Context) {
         context.settingsStore.edit { it[Keys.SHIELD_ACTIVE] = v }
     }
     suspend fun setShieldActivatedAt(v: Long) { context.settingsStore.edit { it[Keys.SHIELD_ACTIVATED_AT] = v } }
-    suspend fun setTrialMode(v: Boolean) { context.settingsStore.edit { it[Keys.TRIAL_MODE] = v } }
+    suspend fun setTrialMode(v: Boolean) {
+        trialModeCache = v
+        context.settingsStore.edit { it[Keys.TRIAL_MODE] = v }
+    }
     suspend fun setTestMode(v: Boolean) { context.settingsStore.edit { it[Keys.TEST_MODE] = v } }
     suspend fun setDeactivationDelay(v: Int) { context.settingsStore.edit { it[Keys.DEACTIVATION_DELAY_DAYS] = v } }
     suspend fun setProfileName(v: String) { context.settingsStore.edit { it[Keys.PROFILE_NAME] = v } }
@@ -154,43 +163,14 @@ class AppSettings(private val context: Context) {
     suspend fun setLastActiveDate(v: Long) { context.settingsStore.edit { it[Keys.LAST_ACTIVE_DATE] = v } }
     suspend fun setLastShieldEnabledDay(v: Long) { context.settingsStore.edit { it[Keys.LAST_SHIELD_ENABLED_DAY] = v } }
 
-    suspend fun setInstagramMode(v: String) {
-        require(v in listOf("off", "full", "reels"))
-        context.settingsStore.edit { it[Keys.INSTAGRAM_MODE] = v }
-    }
-    suspend fun setYoutubeMode(v: String) {
-        require(v in listOf("off", "full", "shorts"))
-        context.settingsStore.edit { it[Keys.YOUTUBE_MODE] = v }
-    }
-    suspend fun setFacebookMode(v: String) {
-        require(v in listOf("off", "full", "reels"))
-        context.settingsStore.edit { it[Keys.FACEBOOK_MODE] = v }
-    }
-    suspend fun setSocialSnapchat(v: Boolean) { context.settingsStore.edit { it[Keys.SOCIAL_SNAPCHAT] = v } }
-    suspend fun setSocialTwitter(v: Boolean) { context.settingsStore.edit { it[Keys.SOCIAL_TWITTER] = v } }
-    suspend fun setSocialTiktok(v: Boolean) { context.settingsStore.edit { it[Keys.SOCIAL_TIKTOK] = v } }
+    suspend fun setYoutubeMode(v: String) { context.settingsStore.edit { it[Keys.YOUTUBE_MODE] = v } }
     suspend fun setShortsBlockAction(v: String) { context.settingsStore.edit { it[Keys.SHORTS_BLOCK_ACTION] = v } }
-
-    suspend fun setAiExplorerEnabled(v: Boolean) { context.settingsStore.edit { it[Keys.AI_EXPLORER_ENABLED] = v } }
-    suspend fun setUninstallProtectionEnabled(v: Boolean) { context.settingsStore.edit { it[Keys.UNINSTALL_PROTECTION_ENABLED] = v } }
-    suspend fun setSafeSearchEnabled(v: Boolean) { context.settingsStore.edit { it[Keys.SAFE_SEARCH_ENABLED] = v } }
-    suspend fun setSafeSearchDnsStatus(v: String) { context.settingsStore.edit { it[Keys.SAFE_SEARCH_DNS_STATUS] = v } }
-    suspend fun setKeywordBlockingEnabled(v: Boolean) { context.settingsStore.edit { it[Keys.KEYWORD_BLOCKING_ENABLED] = v } }
-    suspend fun setVpnPermissionGranted(v: Boolean) { context.settingsStore.edit { it[Keys.VPN_PERMISSION_GRANTED] = v } }
-
-    suspend fun setShortstopBlockedHourActive(v: Boolean) { context.settingsStore.edit { it[Keys.SHORTSTOP_BLOCKED_HOUR_ACTIVE] = v } }
-    suspend fun setShortstopDailyQuotaExceeded(v: Boolean) { context.settingsStore.edit { it[Keys.SHORTSTOP_DAILY_QUOTA_EXCEEDED] = v } }
-    suspend fun setShortstopBreakActive(v: Boolean) { context.settingsStore.edit { it[Keys.SHORTSTOP_BREAK_ACTIVE] = v } }
-    suspend fun setShortstopDailyQuotaMinutes(v: Int) { context.settingsStore.edit { it[Keys.SHORTSTOP_DAILY_QUOTA_MIN] = v } }
-    suspend fun setShortstopBreakIntervalMinutes(v: Int) { context.settingsStore.edit { it[Keys.SHORTSTOP_BREAK_INTERVAL_MIN] = v } }
-    suspend fun setShortstopBreakLengthMinutes(v: Int) { context.settingsStore.edit { it[Keys.SHORTSTOP_BREAK_LENGTH_MIN] = v } }
-    suspend fun setShortstopMinutesSpentToday(v: Int) { context.settingsStore.edit { it[Keys.SHORTSTOP_MINUTES_SPENT_TODAY] = v } }
-    suspend fun setShortstopBreakEndsAt(v: Long) { context.settingsStore.edit { it[Keys.SHORTSTOP_BREAK_ENDS_AT] = v } }
 
     suspend fun setStrictMode(v: Boolean) { context.settingsStore.edit { it[Keys.STRICT_MODE] = v } }
     suspend fun setStrictModeCooldownEndAt(v: Long) { context.settingsStore.edit { it[Keys.STRICT_MODE_COOLDOWN_END_AT] = v } }
 
     suspend fun setPermAccessibility(v: Boolean) { context.settingsStore.edit { it[Keys.PERM_ACCESSIBILITY] = v } }
+
     suspend fun isDefaultsSeeded(): Boolean = context.settingsStore.data.first()[Keys.DEFAULTS_SEEDED] ?: false
     suspend fun setDefaultsSeeded(v: Boolean) { context.settingsStore.edit { it[Keys.DEFAULTS_SEEDED] = v } }
 
@@ -201,25 +181,21 @@ class AppSettings(private val context: Context) {
 
     suspend fun isOnboardingComplete(): Boolean = context.settingsStore.data.first()[Keys.ONBOARDING_COMPLETE] ?: false
     suspend fun isShieldActive(): Boolean = context.settingsStore.data.first()[Keys.SHIELD_ACTIVE] ?: false
-    /** Non-blocking cache read — safe to call from AccessibilityService (main thread). Never uses runBlocking. */
     fun isShieldActiveSync(): Boolean = shieldActiveCache
+    fun isTrialModeSync(): Boolean = trialModeCache
 
-    /** Must be called once at app startup to warm the in-memory cache from persisted state. */
     suspend fun warmShieldCache() {
-        shieldActiveCache = context.settingsStore.data.first()[Keys.SHIELD_ACTIVE] ?: false
+        val prefs = context.settingsStore.data.first()
+        shieldActiveCache = prefs[Keys.SHIELD_ACTIVE] ?: false
+        trialModeCache = prefs[Keys.TRIAL_MODE] ?: false
     }
     suspend fun getShieldActivatedAt(): Long = context.settingsStore.data.first()[Keys.SHIELD_ACTIVATED_AT] ?: 0L
     suspend fun hasPin(): Boolean = encryptedPrefs.hasPin()
     suspend fun getDeactivationDelay(): Int = context.settingsStore.data.first()[Keys.DEACTIVATION_DELAY_DAYS] ?: 0
     suspend fun getProfileName(): String = context.settingsStore.data.first()[Keys.PROFILE_NAME] ?: ""
     suspend fun getPinHash(): String = encryptedPrefs.getPinHash()
-    suspend fun getInstagramMode(): String = context.settingsStore.data.first()[Keys.INSTAGRAM_MODE] ?: "off"
     suspend fun getYoutubeMode(): String = context.settingsStore.data.first()[Keys.YOUTUBE_MODE] ?: "off"
-    suspend fun getFacebookMode(): String = context.settingsStore.data.first()[Keys.FACEBOOK_MODE] ?: "off"
     suspend fun isStrictMode(): Boolean = context.settingsStore.data.first()[Keys.STRICT_MODE] ?: false
-    suspend fun isSnapchatBlocked(): Boolean = context.settingsStore.data.first()[Keys.SOCIAL_SNAPCHAT] ?: false
-    suspend fun isTwitterBlocked(): Boolean = context.settingsStore.data.first()[Keys.SOCIAL_TWITTER] ?: false
-    suspend fun isTiktokBlocked(): Boolean = context.settingsStore.data.first()[Keys.SOCIAL_TIKTOK] ?: false
     suspend fun isStrictModeCooldownActive(): Boolean {
         val end = context.settingsStore.data.first()[Keys.STRICT_MODE_COOLDOWN_END_AT] ?: 0L
         return end > System.currentTimeMillis()
