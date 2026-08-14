@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">طريق النقاء</string>
+    <string name="accessibility_service_label">طريق النقاء — خدمة الحماية</string>
+    <string name="accessibility_service_description">تتيح هذه الخدمة لتطبيق طريق النقاء مراقبة التطبيق المفتوح والكلمات والمواقع لحمايتك من المحتوى المحظور وإخراجك منه فوراً.</string>
+</resources>
