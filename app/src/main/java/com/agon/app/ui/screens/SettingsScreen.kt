@@ -15,6 +15,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.DeleteForever
+import androidx.compose.material.icons.filled.FastForward
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Shield
@@ -101,6 +102,30 @@ fun SettingsScreen(
             Spacer(Modifier.height(12.dp))
 
             AppCard(innerPadding = 16.dp) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.FastForward, contentDescription = null, tint = CyanPrimary, modifier = Modifier.size(24.dp))
+                    Spacer(Modifier.width(12.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("زر المواصلة للكلمات المحظورة", fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
+                        Text(
+                            "يظهر في شاشة الحظر خيار المتابعة رغم التحذير",
+                            fontSize = 13.sp,
+                            color = TextSecondary,
+                        )
+                    }
+                    AppSwitch(checked = vm.keywordContinue, onCheckedChange = {
+                        if (!vm.updateKeywordContinue(it)) {
+                            scope.launch {
+                                snackbarHostState.showSnackbar("🛡️ الدرع مفعل — لا يمكن تفعيل خيار يضعف الحماية")
+                            }
+                        }
+                    })
+                }
+            }
+
+            Spacer(Modifier.height(12.dp))
+
+            AppCard(innerPadding = 16.dp) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier.fillMaxWidth(),
@@ -118,7 +143,13 @@ fun SettingsScreen(
                     Surface(
                         shape = RoundedCornerShape(12.dp),
                         color = CyanPrimary.copy(alpha = 0.16f),
-                        onClick = { vm.cycleDelay() },
+                        onClick = {
+                            if (!vm.cycleDelay()) {
+                                scope.launch {
+                                    snackbarHostState.showSnackbar("🛡️ الدرع مفعل — يمكن زيادة مدة التأخير فقط ولا يمكن تقليلها")
+                                }
+                            }
+                        },
                     ) {
                         Text(
                             delayOptions[vm.delayIndex],

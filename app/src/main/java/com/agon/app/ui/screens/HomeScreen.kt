@@ -100,6 +100,7 @@ fun HomeScreen(
     LaunchedEffect(Unit) {
         while (true) {
             now = System.currentTimeMillis()
+            vm.completePendingStopIfDue(now)
             delay(1000)
         }
     }
@@ -243,7 +244,13 @@ fun HomeScreen(
                         shape = RoundedCornerShape(16.dp),
                         color = Color.Transparent,
                         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
-                        onClick = { vm.cycleDelay() },
+                        onClick = {
+                            if (!vm.cycleDelay()) {
+                                scope.launch {
+                                    snackbarHostState.showSnackbar("🛡️ الدرع مفعل — يمكن زيادة مدة التأخير فقط ولا يمكن تقليلها")
+                                }
+                            }
+                        },
                         modifier = Modifier.fillMaxWidth(),
                     ) {
                         Row(
@@ -261,13 +268,59 @@ fun HomeScreen(
                         }
                     }
                     Spacer(Modifier.height(14.dp))
+
+                    // Scheduled-stop countdown banner (anti-impulse delay running).
+                    if (vm.shieldActive && vm.pendingStopAt > 0L) {
+                        val remainMs = (vm.pendingStopAt - now).coerceAtLeast(0)
+                        val rh = remainMs / 3_600_000
+                        val rm = (remainMs % 3_600_000) / 60_000
+                        val rs = (remainMs % 60_000) / 1000
+                        Surface(
+                            shape = RoundedCornerShape(16.dp),
+                            color = Color(0xFF3A2B14),
+                            border = BorderStroke(1.dp, Color(0xFFE5B04C).copy(alpha = 0.5f)),
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(14.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                            ) {
+                                Text(
+                                    "⏳ سيتوقف الدرع بعد " +
+                                        "%02d:%02d:%02d".format(rh, rm, rs),
+                                    color = Color(0xFFE5B04C),
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 15.sp,
+                                )
+                                Spacer(Modifier.height(4.dp))
+                                Text(
+                                    "هذه فترة التأمل — لحظة الضعف تمر، وقرارك الصحيح يبقى",
+                                    color = TextSecondary,
+                                    fontSize = 12.sp,
+                                )
+                            }
+                        }
+                        Spacer(Modifier.height(10.dp))
+                    }
+
+                    val pendingStop = vm.shieldActive && vm.pendingStopAt > 0L
                     Button(
                         onClick = {
-                            vm.toggleShield()
-                            scope.launch {
-                                snackbarHostState.showSnackbar(
-                                    if (vm.shieldActive) "تم تفعيل الدرع 🛡️" else "تم إيقاف الدرع",
-                                )
+                            if (pendingStop) {
+                                vm.cancelPendingStop()
+                                scope.launch { snackbarHostState.showSnackbar("أحسنت! تم إلغاء إيقاف الدرع 💪") }
+                            } else {
+                                val wasActive = vm.shieldActive
+                                vm.toggleShield()
+                                scope.launch {
+                                    snackbarHostState.showSnackbar(
+                                        when {
+                                            !wasActive -> "تم تفعيل الدرع 🛡️"
+                                            vm.pendingStopAt > 0L -> "تمت جدولة الإيقاف — الدرع ما زال يحميك حتى انتهاء المدة"
+                                            else -> "تم إيقاف الدرع"
+                                        },
+                                    )
+                                }
                             }
                         },
                         modifier = Modifier
@@ -275,14 +328,26 @@ fun HomeScreen(
                             .height(58.dp),
                         shape = RoundedCornerShape(18.dp),
                         colors = ButtonDefaults.buttonColors(
-                            containerColor = if (vm.shieldActive) DangerContainer else CyanPrimary,
-                            contentColor = if (vm.shieldActive) DangerRed else Color(0xFF06222F),
+                            containerColor = when {
+                                pendingStop -> GreenAccent
+                                vm.shieldActive -> DangerContainer
+                                else -> CyanPrimary
+                            },
+                            contentColor = when {
+                                pendingStop -> Color(0xFF06231B)
+                                vm.shieldActive -> DangerRed
+                                else -> Color(0xFF06222F)
+                            },
                         ),
                     ) {
                         Icon(Icons.Default.VerifiedUser, contentDescription = null, modifier = Modifier.size(20.dp))
                         Spacer(Modifier.width(8.dp))
                         Text(
-                            if (vm.shieldActive) "إيقاف الدرع" else "تفعيل الدرع",
+                            when {
+                                pendingStop -> "إلغاء الإيقاف — أكمل الطريق"
+                                vm.shieldActive -> "إيقاف الدرع"
+                                else -> "تفعيل الدرع"
+                            },
                             fontSize = 17.sp,
                             fontWeight = FontWeight.Bold,
                         )

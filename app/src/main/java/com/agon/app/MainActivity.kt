@@ -31,7 +31,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.LayoutDirection
-import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -51,7 +51,9 @@ import com.agon.app.ui.theme.GreenAccent
 import com.agon.app.ui.theme.GreenPill
 import com.agon.app.ui.theme.TextSecondary
 import com.agon.app.viewmodel.MainViewModel
+import dagger.hilt.android.AndroidEntryPoint
 
+@AndroidEntryPoint
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
@@ -80,7 +82,7 @@ private val navItems = listOf(
 @Composable
 fun MainApp() {
     val navController = rememberNavController()
-    val vm: MainViewModel = viewModel()
+    val vm: MainViewModel = hiltViewModel()
     val snackbarHostState = remember { SnackbarHostState() }
 
     val navBackStackEntry by navController.currentBackStackEntryAsState()

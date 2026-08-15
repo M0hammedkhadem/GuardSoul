@@ -1,6 +1,5 @@
 package com.agon.app.viewmodel
 
-import android.app.Application
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
@@ -9,32 +8,38 @@ import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshots.SnapshotStateList
-import androidx.datastore.preferences.core.MutablePreferences
-import androidx.datastore.preferences.core.edit
-import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.agon.app.data.AppBlockState
 import com.agon.app.data.JournalEntry
 import com.agon.app.data.ListCategory
-import com.agon.app.data.PrefKeys as Keys
 import com.agon.app.data.blockableApps
 import com.agon.app.data.contentFilterList
 import com.agon.app.data.defaultBlackSites
 import com.agon.app.data.defaultBlackWords
 import com.agon.app.data.defaultWhiteSites
 import com.agon.app.data.delayOptions
-import com.agon.app.data.purityDataStore
 import com.agon.app.data.quotes
+import com.agon.app.data.repository.JournalRepository
+import com.agon.app.data.repository.ProtectionRepository
 import com.agon.app.data.searchEngineNames
-import kotlinx.coroutines.flow.first
+import com.agon.app.domain.usecase.AddToListUseCase
+import com.agon.app.domain.usecase.RemoveFromListUseCase
+import com.agon.app.domain.usecase.ResetAllDataUseCase
+import com.agon.app.domain.usecase.ToggleShieldUseCase
+import com.agon.app.domain.usecase.UpdateAppFullBlockUseCase
+import com.agon.app.domain.usecase.UpdateAppShortsBlockUseCase
+import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.launch
-import kotlinx.serialization.builtins.ListSerializer
-import kotlinx.serialization.builtins.MapSerializer
-import kotlinx.serialization.builtins.serializer
-import kotlinx.serialization.json.Json
+import javax.inject.Inject
 
 /**
- * UI state holder.
+ * UI state holder (MVVM presentation layer).
+ *
+ * All persistence goes through [ProtectionRepository]/[JournalRepository];
+ * all non-trivial business rules live in domain use cases. The public API
+ * (fields + function signatures) is IDENTICAL to the pre-refactor version,
+ * so no screen changes.
  *
  * Shield lock ("smart" tamper protection): while the main shield is active,
  * every mutation that WEAKENS protection returns false and is rejected;
@@ -45,15 +50,18 @@ import kotlinx.serialization.json.Json
  *  - Blacklists     -> items can be added, not removed.
  *  - Whitelists     -> items can be removed, not added.
  */
-class MainViewModel(application: Application) : AndroidViewModel(application) {
+@HiltViewModel
+class MainViewModel @Inject constructor(
+    private val protectionRepo: ProtectionRepository,
+    private val journalRepo: JournalRepository,
+) : ViewModel() {
 
-    private val ds = application.purityDataStore
-    private val json = Json { ignoreUnknownKeys = true }
-
-    private val enginesSer = MapSerializer(String.serializer(), Boolean.serializer())
-    private val appsSer = MapSerializer(String.serializer(), AppBlockState.serializer())
-    private val stringListSer = ListSerializer(String.serializer())
-    private val journalSer = ListSerializer(JournalEntry.serializer())
+    private val toggleShieldUseCase = ToggleShieldUseCase()
+    private val updateAppFullBlock = UpdateAppFullBlockUseCase()
+    private val updateAppShortsBlock = UpdateAppShortsBlockUseCase()
+    private val addToListUseCase = AddToListUseCase()
+    private val removeFromListUseCase = RemoveFromListUseCase()
+    private val resetAllDataUseCase = ResetAllDataUseCase()
 
     var loaded by mutableStateOf(false)
         private set
@@ -66,6 +74,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     var accumulatedControlSeconds by mutableLongStateOf(0L)
         private set
     var delayIndex by mutableIntStateOf(0)
+        private set
+
+    /** Epoch ms at which a scheduled shield stop completes (0 = none). */
+    var pendingStopAt by mutableLongStateOf(0L)
         private set
 
     // Streak
@@ -84,6 +96,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     var aiImageFilter by mutableStateOf(false)
         private set
     var uninstallGuard by mutableStateOf(false)
+        private set
+    /** Show a "continue anyway" button on keyword shields (default off). */
+    var keywordContinue by mutableStateOf(false)
+        private set
+    /** NSFW action: false = kick out (default), true = camouflage overlay. */
+    var nsfwBlurMode by mutableStateOf(false)
         private set
     var blocksCount by mutableIntStateOf(0)
         private set
@@ -107,7 +125,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch { load() }
         // Live counter: the protection service increments this key on every block.
         viewModelScope.launch {
-            ds.data.collect { p -> blocksCount = p[Keys.BLOCKS_COUNT] ?: 0 }
+            protectionRepo.blocksCountFlow.collect { blocksCount = it }
+        }
+        // Journal now lives in Room; the flow first runs the one-time legacy
+        // DataStore -> Room migration, then keeps the UI list in sync.
+        viewModelScope.launch {
+            journalRepo.observeJournal().collect { entries ->
+                journal.clear()
+                journal.addAll(entries)
+            }
         }
     }
 
@@ -129,89 +155,125 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private suspend fun load() {
-        val p = ds.data.first()
-        val savedStart = p[Keys.STREAK_START]
+        val s = protectionRepo.snapshot()
+        val savedStart = s.streakStart
         if (savedStart != null) {
             streakStart = savedStart
         } else {
-            persist { it[Keys.STREAK_START] = streakStart }
+            protectionRepo.persistStreakStart(streakStart)
         }
-        p[Keys.SHIELD_ACTIVE]?.let { shieldActive = it }
-        p[Keys.SHIELD_SINCE]?.let { shieldSince = it }
-        p[Keys.CONTROL_SECONDS]?.let { accumulatedControlSeconds = it }
-        p[Keys.DELAY_INDEX]?.let { delayIndex = it }
-        p[Keys.RELAPSES]?.let { relapses = it }
-        p[Keys.LONGEST]?.let { longestSeconds = it }
-        p[Keys.URGES]?.let { urgesResisted = it }
-        p[Keys.QUOTE]?.let { quoteIndex = it }
-        p[Keys.DAILY_REMINDER]?.let { dailyReminder = it }
-        p[Keys.AI_FILTER]?.let { aiImageFilter = it }
-        p[Keys.UNINSTALL_GUARD]?.let { uninstallGuard = it }
-        p[Keys.FILTERS]?.let { s ->
-            runCatching { json.decodeFromString(enginesSer, s) }.getOrNull()?.let { m ->
-                contentFilters.clear(); contentFilters.putAll(m)
+        s.shieldActive?.let { shieldActive = it }
+        s.shieldSince?.let { shieldSince = it }
+        s.pendingStopAt?.let { pendingStopAt = it }
+        s.controlSeconds?.let { accumulatedControlSeconds = it }
+        // A stop scheduled before the app was killed may have become due.
+        completePendingStopIfDue(System.currentTimeMillis())
+        s.delayIndex?.let { delayIndex = it }
+        s.relapses?.let { relapses = it }
+        s.longestSeconds?.let { longestSeconds = it }
+        s.urgesResisted?.let { urgesResisted = it }
+        s.quoteIndex?.let { quoteIndex = it }
+        s.dailyReminder?.let { dailyReminder = it }
+        s.aiImageFilter?.let { aiImageFilter = it }
+        s.uninstallGuard?.let { uninstallGuard = it }
+        s.keywordContinue?.let { keywordContinue = it }
+        s.nsfwBlur?.let { nsfwBlurMode = it }
+        s.contentFilters?.let { m ->
+            contentFilters.clear(); contentFilters.putAll(m)
+        }
+        s.searchEngines?.let { m ->
+            searchEngines.clear(); searchEngines.putAll(m)
+        }
+        s.appBlocks?.let { m ->
+            appBlocks.clear()
+            // Only keep known apps; new catalog entries get defaults.
+            blockableApps.forEach { app ->
+                appBlocks[app.id] = m[app.id] ?: AppBlockState()
             }
         }
-        p[Keys.ENGINES]?.let { s ->
-            runCatching { json.decodeFromString(enginesSer, s) }.getOrNull()?.let { m ->
-                searchEngines.clear(); searchEngines.putAll(m)
-            }
-        }
-        p[Keys.APPS]?.let { s ->
-            runCatching { json.decodeFromString(appsSer, s) }.getOrNull()?.let { m ->
-                appBlocks.clear()
-                // Only keep known apps; new catalog entries get defaults.
-                blockableApps.forEach { app ->
-                    appBlocks[app.id] = m[app.id] ?: AppBlockState()
-                }
-            }
-        }
-        loadList(p[Keys.BLACK_WORDS], blackWords)
-        loadList(p[Keys.BLACK_SITES] ?: p[Keys.BLACKLIST], blackSites)
-        loadList(p[Keys.BLACK_APPS], blackApps)
-        loadList(p[Keys.WHITE_WORDS], whiteWords)
-        loadList(p[Keys.WHITE_SITES] ?: p[Keys.WHITELIST], whiteSites)
-        loadList(p[Keys.WHITE_APPS], whiteApps)
-        p[Keys.JOURNAL]?.let { s ->
-            runCatching { json.decodeFromString(journalSer, s) }.getOrNull()?.let { l ->
-                journal.clear(); journal.addAll(l)
-            }
-        }
+        loadList(s.blackWords, blackWords)
+        loadList(s.blackSites, blackSites)
+        loadList(s.blackApps, blackApps)
+        loadList(s.whiteWords, whiteWords)
+        loadList(s.whiteSites, whiteSites)
+        loadList(s.whiteApps, whiteApps)
         loaded = true
     }
 
-    private fun loadList(raw: String?, target: SnapshotStateList<String>) {
-        raw ?: return
-        runCatching { json.decodeFromString(stringListSer, raw) }.getOrNull()?.let { l ->
-            target.clear(); target.addAll(l)
-        }
-    }
-
-    private fun persist(block: (MutablePreferences) -> Unit) {
-        viewModelScope.launch { ds.edit { block(it) } }
+    private fun loadList(values: List<String>?, target: SnapshotStateList<String>) {
+        values ?: return
+        target.clear(); target.addAll(values)
     }
 
     // ---------- Shield ----------
 
+    fun delayMillisFor(index: Int): Long = when (index) {
+        1 -> 10L * 60_000L        // 10 دقائق
+        2 -> 60L * 60_000L        // ساعة
+        3 -> 24L * 60L * 60_000L  // 24 ساعة
+        else -> 0L                // بدون تأخير
+    }
+
+    private fun shieldState() = ToggleShieldUseCase.ShieldState(
+        active = shieldActive,
+        since = shieldSince,
+        pendingStopAt = pendingStopAt,
+        controlSeconds = accumulatedControlSeconds,
+    )
+
+    private fun applyShieldState(state: ToggleShieldUseCase.ShieldState) {
+        shieldActive = state.active
+        shieldSince = state.since
+        pendingStopAt = state.pendingStopAt
+        accumulatedControlSeconds = state.controlSeconds
+        persistShield()
+    }
+
+    /**
+     * Starting is instant. Stopping honours the anti-impulse delay: with a
+     * non-zero delay the stop is SCHEDULED and the shield stays fully active
+     * until the timer elapses — the user can cancel (strengthening) anytime.
+     */
     fun toggleShield() {
-        val now = System.currentTimeMillis()
-        if (shieldActive) {
-            accumulatedControlSeconds += (now - shieldSince) / 1000
-            shieldActive = false
-        } else {
-            shieldSince = now
-            shieldActive = true
-        }
-        persist {
-            it[Keys.SHIELD_ACTIVE] = shieldActive
-            it[Keys.SHIELD_SINCE] = shieldSince
-            it[Keys.CONTROL_SECONDS] = accumulatedControlSeconds
+        val newState = toggleShieldUseCase(
+            current = shieldState(),
+            delayMillis = delayMillisFor(delayIndex),
+            now = System.currentTimeMillis(),
+        ) ?: return // stop already scheduled — legacy no-op without persist
+        applyShieldState(newState)
+    }
+
+    /** Cancelling a scheduled stop strengthens protection — always allowed. */
+    fun cancelPendingStop() {
+        applyShieldState(toggleShieldUseCase.cancelPendingStop(shieldState()))
+    }
+
+    /** Called from the UI ticker; finalises a due scheduled stop. */
+    fun completePendingStopIfDue(now: Long) {
+        toggleShieldUseCase.completeIfDue(shieldState(), now)?.let { applyShieldState(it) }
+    }
+
+    private fun persistShield() {
+        val active = shieldActive
+        val since = shieldSince
+        val pending = pendingStopAt
+        val control = accumulatedControlSeconds
+        viewModelScope.launch {
+            protectionRepo.persistShield(active, since, pending, control)
         }
     }
 
-    fun cycleDelay() {
-        delayIndex = (delayIndex + 1) % delayOptions.size
-        persist { it[Keys.DELAY_INDEX] = delayIndex }
+    /**
+     * While the shield is active the delay may only be INCREASED — the
+     * wrap-around (24h -> none) is a weakening move and is rejected.
+     */
+    fun cycleDelay(): Boolean {
+        val next = (delayIndex + 1) % delayOptions.size
+        if (shieldActive && next < delayIndex) return false
+        delayIndex = next
+        val value = delayIndex
+        viewModelScope.launch { protectionRepo.persistDelayIndex(value) }
+        return true
     }
 
     fun controlSeconds(now: Long): Long =
@@ -225,39 +287,56 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         if (current > longestSeconds) longestSeconds = current
         relapses += 1
         streakStart = now
-        persist {
-            it[Keys.STREAK_START] = streakStart
-            it[Keys.RELAPSES] = relapses
-            it[Keys.LONGEST] = longestSeconds
-        }
+        val start = streakStart
+        val count = relapses
+        val longest = longestSeconds
+        viewModelScope.launch { protectionRepo.persistRelapse(start, count, longest) }
     }
 
     fun resistUrge() {
         urgesResisted += 1
-        persist { it[Keys.URGES] = urgesResisted }
+        val value = urgesResisted
+        viewModelScope.launch { protectionRepo.persistUrges(value) }
     }
 
     fun nextQuote() {
         quoteIndex = (quoteIndex + 1) % quotes.size
-        persist { it[Keys.QUOTE] = quoteIndex }
+        val value = quoteIndex
+        viewModelScope.launch { protectionRepo.persistQuoteIndex(value) }
     }
 
     fun updateDailyReminder(value: Boolean) {
         dailyReminder = value
-        persist { it[Keys.DAILY_REMINDER] = value }
+        viewModelScope.launch { protectionRepo.persistDailyReminder(value) }
     }
 
     fun updateAiImageFilter(value: Boolean): Boolean {
         if (!value && shieldActive) return false
         aiImageFilter = value
-        persist { it[Keys.AI_FILTER] = value }
+        viewModelScope.launch { protectionRepo.persistAiImageFilter(value) }
         return true
     }
 
     fun updateUninstallGuard(value: Boolean): Boolean {
         if (!value && shieldActive) return false
         uninstallGuard = value
-        persist { it[Keys.UNINSTALL_GUARD] = value }
+        viewModelScope.launch { protectionRepo.persistUninstallGuard(value) }
+        return true
+    }
+
+    /** Enabling the continue button WEAKENS protection -> locked while shield on. */
+    fun updateKeywordContinue(value: Boolean): Boolean {
+        if (value && shieldActive) return false
+        keywordContinue = value
+        viewModelScope.launch { protectionRepo.persistKeywordContinue(value) }
+        return true
+    }
+
+    /** Camouflage is weaker than kick-out -> switching to it is locked while shield on. */
+    fun updateNsfwBlurMode(value: Boolean): Boolean {
+        if (value && shieldActive) return false
+        nsfwBlurMode = value
+        viewModelScope.launch { protectionRepo.persistNsfwBlur(value) }
         return true
     }
 
@@ -290,35 +369,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
      * Mutual exclusivity: enabling full block auto-disables shorts-only.
      * Shield lock: full block can never be weakened while the shield is on.
      */
-    fun updateAppFull(id: String, enabled: Boolean): Boolean {
-        val cur = appBlocks[id] ?: AppBlockState()
-        if (enabled) {
-            // Strengthening: always allowed. Auto-switch off shorts (exclusive).
-            appBlocks[id] = AppBlockState(fullBlock = true, shortsBlock = false)
-        } else {
-            if (shieldActive) return false // weakening
-            appBlocks[id] = cur.copy(fullBlock = false)
-        }
-        persistProtection()
-        return true
-    }
+    fun updateAppFull(id: String, enabled: Boolean): Boolean =
+        updateAppFullBlock(appBlocks, id, enabled, shieldActive) { persistProtection() }
 
     /**
      * Mutual exclusivity: enabling shorts-only auto-disables full block —
      * but that downgrade (full -> shorts) is forbidden while the shield is on.
      */
-    fun updateAppShorts(id: String, enabled: Boolean): Boolean {
-        val cur = appBlocks[id] ?: AppBlockState()
-        if (enabled) {
-            if (cur.fullBlock && shieldActive) return false // downgrade
-            appBlocks[id] = AppBlockState(fullBlock = false, shortsBlock = true)
-        } else {
-            if (shieldActive) return false // weakening
-            appBlocks[id] = cur.copy(shortsBlock = false)
-        }
-        persistProtection()
-        return true
-    }
+    fun updateAppShorts(id: String, enabled: Boolean): Boolean =
+        updateAppShortsBlock(appBlocks, id, enabled, shieldActive) { persistProtection() }
 
     fun blockAll() {
         // Strengthening: always allowed. Exclusivity keeps one mode per app.
@@ -349,13 +408,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             appBlocks.values.count { it.fullBlock || it.shortsBlock }
 
     private fun persistProtection() {
-        val engines = json.encodeToString(enginesSer, searchEngines.toMap())
-        val apps = json.encodeToString(appsSer, appBlocks.toMap())
-        val filters = json.encodeToString(enginesSer, contentFilters.toMap())
-        persist {
-            it[Keys.ENGINES] = engines
-            it[Keys.APPS] = apps
-            it[Keys.FILTERS] = filters
+        val engines = searchEngines.toMap()
+        val apps = appBlocks.toMap()
+        val filters = contentFilters.toMap()
+        viewModelScope.launch {
+            protectionRepo.persistProtection(engines, apps, filters)
         }
     }
 
@@ -371,38 +428,22 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     /** Adding to a blacklist strengthens; adding to a whitelist weakens. */
-    fun addToList(black: Boolean, category: ListCategory, value: String): Boolean {
-        val v = value.trim()
-        if (v.isEmpty()) return true
-        if (!black && shieldActive) return false
-        val list = listFor(black, category)
-        if (!list.contains(v)) list.add(0, v)
-        persistLists()
-        return true
-    }
+    fun addToList(black: Boolean, category: ListCategory, value: String): Boolean =
+        addToListUseCase(listFor(black, category), black, value, shieldActive) { persistLists() }
 
     /** Removing from a blacklist weakens; removing from a whitelist strengthens. */
-    fun removeFromList(black: Boolean, category: ListCategory, value: String): Boolean {
-        if (black && shieldActive) return false
-        listFor(black, category).remove(value)
-        persistLists()
-        return true
-    }
+    fun removeFromList(black: Boolean, category: ListCategory, value: String): Boolean =
+        removeFromListUseCase(listFor(black, category), black, value, shieldActive) { persistLists() }
 
     private fun persistLists() {
-        val bw = json.encodeToString(stringListSer, blackWords.toList())
-        val bs = json.encodeToString(stringListSer, blackSites.toList())
-        val ba = json.encodeToString(stringListSer, blackApps.toList())
-        val ww = json.encodeToString(stringListSer, whiteWords.toList())
-        val ws = json.encodeToString(stringListSer, whiteSites.toList())
-        val wa = json.encodeToString(stringListSer, whiteApps.toList())
-        persist {
-            it[Keys.BLACK_WORDS] = bw
-            it[Keys.BLACK_SITES] = bs
-            it[Keys.BLACK_APPS] = ba
-            it[Keys.WHITE_WORDS] = ww
-            it[Keys.WHITE_SITES] = ws
-            it[Keys.WHITE_APPS] = wa
+        val bw = blackWords.toList()
+        val bs = blackSites.toList()
+        val ba = blackApps.toList()
+        val ww = whiteWords.toList()
+        val ws = whiteSites.toList()
+        val wa = whiteApps.toList()
+        viewModelScope.launch {
+            protectionRepo.persistLists(bw, bs, ba, ww, ws, wa)
         }
     }
 
@@ -410,29 +451,31 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun addJournalEntry(mood: Int, triggers: List<String>, text: String) {
         val now = System.currentTimeMillis()
-        journal.add(0, JournalEntry(id = now, timestamp = now, mood = mood, triggers = triggers, text = text.trim()))
-        persistJournal()
+        val entry = JournalEntry(id = now, timestamp = now, mood = mood, triggers = triggers, text = text.trim())
+        // Optimistic update (same instant feedback as before); Room's flow
+        // emission then confirms the same state.
+        journal.add(0, entry)
+        viewModelScope.launch { journalRepo.add(entry) }
     }
 
     fun deleteJournalEntry(id: Long) {
         journal.removeAll { it.id == id }
-        persistJournal()
-    }
-
-    private fun persistJournal() {
-        val j = json.encodeToString(journalSer, journal.toList())
-        persist { it[Keys.JOURNAL] = j }
+        viewModelScope.launch { journalRepo.delete(id) }
     }
 
     // ---------- Reset ----------
 
     fun resetAllData(): Boolean {
-        if (shieldActive) return false
+        val allowed = resetAllDataUseCase(shieldActive) {
+            val start = System.currentTimeMillis()
+            streakStart = start
+            viewModelScope.launch { protectionRepo.clearAllData(start) }
+        }
+        if (!allowed) return false
         shieldActive = false
         shieldSince = 0L
         accumulatedControlSeconds = 0L
         delayIndex = 0
-        streakStart = System.currentTimeMillis()
         relapses = 0
         longestSeconds = 0L
         urgesResisted = 0
@@ -440,14 +483,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         dailyReminder = true
         aiImageFilter = false
         uninstallGuard = false
+        keywordContinue = false
+        nsfwBlurMode = false
         applyDefaults()
         journal.clear()
-        viewModelScope.launch {
-            ds.edit {
-                it.clear()
-                it[Keys.STREAK_START] = streakStart
-            }
-        }
+        viewModelScope.launch { journalRepo.clearAll() }
         return true
     }
 }

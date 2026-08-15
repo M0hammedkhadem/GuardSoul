@@ -18,6 +18,17 @@ class BlockGovernor(
     private val repeatWindowMs: Long = 60_000,
 ) {
 
+    companion object {
+        /**
+         * Short suppress window used for REAL app-launch events
+         * (TYPE_WINDOW_STATE_CHANGED). A genuine relaunch of a blocked app
+         * must always be re-blocked — even faster than [suppressMs] — while
+         * still absorbing the burst of state-change events a single launch
+         * animation produces.
+         */
+        const val LAUNCH_SUPPRESS_MS = 600L
+    }
+
     data class Grant(val repeatCount: Int) {
         val escalated: Boolean get() = repeatCount >= 1
     }
@@ -31,12 +42,16 @@ class BlockGovernor(
      * Returns null only for duplicate detections inside the suppress window
      * (the overlay is still up). Otherwise always grants, with an escalation
      * counter when the same target repeats inside the repeat window.
+     *
+     * [bypassSuppress] = true for real launch events: shrinks the suppress
+     * window to [LAUNCH_SUPPRESS_MS] so instant relaunches are never missed.
      */
-    fun request(target: String, now: Long): Grant? {
+    fun request(target: String, now: Long, bypassSuppress: Boolean = false): Grant? {
         val sameTarget = target == lastTarget
         val elapsed = now - lastGrantAt
+        val effectiveSuppress = if (bypassSuppress) LAUNCH_SUPPRESS_MS else suppressMs
 
-        if (sameTarget && elapsed < suppressMs) return null // event storm, overlay showing
+        if (sameTarget && elapsed < effectiveSuppress) return null // event storm
 
         repeatCount = if (sameTarget && elapsed < repeatWindowMs) repeatCount + 1 else 0
         lastTarget = target

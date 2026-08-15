@@ -34,6 +34,9 @@ import androidx.compose.material.icons.filled.PhoneAndroid
 import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.TextFields
+import androidx.compose.foundation.Image
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -55,9 +58,13 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.core.graphics.drawable.toBitmap
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
@@ -81,7 +88,11 @@ private val BlackPill = Color(0xFF46231F)
 
 private const val SHIELD_LOCK_MSG = "🛡️ الدرع مفعل — يمكن تعزيز الحماية فقط ولا يمكن إضعافها"
 
-private data class InstalledApp(val label: String, val packageName: String)
+private data class InstalledApp(
+    val label: String,
+    val packageName: String,
+    val icon: ImageBitmap?,
+)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -361,6 +372,7 @@ private fun InstalledAppsSheet(
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var apps by remember { mutableStateOf<List<InstalledApp>?>(null) }
     var query by remember { mutableStateOf("") }
+    var selected by remember { mutableStateOf<InstalledApp?>(null) }
 
     LaunchedEffect(Unit) {
         apps = withContext(Dispatchers.IO) {
@@ -369,7 +381,15 @@ private fun InstalledAppsSheet(
             @Suppress("DEPRECATION")
             pm.queryIntentActivities(intent, 0)
                 .asSequence()
-                .map { InstalledApp(it.loadLabel(pm).toString(), it.activityInfo.packageName) }
+                .map { info ->
+                    InstalledApp(
+                        label = info.loadLabel(pm).toString(),
+                        packageName = info.activityInfo.packageName,
+                        icon = runCatching {
+                            info.loadIcon(pm).toBitmap(96, 96).asImageBitmap()
+                        }.getOrNull(),
+                    )
+                }
                 .filter { it.packageName != context.packageName }
                 .distinctBy { it.packageName }
                 .sortedBy { it.label.lowercase() }
@@ -431,61 +451,71 @@ private fun InstalledAppsSheet(
                 LazyColumn(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(440.dp),
+                        .height(400.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                     contentPadding = PaddingValues(bottom = 12.dp),
                 ) {
                     items(filtered, key = { it.packageName }) { app ->
                         val added = existing.contains(app.packageName)
+                        val isSelected = selected?.packageName == app.packageName
                         Surface(
                             shape = RoundedCornerShape(16.dp),
-                            color = SurfaceNavy,
-                            border = if (added) BorderStroke(1.dp, GreenAccent.copy(alpha = 0.5f)) else null,
-                            onClick = { if (!added) onPick(app) },
+                            color = if (isSelected) CyanPrimary.copy(alpha = 0.12f) else SurfaceNavy,
+                            border = when {
+                                isSelected -> BorderStroke(1.5.dp, CyanPrimary)
+                                added -> BorderStroke(1.dp, GreenAccent.copy(alpha = 0.5f))
+                                else -> null
+                            },
+                            onClick = {
+                                if (!added) selected = if (isSelected) null else app
+                            },
                             modifier = Modifier.fillMaxWidth(),
                         ) {
                             Row(
                                 modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(42.dp)
-                                        .background(SurfaceNavy2, CircleShape),
-                                    contentAlignment = Alignment.Center,
-                                ) {
-                                    Text(
-                                        app.label.take(1).uppercase(),
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 18.sp,
-                                        color = CyanPrimary,
+                                if (app.icon != null) {
+                                    Image(
+                                        bitmap = app.icon,
+                                        contentDescription = null,
+                                        modifier = Modifier
+                                            .size(42.dp)
+                                            .clip(RoundedCornerShape(12.dp)),
                                     )
+                                } else {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(42.dp)
+                                            .background(SurfaceNavy2, CircleShape),
+                                        contentAlignment = Alignment.Center,
+                                    ) {
+                                        Text(
+                                            app.label.take(1).uppercase(),
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 18.sp,
+                                            color = CyanPrimary,
+                                        )
+                                    }
                                 }
                                 Spacer(Modifier.width(12.dp))
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        app.label,
-                                        fontWeight = FontWeight.SemiBold,
-                                        fontSize = 15.sp,
-                                        color = Color.White,
-                                    )
-                                    Text(
-                                        app.packageName,
-                                        fontSize = 12.sp,
-                                        color = TextSecondary,
-                                    )
-                                }
-                                if (added) {
-                                    Icon(
+                                Text(
+                                    app.label,
+                                    modifier = Modifier.weight(1f),
+                                    fontWeight = FontWeight.SemiBold,
+                                    fontSize = 16.sp,
+                                    color = Color.White,
+                                )
+                                when {
+                                    added -> Icon(
                                         Icons.Default.CheckCircle,
                                         contentDescription = "مضاف",
                                         tint = GreenAccent,
                                         modifier = Modifier.size(24.dp),
                                     )
-                                } else {
-                                    Icon(
-                                        Icons.Default.Add,
-                                        contentDescription = "إضافة",
+                                    isSelected -> Icon(
+                                        Icons.Default.CheckCircle,
+                                        contentDescription = "محدد",
                                         tint = CyanPrimary,
                                         modifier = Modifier.size(24.dp),
                                     )
@@ -493,6 +523,35 @@ private fun InstalledAppsSheet(
                             }
                         }
                     }
+                }
+
+                // "إضافة" button — appears once an app is selected, so the
+                // user confirms calmly instead of the tap adding instantly.
+                Spacer(Modifier.height(12.dp))
+                Button(
+                    onClick = {
+                        selected?.let { onPick(it) }
+                        selected = null
+                    },
+                    enabled = selected != null,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(54.dp),
+                    shape = RoundedCornerShape(18.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = CyanPrimary,
+                        contentColor = Color(0xFF06222F),
+                        disabledContainerColor = SurfaceNavy2,
+                        disabledContentColor = TextSecondary,
+                    ),
+                ) {
+                    Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(20.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        selected?.let { "إضافة «${it.label}»" } ?: "اختر تطبيقًا للإضافة",
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Bold,
+                    )
                 }
             }
         }
@@ -606,6 +665,23 @@ private fun ListItemCard(
     accent: Color,
     onDelete: () -> Unit,
 ) {
+    // For app entries (stored as package names), resolve the human-readable
+    // label + icon from PackageManager; fall back to the raw string.
+    val context = LocalContext.current
+    val appInfo: Pair<String, ImageBitmap?>? =
+        if (category == ListCategory.APPS) {
+            remember(entry) {
+                runCatching {
+                    val pm = context.packageManager
+                    val ai = pm.getApplicationInfo(entry, 0)
+                    Pair(
+                        pm.getApplicationLabel(ai).toString(),
+                        runCatching { ai.loadIcon(pm).toBitmap(96, 96).asImageBitmap() }.getOrNull(),
+                    )
+                }.getOrNull()
+            }
+        } else null
+
     Surface(
         shape = RoundedCornerShape(20.dp),
         color = SurfaceNavy,
@@ -624,7 +700,7 @@ private fun ListItemCard(
             )
             Spacer(Modifier.width(14.dp))
             Text(
-                entry,
+                appInfo?.first ?: entry,
                 modifier = Modifier
                     .weight(1f)
                     .padding(vertical = 20.dp),
@@ -632,22 +708,32 @@ private fun ListItemCard(
                 fontSize = 16.sp,
                 color = Color.White,
             )
-            Box(
-                modifier = Modifier
-                    .size(42.dp)
-                    .background(SurfaceNavy2, RoundedCornerShape(12.dp)),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(
-                    when (category) {
-                        ListCategory.WORDS -> Icons.Default.TextFields
-                        ListCategory.SITES -> Icons.Default.Public
-                        ListCategory.APPS -> Icons.Default.Apps
-                    },
+            if (appInfo?.second != null) {
+                Image(
+                    bitmap = appInfo.second!!,
                     contentDescription = null,
-                    tint = Color(0xFF4FB8E7),
-                    modifier = Modifier.size(22.dp),
+                    modifier = Modifier
+                        .size(42.dp)
+                        .clip(RoundedCornerShape(12.dp)),
                 )
+            } else {
+                Box(
+                    modifier = Modifier
+                        .size(42.dp)
+                        .background(SurfaceNavy2, RoundedCornerShape(12.dp)),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        when (category) {
+                            ListCategory.WORDS -> Icons.Default.TextFields
+                            ListCategory.SITES -> Icons.Default.Public
+                            ListCategory.APPS -> Icons.Default.Apps
+                        },
+                        contentDescription = null,
+                        tint = Color(0xFF4FB8E7),
+                        modifier = Modifier.size(22.dp),
+                    )
+                }
             }
             IconButton(onClick = onDelete) {
                 Icon(

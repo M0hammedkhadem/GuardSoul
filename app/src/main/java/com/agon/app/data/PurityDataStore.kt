@@ -17,6 +17,7 @@ val Context.purityDataStore by preferencesDataStore(name = "purity_prefs")
 object PrefKeys {
     val SHIELD_ACTIVE = booleanPreferencesKey("shield_active")
     val SHIELD_SINCE = longPreferencesKey("shield_since")
+    val PENDING_STOP_AT = longPreferencesKey("pending_stop_at")
     val CONTROL_SECONDS = longPreferencesKey("control_seconds")
     val DELAY_INDEX = intPreferencesKey("delay_index")
     val STREAK_START = longPreferencesKey("streak_start")
@@ -27,10 +28,13 @@ object PrefKeys {
     val ENGINES = stringPreferencesKey("engines_json")
     val APPS = stringPreferencesKey("apps_json")
     val JOURNAL = stringPreferencesKey("journal_json")
+    val JOURNAL_MIGRATED = booleanPreferencesKey("journal_migrated")
     val DAILY_REMINDER = booleanPreferencesKey("daily_reminder")
     val FILTERS = stringPreferencesKey("filters_json")
     val AI_FILTER = booleanPreferencesKey("ai_filter")
     val UNINSTALL_GUARD = booleanPreferencesKey("uninstall_guard")
+    val KEYWORD_CONTINUE = booleanPreferencesKey("keyword_continue")
+    val NSFW_BLUR = booleanPreferencesKey("nsfw_blur")
     val BLOCKS_COUNT = intPreferencesKey("blocks_count")
 
     // Legacy single lists (kept for migration).

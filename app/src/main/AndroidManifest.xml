@@ -14,8 +14,16 @@
         </intent>
     </queries>
 
+    <!-- allowBackup=false: purityDataStore holds sensitive data (psychological
+         journal, relapse counts, personal blacklists); adb backup extraction
+         must not be possible. NOTE (product decision, needs explicit approval
+         later): if Google Auto Backup becomes desirable for UX, re-enable via
+         android:fullBackupContent rules excluding sensitive keys - do NOT
+         flip this flag alone. -->
     <application
-        android:allowBackup="true"
+        android:name=".GuardSoulApp"
+        android:allowBackup="false"
+        android:networkSecurityConfig="@xml/network_security_config"
         android:label="@string/app_name"
         android:supportsRtl="true"
         android:icon="@mipmap/ic_launcher" android:theme="@android:style/Theme.Material.Light.NoActionBar">

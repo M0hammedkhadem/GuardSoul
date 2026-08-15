@@ -57,7 +57,9 @@ object BrowserGuard {
         }
 
         if (keywordFilterOn) {
-            keywords.firstOrNull { url.contains(it.lowercase()) }?.let {
+            // High-accuracy matcher: word boundaries + Arabic normalization +
+            // leet folding — no Scunthorpe false positives on innocent URLs.
+            KeywordMatcher.findMatch(url, keywords)?.let {
                 return BrowserVerdict.BlockedKeyword(it)
             }
         }

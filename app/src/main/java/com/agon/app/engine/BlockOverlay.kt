@@ -32,6 +32,9 @@ class BlockOverlay(private val service: AccessibilityService) {
         autoHideMs: Long = 3500L,
         buttonLabel: String = "أخرجني من هنا",
         buttonGoesHome: Boolean = true,
+        opaque: Boolean = false,
+        secondaryLabel: String? = null,
+        onSecondary: (() -> Unit)? = null,
     ) {
         handler.post {
             // A repeat block while the shield is still visible must refresh the
@@ -39,7 +42,7 @@ class BlockOverlay(private val service: AccessibilityService) {
             handler.removeCallbacksAndMessages(null)
             view?.let { v -> runCatching { wm.removeView(v) } }
             view = null
-            val root = buildView(title, message, buttonLabel, buttonGoesHome)
+            val root = buildView(title, message, buttonLabel, buttonGoesHome, opaque, secondaryLabel, onSecondary)
             val params = WindowManager.LayoutParams(
                 WindowManager.LayoutParams.MATCH_PARENT,
                 WindowManager.LayoutParams.MATCH_PARENT,
@@ -47,11 +50,28 @@ class BlockOverlay(private val service: AccessibilityService) {
                 WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
                 PixelFormat.TRANSLUCENT,
             )
-            runCatching {
-                wm.addView(root, params)
-                view = root
-                handler.postDelayed({ hide() }, autoHideMs)
-            }
+            // The shield MUST appear for every block. addView can transiently
+            // fail (window token churn right after a BACK/HOME global action),
+            // so retry with backoff instead of failing silently.
+            attachWithRetry(root, params, autoHideMs, attemptsLeft = 3)
+        }
+    }
+
+    private fun attachWithRetry(
+        root: View,
+        params: WindowManager.LayoutParams,
+        autoHideMs: Long,
+        attemptsLeft: Int,
+    ) {
+        val added = runCatching { wm.addView(root, params) }.isSuccess
+        if (added) {
+            view = root
+            handler.postDelayed({ hide() }, autoHideMs)
+        } else if (attemptsLeft > 0) {
+            handler.postDelayed(
+                { attachWithRetry(root, params, autoHideMs, attemptsLeft - 1) },
+                250L,
+            )
         }
     }
 
@@ -67,6 +87,9 @@ class BlockOverlay(private val service: AccessibilityService) {
         message: String,
         buttonLabel: String,
         buttonGoesHome: Boolean,
+        opaque: Boolean,
+        secondaryLabel: String?,
+        onSecondary: (() -> Unit)?,
     ): View {
         val density = service.resources.displayMetrics.density
         fun dp(v: Int) = (v * density).toInt()
@@ -74,7 +97,8 @@ class BlockOverlay(private val service: AccessibilityService) {
         val container = LinearLayout(service).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
-            setBackgroundColor(Color.parseColor("#F20A121B"))
+            // Opaque = camouflage mode: fully hides the content behind.
+            setBackgroundColor(Color.parseColor(if (opaque) "#FF0A121B" else "#F20A121B"))
             layoutDirection = View.LAYOUT_DIRECTION_RTL
             setOnClickListener { /* swallow touches */ }
         }
@@ -125,6 +149,22 @@ class BlockOverlay(private val service: AccessibilityService) {
             }
         }
         container.addView(button)
+
+        // Optional secondary "continue anyway" button (keyword shield option).
+        if (secondaryLabel != null) {
+            val secondary = TextView(service).apply {
+                text = secondaryLabel
+                setTextColor(Color.parseColor("#8FA3B5"))
+                textSize = 15f
+                gravity = Gravity.CENTER
+                setPadding(dp(32), dp(18), dp(32), dp(6))
+                setOnClickListener {
+                    onSecondary?.invoke()
+                    hide()
+                }
+            }
+            container.addView(secondary)
+        }
 
         return container
     }

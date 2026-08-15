@@ -94,6 +94,7 @@ val defaultBlackWords = listOf(
     "brazzers", "nude", "naked girls", "erotic", "escort", "fetish",
     "bdsm", "blowjob", "anal", "boobs", "threesome", "stripchat",
     "rule34", "lewd", "18+", "+18", "adult movies", "hot girls",
+    "sexting", "seks",
     // Arabic
     "إباحي", "إباحية", "اباحي", "سكس", "جنس عنيف", "نيك", "طيز",
     "بزاز", "عاهرة", "شرموطة", "شراميط", "مثيرة ساخنة", "بنات سكس",

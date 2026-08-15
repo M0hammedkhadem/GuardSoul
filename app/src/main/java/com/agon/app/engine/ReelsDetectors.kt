@@ -8,6 +8,84 @@ import kotlin.math.abs
 /** Result of the top-tab-strip pixel analysis (Facebook mechanism #1). */
 enum class TabBarState { WHITE, BLACK, HIDDEN }
 
+/** Node-tree evidence about Facebook's top tab strip. */
+data class TabStripInfo(
+    /** True when the tab strip is actually on screen (>=2 tab nodes found). */
+    val present: Boolean,
+    /** True when the Reels tab node reports the selected state. */
+    val reelsSelected: Boolean,
+) {
+    companion object { val ABSENT = TabStripInfo(present = false, reelsSelected = false) }
+}
+
+/**
+ * Locates Facebook's top tab strip in the accessibility tree.
+ *
+ * Why: pixels alone cannot distinguish "tab strip painted black (Reels)"
+ * from "no tab strip at all over a black background" — which is exactly what
+ * the full-screen video player and photo viewer show after tapping a feed
+ * post. Node evidence disambiguates: no tab nodes => the strip is ABSENT and
+ * a BLACK pixel reading must not be trusted.
+ */
+object TabStripLocator {
+
+    private val tabCategories: List<Pair<List<String>, Int>> = listOf(
+        listOf("home", "الرئيسية") to 0,
+        listOf("video", "watch", "فيديو") to 1,
+        listOf("reels", "ريلز") to 2,
+        listOf("marketplace", "السوق") to 3,
+        listOf("notifications", "الإشعارات", "إشعارات", "اشعارات") to 4,
+        listOf("menu", "القائمة", "قائمة") to 5,
+        listOf("friends", "الأصدقاء", "أصدقاء", "اصدقاء") to 6,
+        listOf("groups", "المجموعات", "مجموعات") to 7,
+        listOf("profile", "الملف الشخصي") to 8,
+    )
+    private val reelsWords = listOf("reels", "ريلز")
+    private val selectedWords = listOf("selected", "محدد", "محدّد")
+
+    fun locate(root: AccessibilityNodeInfo?, screenW: Int, screenH: Int): TabStripInfo {
+        if (root == null || screenW <= 0 || screenH <= 0) return TabStripInfo.ABSENT
+        val topLimit = (screenH * 0.18f).toInt()
+        val maxTabW = (screenW * 0.25f).toInt()
+        val maxTabH = (screenH * 0.10f).toInt()
+        val cats = HashSet<Int>()
+        var reelsSelected = false
+
+        fun scan(node: AccessibilityNodeInfo, depth: Int) {
+            if (depth > 30) return
+            val label = buildString {
+                node.contentDescription?.let { append(it) }
+                append(' ')
+                node.text?.let { if (it.length <= 60) append(it) }
+            }.lowercase()
+
+            if (label.isNotBlank()) {
+                val bounds = Rect()
+                node.getBoundsInScreen(bounds)
+                val inStripRegion = bounds.top >= 0 && bounds.bottom in 1..topLimit &&
+                    bounds.width() in 1..maxTabW && bounds.height() in 1..maxTabH
+                if (inStripRegion) {
+                    tabCategories.firstOrNull { (words, _) -> words.any { label.contains(it) } }
+                        ?.let { (_, cat) -> cats.add(cat) }
+                    if (reelsWords.any { label.contains(it) } &&
+                        (node.isSelected || selectedWords.any { label.contains(it) })
+                    ) {
+                        reelsSelected = true
+                    }
+                }
+            }
+            for (i in 0 until node.childCount) {
+                val child = node.getChild(i) ?: continue
+                scan(child, depth + 1)
+            }
+        }
+        scan(root, 0)
+        // >=2 distinct tab categories = the strip is really there (a single
+        // accidental word match in a post header can't fake the whole strip).
+        return TabStripInfo(present = cats.size >= 2, reelsSelected = reelsSelected)
+    }
+}
+
 /**
  * Mechanism #1 — Facebook top tab strip color.
  *
@@ -168,13 +246,20 @@ object ActionRailDetector {
 /**
  * The Facebook Reels brain — fuses the two parallel mechanisms.
  *
- * Decision table (either mechanism alone is sufficient):
- *  - WHITE strip          -> definitely NOT Reels, overrides everything.
- *  - BLACK strip          -> mechanism #1 satisfied  -> BLOCK.
- *  - Action rail (>=3/4)  -> mechanism #2 satisfied  -> BLOCK
- *                            (works even when the strip is hidden/unknown,
- *                             and tolerates the icons drifting up/down).
- *  - HIDDEN strip, no rail -> no block.
+ * Decision table:
+ *  - WHITE strip                  -> definitely NOT Reels, overrides everything.
+ *  - Reels tab node SELECTED      -> mechanism #1 satisfied -> BLOCK
+ *                                    (works in dark mode too — node evidence,
+ *                                     not pixels).
+ *  - Action rail (>=3/4 vertical) -> mechanism #2 satisfied -> BLOCK
+ *                                    (covers the hidden-strip state and
+ *                                     tolerates the icons drifting up/down).
+ *  - BLACK pixels ALONE           -> NO BLOCK. Pixel blackness without node
+ *    evidence is ambiguous: the full-screen video player, the photo viewer
+ *    (both opened by tapping a feed post) and the dark-mode feed all paint
+ *    this region black while the tab strip itself is ABSENT. Blocking there
+ *    was a confirmed false positive — BLACK is only trusted when the strip
+ *    nodes are present AND the rail agrees (which the rail alone covers).
  */
 class FacebookReelsBrain {
 
@@ -187,11 +272,19 @@ class FacebookReelsBrain {
         lastBlockedAt = now
     }
 
-    fun evaluate(tabBar: TabBarState?, railDetected: Boolean, now: Long): Boolean {
+    fun evaluate(
+        tabBar: TabBarState?,
+        strip: TabStripInfo,
+        railDetected: Boolean,
+        now: Long,
+    ): Boolean {
         // Mechanism #1 negative case: white strip = any tab except Reels.
         if (tabBar == TabBarState.WHITE) return false
-        // Either mechanism confirms -> block.
-        return tabBar == TabBarState.BLACK || railDetected
+        // Mechanism #1 positive case: the Reels tab is selected (node truth,
+        // valid whether the strip renders black or dark-mode dark).
+        if (strip.reelsSelected) return true
+        // Mechanism #2: the vertical engagement rail.
+        return railDetected
     }
 }
 

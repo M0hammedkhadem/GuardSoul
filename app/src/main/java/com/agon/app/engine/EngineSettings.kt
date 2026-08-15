@@ -6,14 +6,20 @@ import com.agon.app.data.AppBlockState
 data class EngineSettings(
     val shieldActive: Boolean = false,
     val aiImageFilter: Boolean = false,
+    val uninstallGuard: Boolean = false,
     val appBlocks: Map<String, AppBlockState> = emptyMap(),
     val searchEngines: Map<String, Boolean> = emptyMap(),
     val contentFilters: Map<String, Boolean> = emptyMap(),
     val blackWords: List<String> = emptyList(),
     val blackSites: List<String> = emptyList(),
     val blackApps: List<String> = emptyList(),
+    val whiteWords: List<String> = emptyList(),
     val whiteSites: List<String> = emptyList(),
     val whiteApps: List<String> = emptyList(),
+    /** Show a "continue anyway" button on keyword-block shields (default off). */
+    val keywordContinueOption: Boolean = false,
+    /** NSFW filter action: false = kick out (default), true = camouflage overlay. */
+    val nsfwBlurMode: Boolean = false,
 ) {
     fun keywordFilterOn(): Boolean = contentFilters["keywords"] == true
     fun siteFilterOn(): Boolean = contentFilters["sites"] == true

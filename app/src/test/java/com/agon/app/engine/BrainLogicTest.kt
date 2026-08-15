@@ -62,63 +62,116 @@ class BlockGovernorTest {
         assertEquals(0, later!!.repeatCount)
         assertFalse(later.escalated)
     }
+
+    @Test
+    fun `REGRESSION instant app relaunch bypasses the long suppress window`() {
+        // Reported bug: relaunching a blocked app within the 2s suppress
+        // window was silently allowed. Launch events must re-block.
+        val g = BlockGovernor(suppressMs = 2_000)
+        assertNotNull(g.request("app:tiktok", 1_000))
+        // Relaunch 1.2s later (inside old suppress window) -> MUST block.
+        val relaunch = g.request("app:tiktok", 2_200, bypassSuppress = true)
+        assertNotNull("instant relaunch must be re-blocked", relaunch)
+        assertTrue(relaunch!!.escalated)
+    }
+
+    @Test
+    fun `launch bypass still absorbs the launch animation event storm`() {
+        val g = BlockGovernor(suppressMs = 2_000)
+        assertNotNull(g.request("app:tiktok", 1_000, bypassSuppress = true))
+        // Same launch fires several window-state events within 600ms.
+        assertNull(g.request("app:tiktok", 1_300, bypassSuppress = true))
+        // A real relaunch after the short window is blocked again.
+        assertNotNull(g.request("app:tiktok", 1_700, bypassSuppress = true))
+    }
 }
 
 /**
  * Facebook Reels fusion brain — the two parallel mechanisms.
- * Rule: WHITE strip = definitive negative; otherwise EITHER mechanism
- * (black strip OR the 3-of-4 vertical action rail) confirms => block.
+ * Rules: WHITE strip = definitive negative; Reels tab node selected = block;
+ * vertical action rail (3 of 4) = block; BLACK pixels ALONE never block
+ * (full-screen video/photo viewers paint that region black with NO strip).
  */
 class FacebookReelsBrainTest {
+
+    private val stripAbsent = TabStripInfo.ABSENT
+    private val stripPresent = TabStripInfo(present = true, reelsSelected = false)
+    private val stripReelsSelected = TabStripInfo(present = true, reelsSelected = true)
 
     @Test
     fun `white tab strip is a definitive negative even with a rail`() {
         val b = FacebookReelsBrain()
-        assertFalse(b.evaluate(TabBarState.WHITE, railDetected = true, now = 1_000))
+        assertFalse(b.evaluate(TabBarState.WHITE, stripPresent, railDetected = true, now = 1_000))
+    }
+
+    @Test
+    fun `REGRESSION full-screen video player - black pixels, strip absent, no rail - must NOT block`() {
+        // Exact reported bug: tapping a video post in the home feed opens the
+        // full-screen player whose top region is pure black (no tab strip).
+        val b = FacebookReelsBrain()
+        assertFalse(b.evaluate(TabBarState.BLACK, stripAbsent, railDetected = false, now = 1_000))
+    }
+
+    @Test
+    fun `REGRESSION photo viewer - black pixels, strip absent, no rail - must NOT block`() {
+        val b = FacebookReelsBrain()
+        assertFalse(b.evaluate(TabBarState.BLACK, stripAbsent, railDetected = false, now = 1_000))
+    }
+
+    @Test
+    fun `dark-mode feed - black pixels with strip present but no rail - must NOT block`() {
+        val b = FacebookReelsBrain()
+        assertFalse(b.evaluate(TabBarState.BLACK, stripPresent, railDetected = false, now = 1_000))
+    }
+
+    @Test
+    fun `reels tab selected blocks even without the rail`() {
+        val b = FacebookReelsBrain()
+        assertTrue(b.evaluate(TabBarState.BLACK, stripReelsSelected, railDetected = false, now = 1_000))
+    }
+
+    @Test
+    fun `reels tab selected blocks even without a screenshot`() {
+        val b = FacebookReelsBrain()
+        assertTrue(b.evaluate(null, stripReelsSelected, railDetected = false, now = 1_000))
     }
 
     @Test
     fun `black strip plus action rail blocks immediately`() {
         val b = FacebookReelsBrain()
-        assertTrue(b.evaluate(TabBarState.BLACK, railDetected = true, now = 1_000))
+        assertTrue(b.evaluate(TabBarState.BLACK, stripPresent, railDetected = true, now = 1_000))
     }
 
     @Test
-    fun `mechanism 1 alone - black strip without rail - blocks`() {
+    fun `rail with hidden strip blocks - scrolled inside reels`() {
         val b = FacebookReelsBrain()
-        assertTrue(b.evaluate(TabBarState.BLACK, railDetected = false, now = 1_000))
+        assertTrue(b.evaluate(TabBarState.HIDDEN, stripAbsent, railDetected = true, now = 1_000))
     }
 
     @Test
-    fun `mechanism 2 alone - rail with hidden strip - blocks`() {
+    fun `rail with no screenshot available blocks - below API 30 path`() {
         val b = FacebookReelsBrain()
-        assertTrue(b.evaluate(TabBarState.HIDDEN, railDetected = true, now = 1_000))
-    }
-
-    @Test
-    fun `mechanism 2 alone - rail with no screenshot available - blocks`() {
-        val b = FacebookReelsBrain()
-        assertTrue(b.evaluate(null, railDetected = true, now = 1_000))
+        assertTrue(b.evaluate(null, stripAbsent, railDetected = true, now = 1_000))
     }
 
     @Test
     fun `hidden strip without rail does not block`() {
         val b = FacebookReelsBrain()
-        assertFalse(b.evaluate(TabBarState.HIDDEN, railDetected = false, now = 1_000))
+        assertFalse(b.evaluate(TabBarState.HIDDEN, stripAbsent, railDetected = false, now = 1_000))
     }
 
     @Test
     fun `re-entering reels right after a block is still blocked`() {
         val b = FacebookReelsBrain()
         b.notifyBlocked(now = 1_000)
-        assertTrue(b.evaluate(TabBarState.HIDDEN, railDetected = true, now = 4_000))
+        assertTrue(b.evaluate(TabBarState.HIDDEN, stripAbsent, railDetected = true, now = 4_000))
     }
 
     @Test
     fun `white strip clears even after a recent block`() {
         val b = FacebookReelsBrain()
         b.notifyBlocked(now = 1_000)
-        assertFalse(b.evaluate(TabBarState.WHITE, railDetected = false, now = 3_000))
+        assertFalse(b.evaluate(TabBarState.WHITE, stripPresent, railDetected = false, now = 3_000))
     }
 }
 

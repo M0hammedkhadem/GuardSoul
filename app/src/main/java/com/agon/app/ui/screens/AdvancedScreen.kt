@@ -2,6 +2,7 @@ package com.agon.app.ui.screens
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -144,6 +145,49 @@ fun AdvancedScreen(vm: MainViewModel, snackbarHostState: SnackbarHostState) {
                 },
             )
 
+            Spacer(Modifier.height(12.dp))
+
+            // إجراء الفلتر عند الرصد: طرد (افتراضي) أو تمويه
+            Surface(
+                shape = RoundedCornerShape(24.dp),
+                color = SurfaceNavy,
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.45f)),
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Column(modifier = Modifier.padding(18.dp)) {
+                    Text(
+                        "الإجراء عند رصد محتوى مثير",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 16.sp,
+                        color = Color.White,
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        if (vm.nsfwBlurMode) "تمويه: تغطية المحتوى بستار معتم دون إخراجك"
+                        else "طرد: إرجاعك فوراً للخلف مع شاشة الحظر",
+                        fontSize = 13.sp,
+                        color = TextSecondary,
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        ActionPill(
+                            label = "الطرد",
+                            selected = !vm.nsfwBlurMode,
+                            modifier = Modifier.weight(1f),
+                        ) {
+                            if (!vm.updateNsfwBlurMode(false)) locked()
+                        }
+                        ActionPill(
+                            label = "التمويه",
+                            selected = vm.nsfwBlurMode,
+                            modifier = Modifier.weight(1f),
+                        ) {
+                            if (!vm.updateNsfwBlurMode(true)) locked()
+                        }
+                    }
+                }
+            }
+
             Spacer(Modifier.height(26.dp))
 
             // ---------- App protection section ----------
@@ -183,6 +227,31 @@ fun AdvancedScreen(vm: MainViewModel, snackbarHostState: SnackbarHostState) {
 
             Spacer(Modifier.height(24.dp))
         }
+    }
+}
+
+@Composable
+private fun ActionPill(
+    label: String,
+    selected: Boolean,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit,
+) {
+    Surface(
+        shape = RoundedCornerShape(14.dp),
+        color = if (selected) CyanPrimary else SurfaceNavy,
+        border = if (selected) null else BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.5f)),
+        onClick = onClick,
+        modifier = modifier,
+    ) {
+        Text(
+            label,
+            modifier = Modifier.padding(vertical = 12.dp),
+            textAlign = TextAlign.Center,
+            fontWeight = FontWeight.Bold,
+            fontSize = 15.sp,
+            color = if (selected) Color(0xFF06222F) else TextSecondary,
+        )
     }
 }
 
